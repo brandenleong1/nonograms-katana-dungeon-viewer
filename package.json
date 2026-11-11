@@ -1,0 +1,23 @@
+{
+	"name": "nonograms-katana-dungeon-viewer",
+	"private": true,
+	"type": "module",
+	"description": "Isometric dungeon viewer, route planner and combat solver for Nonograms Katana",
+	"scripts": {
+		"test": "node test/run.mjs && node test/solve.mjs",
+		"test:oracle": "node test/run.mjs ~/.cache/nk-oracle/fx7 && node test/save.mjs && node test/entry.mjs && node test/combat.mjs && node test/clone.mjs",
+		"test:gen": "node test/run.mjs",
+		"test:save": "node test/save.mjs",
+		"test:entry": "node test/entry.mjs",
+		"test:solve": "node test/solve.mjs",
+		"test:combat": "node test/combat.mjs",
+		"test:clone": "node test/clone.mjs",
+		"test:progress": "node test/progress.mjs",
+		"snaptest": "node test/snaptest.mjs",
+		"serve": "python3 -m http.server 8000 --bind 127.0.0.1"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git@github.com:brandenleong1/nonograms-katana-dungeon-viewer.git"
+	}
+}

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Nonograms Katana Dungeon Viewer</title>
+
+		<style id="loading-css">
+			body *:not(#loading) {
+				opacity: 0;
+			}
+		</style>
+		<link href="lib/utils/themes/horizontal_layout.css" rel="stylesheet" type="text/css" />
+		<link href="lib/utils/themes/colors.css" rel="stylesheet" type="text/css" />
+		<link href="style.css" rel="stylesheet" type="text/css" />
+	</head>
+
+	<body>
+		<div class="content-container-vertical vertical-section" id="input-section">
+			<div class="content-header">Dungeon Viewer</div>
+			<div class="content-container-vertical" style="row-gap: 10px; justify-content: flex-start;">
+				<div class="content-caption">Type the label shown at the top of your dungeon.</div>
+				<input type="text" id="label-input" placeholder="3C-172582050" spellcheck="false" autocomplete="off" />
+				<div class="content-container-horizontal" style="column-gap: 15px;">
+					<div class="button-positive-2" id="show-btn">Show</div>
+					<div class="button-positive-2" id="random-btn" title="A random dungeon of the same kind">Random</div>
+				</div>
+				<div class="content-caption" id="label-status"></div>
+			</div>
+
+			<div class="content-header-2">Your hero</div>
+			<div class="content-container-vertical profile-block" id="profile-block">
+				<div class="content-container-horizontal profile-row">
+					<div class="profile-badge" id="profile-badge" title="Which progress the map is built with">New game</div>
+					<div class="button-positive-2" id="hero-open-btn" title="Your heroes, their pack and your progress, from the game's export">Import save</div>
+					<div class="button-positive-2" id="progress-open-btn" title="Quests, bosses beaten and finds the map is built with: set them without a save, or try what-ifs">Progress</div>
+				</div>
+				<div class="content-caption" id="profile-status">Import your save to see monsters and people as they are for you.</div>
+			</div>
+
+			<div class="content-header-2">Show on map</div>
+			<div class="content-container-vertical layer-list" id="layer-list"></div>
+
+			<div class="content-header-2">View</div>
+			<div class="content-container-horizontal view-row">
+				<div class="button-positive-2 view-btn" id="zoom-in-btn" title="Zoom in"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M12 5v14M5 12h14'/></svg></div>
+				<div class="button-positive-2 view-btn" id="zoom-out-btn" title="Zoom out"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M5 12h14'/></svg></div>
+				<div class="button-positive-2 view-btn" id="fit-btn" title="Fit map"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'/></svg></div>
+				<div class="button-positive-2 view-btn" id="hero-btn" title="Centre on start"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z'/></svg></div>
+				<div class="button-positive-2 view-btn" id="walls-btn" title="Toggle tall walls"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M3 20h18M5 20V10l7-4 7 4v10M9 20v-6h6v6'/></svg></div>
+				<div class="button-positive-2 view-btn" id="solver-btn" title="Show or hide the solver" role="button" tabindex="0" aria-pressed="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M5 19L19 5M15 5h4v4M5 5l5 5M9 5H5v4M14 14l5 5'/></svg></div>
+			</div>
+		</div>
+
+		<div class="content-container-vertical" id="map-section">
+			<canvas id="map"></canvas>
+			<div class="content-caption" id="map-caption">Drag to move · scroll or pinch to zoom · click something to see what it is</div>
+		</div>
+
+		<div class="content-container-vertical vertical-section" id="info-section">
+			<div class="content-header-2">Selected</div>
+			<div class="info-box" id="selected-info">Click a tile, object or monster.</div>
+
+			<div class="content-header-2">Objectives <span id="objective-count"></span></div>
+			<div class="info-box scroll-list" id="objective-list">—</div>
+
+			<div class="content-header-2">Route</div>
+			<div class="content-container-horizontal effort-row">
+				<span>Energy &amp; mental power:</span>
+				<select class="button-positive-2" id="effort-select" title="How hard to avoid spending energy or mental power on doors, seals and undergrowth">
+					<option value="steps">Spend freely</option>
+					<option value="balanced">Balanced</option>
+					<option value="save">Save them</option>
+				</select>
+			</div>
+			<div class="info-box scroll-list" id="route-info">—</div>
+		</div>
+
+		<div class="content-container-vertical vertical-section" id="solve-section">
+			<div class="content-header-2">Solver</div>
+			<div class="solve-controls" id="solve-controls"></div>
+			<div class="solve-result" id="solve-result"></div>
+		</div>
+
+		<div id="tooltip"></div>
+
+		<div id="bottom-bar">
+			<img id="help" src="lib/utils/icons/help.svg" />
+			<img id="settings" src="lib/utils/icons/settings.svg" />
+		</div>
+
+		<div class="popup" id="popup-help">
+			<div class="content-header">Help</div>
+			<div class="content-container-vertical">
+				<div class="content-text">Text styled like <span style="color: var(--color_btn);">this</span> are buttons.</div>
+				<div class="content-text">
+					This site rebuilds a Nonograms Katana dungeon from its label (for example <b>3C-172582050</b>), using the same
+					rules the game uses, and draws it the way the game does. Click a ladder, hatch, portal, lever or gate to see the
+					thing it connects to. The route panel suggests an order for clearing every objective.
+				</div>
+				<div class="content-text">
+					The Solver plays the dungeon in the game's own combat engine and picks a tactic for every fight, using the
+					fewest items first, then the least mental power, without dying. Robust mode works from the label alone and
+					averages over many possible dice rolls; Exact mode needs the dice, from a save exported inside the dungeon
+					(or a made-up seed to experiment), and gives a step-by-step script you can follow on the map with ← and →.
+				</div>
+				<div class="content-text">
+					Monsters and people can depend on your quests and finds. The map assumes a new game until you import your
+					save under Your hero (the game's Settings → Export file) or set your quests and bosses under Progress.
+					The save is read in your browser only.
+				</div>
+			</div>
+		</div>
+		<div class="popup" id="popup-hero">
+			<div class="content-header">Your hero</div>
+			<div class="privacy-note">
+				<b>Your save stays on your device.</b> The file is read here in your browser; nothing is uploaded or sent
+				anywhere. It is kept in this tab until you close it or press Forget.
+			</div>
+			<div class="content-container-horizontal hero-footer" id="hero-footer" style="display: none;">
+				<div class="layer-row" id="hero-use" title="Build maps with your quests, bosses beaten and mini-boss quests">
+					<div class="checkbox selected" id="hero-use-box"></div><span>Use my progress for maps</span>
+				</div>
+				<div class="button-positive-2" id="hero-forget">Forget this save</div>
+			</div>
+			<div class="drop-zone" id="hero-drop">
+				<div>Drop <b>NonogramsKatana.zip</b> (or <b>guild.dat</b>) here, or</div>
+				<div class="button-positive-2" id="hero-pick">Choose file</div>
+				<div class="muted small">In the game: Settings → Export. Exports made in town and inside a dungeon both work.</div>
+				<input type="file" id="hero-file" accept=".zip,.dat" hidden />
+			</div>
+			<div class="hero-error" id="hero-error" style="display: none;"></div>
+			<div class="content-container-horizontal hero-body" id="hero-body" style="display: none;"></div>
+		</div>
+		<div class="popup" id="popup-progress">
+			<div class="content-header">Your progress</div>
+			<div class="privacy-note">
+				Monsters, people and bosses in a dungeon depend on what you have done in the game. Set it here without a
+				save, or start from your save and try what-ifs. The map and the solver use it at once; your changes are kept
+				in this browser.
+			</div>
+			<div class="progress-body" id="progress-body"></div>
+		</div>
+		<div class="popup" id="popup-settings">
+			<div class="content-header">Settings</div>
+			<div class="content-text" style="overflow-y: hidden;">
+				<span class="button-positive" id="theme-btn">Change Theme:</span>
+				<span style="position: relative; display: inline-flex; width: 85px;"> &nbsp;
+					<span id="theme-label-1" style="position: absolute; max-width: 80px; overflow-x: hidden; text-overflow: ellipsis;"></span>
+					<span id="theme-label-2" style="max-width: 80px; overflow-x: hidden; text-overflow: ellipsis;"></span>
+				</span>
+			</div>
+		</div>
+
+		<div id="loading"></div>
+
+		<script src="lib/utils/utils/math.js"></script>
+		<script src="lib/utils/utils/rate_funcs.js"></script>
+		<script src="lib/utils/utils/utils.js"></script>
+		<script src="lib/utils/utils/animate.js"></script>
+		<script src="lib/utils/utils/cookies.js"></script>
+		<script src="lib/utils/utils/themes.js"></script>
+		<script src="lib/utils/themes/popup.js"></script>
+
+		<script src="init.js"></script>
+		<script type="module" src="js/app.js"></script>
+	</body>
+</html>

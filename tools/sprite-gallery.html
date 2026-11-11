@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<!-- Dev tool: every sprite on a floor tile at two zoom levels.  http://127.0.0.1:8765/tools/sprite-gallery.html?theme=dark -->
+<html><head><meta charset="utf-8"><title>Sprite gallery</title>
+<style>body{margin:0;background:#16161a;color:#ddd;font:12px system-ui}body.light{background:#ece9e2;color:#222}canvas{display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+import { drawSprite } from '../js/view/sprites.js';
+const theme = new URLSearchParams(location.search).get('theme') || 'dark';
+if (theme === 'light') document.body.classList.add('light');
+const kinds = [
+	['chest'], ['page'], ['container'], ['breakable'], ['ore'], ['barrel'], ['trap'], ['fountain', ''], ['fountain', 'mp'], ['special'], ['cover'], ['marker'], ['decor'],
+	['mpdoor', 'x'], ['mpdoor', 'y'], ['stuckdoor', 'x'], ['lockdoor', 'x'], ['gate', 'x'], ['gate', 'y'], ['puzzledoor', 'y'], ['barreldoor', 'x'], ['bossgate', 'x'],
+	['ladder', 'x'], ['ladder', 'y'], ['hatch'], ['portal'], ['hero'], ['npc'], ['monster', '3'], ['monster', '17'], ['monster', '41'], ['goldmonster'], ['miniboss'], ['boss'], ['unique'], ['spider'],
+];
+const dpr = window.devicePixelRatio || 1;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const cols = 9, cell = 170, rowsPer = Math.ceil(kinds.length / cols);
+const W = cols * cell, H = rowsPer * cell * 1.0 + rowsPer * 90;
+cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+const floor = theme === 'light' ? '#e2dbcf' : '#7a7166';
+const tile = (cx, cy, hw) => { ctx.fillStyle = floor; ctx.beginPath(); ctx.moveTo(cx, cy - hw / 2); ctx.lineTo(cx + hw, cy); ctx.lineTo(cx, cy + hw / 2); ctx.lineTo(cx - hw, cy); ctx.closePath(); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.stroke(); };
+kinds.forEach(([k, v = ''], i) => {
+	const col = i % cols, row = (i / cols) | 0;
+	const cx = col * cell + cell / 2, cy = row * (cell + 90) + cell * 0.78;
+	tile(cx, cy, 56); drawSprite(ctx, k, cx, cy, 56, { theme, dpr, variant: v, selected: k === 'hero' });
+	tile(cx + 58, cy + 62, 20); drawSprite(ctx, k, cx + 58, cy + 62, 20, { theme, dpr, variant: v });
+	ctx.fillStyle = theme === 'light' ? '#222' : '#ccc'; ctx.fillText(`${k}${v ? ' ' + v : ''}`, col * cell + 8, row * (cell + 90) + cell + 70);
+});
+document.title = 'ready';
+</script></body></html>

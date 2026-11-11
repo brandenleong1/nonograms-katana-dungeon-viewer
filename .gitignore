@@ -1,0 +1,21 @@
+# dependencies / OS / editors
+node_modules/
+.DS_Store
+Thumbs.db
+tags
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# local oracle output (generated from the game; never commit bulk dumps)
+test/oracle/
+
+# never commit a player's save or game files
+*.dat
+*.zip
+*.progress
+*.apk
+*.dex
+*.jar
