@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   commit-format:
+    name: Commit message format
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -24,6 +25,7 @@ jobs:
         run: git log -1 --format=%B | node tools/check-pr.mjs --commit
 
   test:
+    name: Unit tests (Node 22)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +35,7 @@ jobs:
       - run: npm test
 
   smoke:
+    name: Integration (browser smoke test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

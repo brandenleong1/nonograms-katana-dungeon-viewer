@@ -1,7 +1,7 @@
 # Pre-commit checks on every pull request, and on demand (the submodule bot dispatches it, since its PRs can't trigger
 # workflows): syntax, unit tests (npm test), and integration (the browser smoke test). The `precommit` job is the one
 # required status check (.github/rulesets/main.json), and the ruleset requires the branch to be up to date with main,
-# so these run on what will land. Add new jobs to its `needs`.
+# so these run on what will land. Add new jobs to its `needs`. Keep that job's name `precommit`: the ruleset matches it.
 name: Precommit
 on:
   pull_request:
@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   syntax:
+    name: Syntax (node --check)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +27,7 @@ jobs:
         run: git ls-files '*.js' '*.mjs' | xargs -n1 node --check
 
   test:
+    name: Unit tests (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -38,6 +40,7 @@ jobs:
       - run: npm test
 
   integration:
+    name: Integration (browser smoke test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
