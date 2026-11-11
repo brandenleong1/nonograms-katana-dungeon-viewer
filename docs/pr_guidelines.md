@@ -179,8 +179,9 @@ manual merge, and `tools/merge-pr.sh` writes the message for those.
 **Commits on your branch** are squashed away, so write them however helps you. Using the same title format makes the
 PR easier to review.
 
-**Exception:** the daily submodule bot's PRs keep the title `Auto-Bump [Utils] Submodule (-> <sha>)`, the same as on
-the maintainer's other sites.
+**Submodule bumps** are ordinary PRs. The daily workflow pushes `bot/bump-utils` and suggests the title
+`` [UI] Fix: Bump Utils Submodule To `<sha>` ``; whoever opens the PR writes the description. Older commits on `main`
+titled `Auto-Bump [Utils] Submodule (-> <sha>)` are from before `main` was protected.
 
 ## Before opening the PR
 

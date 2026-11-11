@@ -46,13 +46,16 @@
 				"strict_required_status_checks_policy": true,
 				"required_status_checks": [
 					{
-						"context": "precommit"
+						"context": "precommit",
+						"integration_id": 15368
 					},
 					{
-						"context": "pr-policy"
+						"context": "pr-policy",
+						"integration_id": 15368
 					},
 					{
-						"context": "pr-bot"
+						"context": "pr-bot",
+						"integration_id": 15368
 					}
 				]
 			}

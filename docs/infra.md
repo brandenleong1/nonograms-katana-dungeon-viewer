@@ -51,13 +51,15 @@ Everything stays in the browser. Nothing is sent anywhere.
 | `pr-reviewed.yml` | a review is submitted, edited or dismissed | nothing itself; it wakes the PR bot, which has the write token review events from forks lack |
 | `postcommit.yml` | push to `main`; weekly; on demand | `commit-format` (the squash commit is title, blank line, PR URL), then `test` and `smoke` on the merged commit. The weekly run catches drift in browsers, runners and `lib/utils`. |
 | `stale.yml` | daily | closes PRs with no activity for 30 days, and deletes their branches. |
-| `update-submodules.yml` | daily; on demand | if `brandenleong1/utils` moved, opens or updates a `bot/bump-utils` PR. |
+| `update-submodules.yml` | daily; on demand | if `brandenleong1/utils` moved, pushes the bump to `bot/bump-utils` and puts an "Open the pull request" link in the run summary; someone with write access opens it. |
 
 Notes:
 
 - The integration job installs Playwright and Chromium in CI only; the site still has no dependencies.
-- PRs opened with the workflow token don't trigger workflows, so the submodule bot dispatches `precommit` and reports
-  `pr-policy` for its own PRs (their fixed title is the one exception in `tools/check-pr.mjs`).
+- The submodule workflow doesn't open PRs itself. That needs "Allow GitHub Actions to create and approve pull
+  requests", which would also let a workflow approve a PR and stand in for the second person. A person opens the bump
+  PR from the link, and it goes through the usual checks and review. `bot/bump-utils` is the one branch name
+  `pr-policy` accepts without a username.
 - The PR bot runs `tools/pr-bot.mjs` from `main` and never checks out PR code, so a PR can't change what it does.
 
 ## The PR bot
@@ -75,7 +77,9 @@ Ready means the PR:
 - has no reviewer requesting changes;
 - has **no outstanding review requests**: every requested reviewer, person or team, has responded (GitHub removes a
   request once that reviewer submits a review, and the bot re-requests everyone whose review it resets);
-- has an approval **of its head commit** from someone with write access;
+- has an approval **of its head commit** from someone with write access, or from **two** people if it changes CI,
+  the rulesets or the PR tools (`.github/`, `tools/pr-bot.mjs`, `tools/check-pr.mjs`, `tools/github-setup.sh`,
+  `tools/merge-pr.sh`, `package.json`): a PR's own workflows run from its files, so it could weaken what checks it;
 - has a title that passes `tools/check-pr.mjs`.
 
 Example pending reasons: "3 commit(s) behind main: update the branch", "Waiting for review from @alice", "Needs a
@@ -123,7 +127,8 @@ Two rulesets in `.github/rulesets/`.
 - changes arrive through a pull request with **one approving human review** of the latest push, given by someone other
   than whoever pushed it; approvals are dismissed when new commits are pushed (and by the PR bot on any head change);
   all review threads are resolved;
-- **`precommit`**, **`pr-policy`** and **`pr-bot`** must pass, on a branch **up to date with `main`**;
+- **`precommit`**, **`pr-policy`** and **`pr-bot`** must pass, reported **by GitHub Actions** (a status posted with
+  someone's own token doesn't count), on a branch **up to date with `main`**;
 - squash merges only, linear history, and `main` can't be force-pushed or deleted;
 - **repository admins** may bypass the rules, but only when merging a pull request (`bypass_mode: pull_request`);
   direct pushes to `main` are blocked for everyone.
@@ -148,10 +153,27 @@ tools/github-setup.sh      # needs gh, logged in as a repository admin; safe to 
 It sets:
 
 - **Merging:** squash only, commit title = PR title, blank body, head branches deleted on merge, "Update branch" offered.
-- **Actions:** read-only token by default, and allowed to create pull requests, which the submodule bot needs. GitHub
-  calls the setting "create and approve"; no workflow here approves.
+- **Actions:** read-only token by default, and **not** allowed to create or approve pull requests, so no workflow can
+  approve a PR in a person's place.
 - **Rulesets:** each file in `.github/rulesets/`, created or updated by name.
 - **Labels:** `stale`, `keep-open`, `mismatch`, `hold`.
+
+## Known limits
+
+The rules guarantee that **every change is approved by a person other than its author**: two people for CI changes,
+or the admin's bypass. Some other parts depend on contributors acting in good faith:
+
+- **Write access can fake checks.** Anyone with write access can run their own workflows on their own branches, and a
+  workflow's token can post check results. Someone determined could mark their PR's `precommit`, `pr-policy` or
+  `pr-bot` green and press Merge themselves: skipping the tests, the bot's conditions and the commit format, but not
+  the second person's approval. GitHub's free plan can't prevent this; only give write access to people you trust
+  with that. Fork contributors can't do it, because PRs from forks get read-only tokens.
+- **A PR can change its own checks.** Pull-request workflows run from the PR's files, so a PR could weaken
+  `precommit.yml` and pass. This is why CI changes need two approvals, and why reviewers should read workflow diffs.
+  Workflows on a first-time contributor's fork PR wait for a maintainer to approve them before they run.
+- **Admin bypass** skips everything, deliberately.
+- **A hand-merge with a bad message** (via the first point, or the bypass) is caught after the fact by the postcommit
+  `commit-format` check.
 
 ## Game version
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Apply this repository's GitHub settings (docs/infra.md#branch-protection), idempotently:
 #   - merging: squash only, title = PR title, blank body, delete head branches, offer "Update branch";
-#   - Actions may create PRs (the submodule bot; GitHub ties this to "approve", but no workflow here approves);
+#   - Actions may NOT create or approve PRs, so a workflow can't stand in for the second reviewer;
 #   - the rulesets in .github/rulesets/ (main: reviews and checks; branch-names: only <name>/<thing> branches can be
 #     created), created or updated in place by name;
 #   - the labels the workflows and issue forms use (stale, keep-open, mismatch, hold).
@@ -19,8 +19,8 @@ gh api -X PATCH "repos/$repo" \
 echo "merge settings: squash only, branches deleted on merge"
 
 gh api -X PUT "repos/$repo/actions/permissions/workflow" \
-	-f default_workflow_permissions=read -F can_approve_pull_request_reviews=true >/dev/null
-echo "actions: read-only token by default, may create pull requests"
+	-f default_workflow_permissions=read -F can_approve_pull_request_reviews=false >/dev/null
+echo "actions: read-only token by default, may not create or approve pull requests"
 
 for file in .github/rulesets/*.json; do
 	name=$(node -p "require('./$file').name")
