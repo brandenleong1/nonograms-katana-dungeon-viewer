@@ -27,6 +27,10 @@ const verbose = args.includes('-v');
 let inputs = args.filter((a) => !a.startsWith('-'));
 const fightsDir = path.join(os.homedir(), '.cache/nk-oracle/fights');
 if (!inputs.length) inputs = [fightsDir];
+for (const p of inputs) if (!fs.existsSync(p)) {
+	console.error(`${p}: not found. This suite compares against the maintainer's oracle data (docs/testing.md); use npm test.`);
+	process.exit(2);
+}
 const files = [];
 for (const p of inputs) {
 	if (fs.statSync(p).isDirectory()) for (const f of fs.readdirSync(p).sort()) { if (/^pf-.*\.json$/.test(f) || (p !== fightsDir && f.endsWith('.json') && f !== 'index.json')) files.push(path.join(p, f)); }

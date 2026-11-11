@@ -1,0 +1,34 @@
+name: Dungeon mismatch
+description: The site shows a dungeon differently from the game
+labels: [mismatch]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Don't attach your save file** (`guild.dat` / `NonogramsKatana.zip`): it is your whole game profile. If we need it, we'll arrange a private way.
+  - type: input
+    id: label
+    attributes:
+      label: Dungeon label
+      description: Exactly as the game shows it at the top of the dungeon.
+      placeholder: 3C-172582050
+    validations:
+      required: true
+  - type: dropdown
+    id: progress
+    attributes:
+      label: Progress used on the site
+      description: Quests and bosses beaten change who and what spawns.
+      options:
+        - New game (nothing imported or set)
+        - My imported save
+        - Custom progress ("Your progress")
+    validations:
+      required: true
+  - type: textarea
+    id: diff
+    attributes:
+      label: What differs
+      description: Rooms, objects, monsters, people, loot... Screenshots from the game and from the site help most.
+    validations:
+      required: true

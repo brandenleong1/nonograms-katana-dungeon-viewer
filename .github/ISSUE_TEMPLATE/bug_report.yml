@@ -1,0 +1,26 @@
+name: Bug report
+description: Something on the site is broken or wrong (not a dungeon mismatch)
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Don't attach your save file** (`guild.dat` / `NonogramsKatana.zip`): it is your whole game profile.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Include the dungeon label if there is one.
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: Firefox 133 on Windows, Safari on iPhone...
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors
+      description: Anything red in the browser's developer console (F12).
+      render: text

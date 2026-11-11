@@ -1,0 +1,11 @@
+name: Feature request
+description: An idea for the viewer, route planner or solver
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: What you'd like, and the problem it solves for you.
+    validations:
+      required: true
