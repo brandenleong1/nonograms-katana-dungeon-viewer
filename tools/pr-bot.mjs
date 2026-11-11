@@ -17,7 +17,8 @@
 //   add --dry-run to print what it would do
 //
 // Ready to merge: not a draft, no merge conflict, up to date with main, every check it depends on passed on the head
-// commit, nobody requests changes, and someone with write access approved the head commit.
+// commit, nobody requests changes, every requested reviewer (person or team) has responded, and someone with write
+// access approved the head commit.
 //
 // Needs GITHUB_TOKEN (contents: write, pull-requests: write, statuses: write, checks: read, actions: write) and
 // GITHUB_REPOSITORY.
@@ -146,6 +147,8 @@ async function notReadyReason(pr, mainSha) {
 	if (unmet.length) return `Waiting for ${unmet.join(', ')}`;
 	const verdicts = await currentReviews(pr);
 	if (verdicts.some((r) => r.state === 'CHANGES_REQUESTED')) return 'Changes requested';
+	const waitingFor = [...(detail.requested_reviewers || []).map((u) => `@${u.login}`), ...(detail.requested_teams || []).map((t) => `team ${t.name}`)];
+	if (waitingFor.length) return `Waiting for review from ${waitingFor.join(', ')}`;
 	if (!verdicts.some((r) => r.state === 'APPROVED' && r.commit_id === pr.head.sha && CAN_APPROVE.has(r.author_association))) {
 		return 'Needs a review of the latest commit';
 	}
