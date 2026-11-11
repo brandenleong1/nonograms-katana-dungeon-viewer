@@ -4,7 +4,7 @@
 #   - Actions may create PRs (the submodule bot; GitHub ties this to "approve", but no workflow here approves);
 #   - the rulesets in .github/rulesets/ (main: reviews and checks; branch-names: only <name>/<thing> branches can be
 #     created), created or updated in place by name;
-#   - the labels the workflows and issue forms use.
+#   - the labels the workflows and issue forms use (stale, keep-open, mismatch, hold).
 # Needs `gh`, logged in as a repository admin.
 #
 #   tools/github-setup.sh [owner/repo]
@@ -37,4 +37,5 @@ done
 gh label create stale --repo "$repo" --color cfd3d7 --description "No activity for 30 days" --force >/dev/null
 gh label create keep-open --repo "$repo" --color 0e8a16 --description "Never closed as stale" --force >/dev/null
 gh label create mismatch --repo "$repo" --color d93f0b --description "A dungeon differs from the game" --force >/dev/null
-echo "labels: stale, keep-open, mismatch"
+gh label create hold --repo "$repo" --color fbca04 --description "Ready PRs aren't merged by the bot" --force >/dev/null
+echo "labels: stale, keep-open, mismatch, hold"

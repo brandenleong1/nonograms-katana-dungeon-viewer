@@ -1,14 +1,17 @@
-// The PR bot (.github/workflows/pr-bot.yml). It reports the required `pr-bot` status on every open PR's head commit:
-// success once the PR is ready to merge, pending (with the reason) until then. It never submits reviews, so it can't
-// stand in for the human approval the ruleset requires.
+// The PR bot (.github/workflows/pr-bot.yml) merges pull requests; people don't. It reports the required `pr-bot` status
+// on every open PR's head commit, pending with the reason until the PR is ready. When it is ready, the bot sets the
+// status to success and squash-merges in the same moment, with the commit message docs/pr_guidelines.md asks for (the
+// PR title, a blank line, the PR's URL). The status is never left green, so there's no window in which a person
+// could press Merge and type their own message. Drafts and PRs labelled `hold` are left alone. The bot never submits
+// reviews, so it can't stand in for the human approval the ruleset requires.
 //
 // No code merges unreviewed: a review counts only for the commit it was given on. Whenever the head moves (new commits,
 // a rebase, "Update branch"), the bot dismisses the older approvals and change requests, and asks those reviewers to
 // review again.
 //
-//   node tools/pr-bot.mjs review              set `pr-bot` on every open PR
-//   node tools/pr-bot.mjs after-merge SHA     main moved to SHA: delete the merged PR's branch, then review again (the
-//                                             other PRs are now behind main, so they go back to pending)
+//   node tools/pr-bot.mjs review              set `pr-bot` on every open PR, and merge the first one that is ready
+//   node tools/pr-bot.mjs after-merge SHA     main moved to SHA (an admin merged by hand): delete the merged PR's branch,
+//                                             then review again (the other PRs are now behind main)
 //   node tools/pr-bot.mjs prune-branches      delete branches without an open PR that are merged or 30+ days old
 //   node tools/pr-bot.mjs branches            report every branch: age, PR, ahead/behind main, what prune would do
 //   add --dry-run to print what it would do
@@ -16,8 +19,13 @@
 // Ready to merge: not a draft, no merge conflict, up to date with main, every check it depends on passed on the head
 // commit, nobody requests changes, and someone with write access approved the head commit.
 //
-// Needs GITHUB_TOKEN (contents: write, pull-requests: write, statuses: write, checks: read) and GITHUB_REPOSITORY.
+// Needs GITHUB_TOKEN (contents: write, pull-requests: write, statuses: write, checks: read, actions: write) and
+// GITHUB_REPOSITORY.
+import { checkPr } from './check-pr.mjs';
+
 const STATUS = 'pr-bot';
+const HOLD_LABEL = 'hold';
+const POSTCOMMIT = 'postcommit.yml';
 const DEPENDS_ON = ['precommit', 'pr-policy'];
 const STALE_DAYS = 30;
 const BOT = 'github-actions[bot]';
@@ -39,19 +47,75 @@ async function main() {
 }
 
 /** Set `pr-bot` on every open PR's head: success when ready, otherwise pending with the reason. */
-async function reviewAll() {
+/**
+ * Set `pr-bot` on every open PR, and merge the first ready one. One merge per pass: it moves main, so every other PR
+ * is behind and the follow-up review sets them back to pending.
+ */
+async function reviewAll({ merge = true } = {}) {
 	const mainSha = (await github(`/repos/${REPO}/branches/main`)).commit.sha;
 	for (const pr of await openPulls()) {
 		await resetOutdatedReviews(pr);
-		const reason = await notReadyReason(pr, mainSha);
-		await setStatus(pr, reason ? 'pending' : 'success', reason || 'Ready to merge: reviewed, checks pass, up to date with main');
+		const reason = (await notReadyReason(pr, mainSha)) || heldReason(pr, merge);
+		if (reason) {
+			await setStatus(pr, 'pending', reason);
+			continue;
+		}
+		const mergedSha = await mergeNow(pr);
+		if (!mergedSha) continue;
+		await afterBotMerge(mergedSha);
+		return;
 	}
 }
 
-/** main moved: clean up the merged PR's branch; every other PR is now behind main and goes back to pending. */
+/** main moved because an admin merged by hand: clean up, and every other PR goes back to pending. */
 async function afterMerge(sha) {
 	await deleteMergedBranches(sha);
-	await reviewAll();
+	await reviewAll({ merge: false });
+}
+
+/** The bot's own merge doesn't trigger push workflows (GitHub's rule for its token), so do their work here. */
+async function afterBotMerge(sha) {
+	await deleteMergedBranches(sha);
+	await act(`run ${POSTCOMMIT} on main`, () => github(`/repos/${REPO}/actions/workflows/${POSTCOMMIT}/dispatches`, 'POST', { ref: 'main' }));
+	await reviewAll({ merge: false });
+}
+
+function heldReason(pr, merge) {
+	if ((pr.labels || []).some((l) => l.name === HOLD_LABEL)) return `Ready, but held: remove the \`${HOLD_LABEL}\` label and the bot merges it`;
+	if (!merge) return 'Ready: the bot merges it on its next pass';
+	return null;
+}
+
+/**
+ * Turn `pr-bot` green and squash-merge at once, pinned to the reviewed head. Returns the merge commit's SHA, or null
+ * (with the status set back to pending) when GitHub refuses.
+ */
+async function mergeNow(pr) {
+	const title = pr.title.trim();
+	const titleErrors = checkPr({ title, author: pr.user?.login || '' }).errors;
+	if (titleErrors.length) {
+		await setStatus(pr, 'pending', `Title: ${titleErrors[0].replace(/^Title: /, '')}`);
+		return null;
+	}
+	await setStatus(pr, 'success', 'Merging');
+	if (DRY_RUN) {
+		console.log(`(dry run) #${pr.number}: squash-merge "${title}"`);
+		return null;
+	}
+	try {
+		const merged = await github(`/repos/${REPO}/pulls/${pr.number}/merge`, 'PUT', {
+			merge_method: 'squash',
+			sha: pr.head.sha,
+			commit_title: title,
+			commit_message: pr.html_url,
+		});
+		console.log(`#${pr.number}: merged as ${merged.sha.slice(0, 7)}`);
+		return merged.sha;
+	} catch (e) {
+		console.log(`#${pr.number}: merge refused: ${e.message}`);
+		await setStatus(pr, 'pending', `GitHub refused the merge; the bot retries: ${e.message.replace(/^\S+ \S+: /, '')}`);
+		return null;
+	}
 }
 
 /** Branches without an open PR: delete them once merged into main, or after STALE_DAYS without a commit. */

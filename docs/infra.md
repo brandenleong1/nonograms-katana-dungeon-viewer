@@ -62,17 +62,27 @@ Notes:
 
 ## The PR bot
 
-The bot is the required automated reviewer. It doesn't submit GitHub reviews, which would count toward the human
-approval. Instead it sets a **`pr-bot`** commit status on each open PR's head:
+The bot merges pull requests; people don't. It sets a **`pr-bot`** commit status on each open PR's head, and keeps it
+**pending**, with the reason, until the PR is ready. When it is ready, the bot turns the status **green and
+squash-merges in the same moment**, with the guideline commit message (title, blank line, PR URL). The status is never
+left green, so there's no window in which a person could press Merge and type their own message. It also never
+submits GitHub reviews, which would count toward the human approval.
 
-- **success**, "Ready to merge", when the PR:
-  - is not a draft and has no merge conflict;
-  - is up to date with `main`;
-  - has `precommit` and `pr-policy` green on its head commit;
-  - has no reviewer requesting changes;
-  - has an approval **of its head commit** from someone with write access.
-- **pending**, with the reason (e.g. "3 commit(s) behind main: update the branch", "Needs a review of the latest
-  commit"), otherwise.
+Ready means the PR:
+- is not a draft, has no merge conflict, and isn't labelled `hold`;
+- is up to date with `main`;
+- has `precommit` and `pr-policy` green on its head commit;
+- has no reviewer requesting changes;
+- has an approval **of its head commit** from someone with write access;
+- has a title that passes `tools/check-pr.mjs`.
+
+Example pending reasons: "3 commit(s) behind main: update the branch", "Needs a review of the latest commit", "Ready,
+but held: remove the `hold` label".
+
+It merges at most one PR per pass, since a merge moves `main` and puts every other PR behind. Merges made with the
+workflow token don't trigger `push` workflows, so after its own merge the bot deletes the branch, re-checks the other
+PRs, and dispatches `postcommit` itself. It runs after Precommit, PR Policy and PR Reviewed, on label and
+ready-for-review changes (`pull_request_target`, still running only code from `main`), and hourly.
 
 **No code merges unreviewed.** A review counts only for the commit it was given on. Whenever the head moves (new
 commits, a rebase or force-push, "Update branch"), the bot dismisses the older approvals and change requests, and
@@ -81,7 +91,8 @@ change the diff; the bot doesn't. The ruleset also requires the latest push to b
 pushed it.
 
 When any PR merges, `main` moves. Every other PR is then behind `main`, and the bot sets it back to pending. Its
-author updates the branch, the checks run against the new `main`, and the bot passes it again. This gives a merge
+author updates the branch, the checks run against the new `main`, a reviewer approves the new head, and the bot
+merges it. This gives a merge
 queue's guarantee (what merges was tested on what it lands on) without a merge queue, which GitHub doesn't offer for
 personal repositories on the free plan.
 
@@ -121,10 +132,10 @@ are only held to the `pr-policy` check.
 
 **Why admins can bypass:** GitHub doesn't let anyone approve their own PR, so without it a solo maintainer could never
 merge. Rulesets can't name a user, only roles, teams and apps. On a personal repository the owner is the only admin,
-so the admin role means the owner. GitHub shows admins a "Merge without waiting for requirements to be met
-(bypass rules)" box. Bypassing skips every rule for that merge, not just the review, so tick it only once
-`precommit`, `pr-policy` and `pr-bot` are green. Once there's a second maintainer, remove the entry and review each
-other's PRs.
+so the admin role means the owner. A solo maintainer's own PRs can't get a human approval, so the bot never merges them; you merge those yourself with
+admin bypass: `tools/merge-pr.sh <n> --admin` (or the "bypass rules" box on github.com, writing the message by
+hand). Bypassing skips every rule for that merge, so wait for `precommit` and `pr-policy` first. Once
+there's a second maintainer, remove the entry and review each other's PRs.
 
 **Apply everything** (merge settings, Actions permissions, both rulesets, labels) with:
 
@@ -138,7 +149,7 @@ It sets:
 - **Actions:** read-only token by default, and allowed to create pull requests, which the submodule bot needs. GitHub
   calls the setting "create and approve"; no workflow here approves.
 - **Rulesets:** each file in `.github/rulesets/`, created or updated by name.
-- **Labels:** `stale`, `keep-open`, `mismatch`.
+- **Labels:** `stale`, `keep-open`, `mismatch`, `hold`.
 
 ## Game version
 

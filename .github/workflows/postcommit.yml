@@ -14,7 +14,7 @@ permissions:
 jobs:
   commit-format:
     name: Commit message format
-    if: github.event_name == 'push'
+    if: github.event_name != 'schedule'   # push (an admin's manual merge) or dispatch (the PR bot, after its merge)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

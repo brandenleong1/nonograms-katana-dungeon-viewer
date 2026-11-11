@@ -1,8 +1,8 @@
 # Pull request guidelines
 
 How to write a pull request's title and description, and the commit message it's merged as. Every change reaches
-`main` as one squashed commit: the PR title, then a link to the PR. The details stay in the PR, where the discussion
-is too (see [Commit messages](#commit-messages)).
+`main` as one squashed commit, made by the PR bot: the PR title, then a link to the PR. The details stay in the PR,
+where the discussion is too (see [Commit messages](#commit-messages)).
 
 ## Title
 
@@ -171,22 +171,10 @@ https://github.com/brandenleong1/nonograms-katana-dungeon-viewer/pull/12
 - **Subject:** the PR title, exactly, without the ` (#12)` GitHub appends (the link replaces it).
 - **Body:** only the PR's URL. Context, changes and testing live in the PR.
 
-**Before merging**, GitHub requires:
-
-- one approving human review **of the latest commit**: any push (new code, a rebase, "Update branch") resets the
-  reviews, and the PR bot asks the reviewers again;
-- `precommit`, `pr-policy` and `pr-bot` green;
-- the branch up to date with `main`. Press "Update branch" if GitHub asks; `pr-bot` turns green again once the checks
-  pass on the new `main`.
-
-**Merge with the script.** It writes the commit message for you, and refuses if the PR's head moved since you looked:
-
-```sh
-tools/merge-pr.sh 12
-```
-
-**On github.com instead:** press "Squash and merge", delete the ` (#12)` from the title, put the PR's URL in the body,
-then confirm. The postcommit `commit-format` check flags a merged commit that doesn't follow the format.
+**The PR bot writes it.** People don't merge: once a PR is approved, green and up to date, the bot squash-merges it
+with exactly this message ([CONTRIBUTING.md](../CONTRIBUTING.md#how-a-pr-gets-merged)). The postcommit
+`commit-format` check flags any commit on `main` that doesn't follow it. That can only happen through an admin's
+manual merge, and `tools/merge-pr.sh` writes the message for those.
 
 **Commits on your branch** are squashed away, so write them however helps you. Using the same title format makes the
 PR easier to review.

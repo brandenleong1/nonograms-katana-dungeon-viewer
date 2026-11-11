@@ -44,19 +44,44 @@ Use the "Dungeon mismatch" issue template. Include:
 ## Pull requests
 
 - Keep each PR to one change, with a short description of what and why.
-- To merge, a PR needs:
-  - the `precommit` checks green: syntax, `npm test`, and a browser smoke test (`npm run test:smoke`; see
-    [docs/testing.md](docs/testing.md#integration));
-  - `pr-policy` green: title, description and branch name;
-  - `pr-bot` green: the bot's ready-to-merge check ([docs/infra.md](docs/infra.md#the-pr-bot));
-  - one approving review from a person;
-  - a branch up to date with `main`.
 - PRs with no activity for 30 days are closed, and their branches deleted.
 - For UI changes, add before/after screenshots in Light and one dark theme, and check a narrow window.
 - For solver changes, include `node tools/solve-eval.mjs --set=tiers` totals before and after, if you can run it.
 - Title and description follow [docs/pr_guidelines.md](docs/pr_guidelines.md): `[Area] Qualifier: Title Case
-  Summary`, then Context / Changes / Testing. Each PR is squash-merged as one commit: the title, a blank line, the
-  PR's URL.
+  Summary`, then Context / Changes / Testing.
+
+## How a PR gets merged
+
+**You don't press Merge. The PR bot merges.** It squash-merges each PR into one commit with the message the guidelines
+ask for (the PR title, a blank line, the PR's URL), so nobody has to type it and nobody can get it wrong.
+
+The bot merges a PR as soon as all of this is true:
+
+1. **Checks pass:**
+   - `precommit`: syntax, `npm test` on Node 18 and 22, and a browser smoke test (see
+     [docs/testing.md](docs/testing.md#integration));
+   - `pr-policy`: title, description and branch name.
+2. **It's up to date with `main`.** If GitHub says the branch is out of date, press "Update branch", or merge or
+   rebase `main` yourself.
+3. **A person with write access approved the latest commit.** Any push (new code, a rebase, "Update branch") resets
+   every review; the bot dismisses the old ones and asks those reviewers to look again. Nothing merges unreviewed.
+4. **Nobody requests changes**, there are no merge conflicts, and the PR isn't a draft.
+
+The **`pr-bot`** check on your PR says what it's waiting for, e.g. "Needs a review of the latest commit" or
+"2 commit(s) behind main: update the branch". It runs after every push, edit, review or label change, and hourly. It
+never stays green: it only turns green at the moment the bot merges, so there's no window to merge by hand.
+
+**To stop a ready PR from merging:**
+- keep it a draft; or
+- add the `hold` label. Remove it when you're ready, and the bot merges within a minute or so.
+
+**After a merge:**
+- The bot deletes the PR's branch.
+- Every other open PR is now behind `main` and goes back to waiting. Update it, the checks run again against the new
+  `main`, and it needs a fresh review.
+
+**Maintainers:** admins can bypass the rules, e.g. for a solo maintainer's own PRs, which nobody else can approve.
+Use `tools/merge-pr.sh <n> --admin` so the commit message is still right. The details are in [docs/infra.md](docs/infra.md#the-pr-bot).
 
 ## Code style
 

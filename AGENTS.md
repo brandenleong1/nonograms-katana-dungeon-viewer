@@ -78,8 +78,9 @@ node tools/solve.mjs --help   # solver from the command line
 - **UI changes:** check all four themes (Light, Dark, Dark High Contrast, Sepia), with Light as the default, plus a
   narrow screen. Map colours come from `js/view/iso.js` palettes and the theme CSS variables.
 - **Branches:** `<username>/<short-name>`, lowercase, e.g. `brandenleong1/docs`. Other names are rejected.
-- **Commits and PRs:** follow [docs/pr_guidelines.md](docs/pr_guidelines.md) and check with `node tools/check-pr.mjs`.
-  Merge with `tools/merge-pr.sh <n>`. The title is
+- **Commits and PRs:** follow [docs/pr_guidelines.md](docs/pr_guidelines.md) and check with `node tools/check-pr.mjs`. The title is
   `[Area] Qualifier: Title Case Summary` (e.g. `[Solve] Feature: Kite Melee Foes With Two Or More Speed To Spare`),
-  then Context / Changes / Testing. The squash commit on `main` is that title, a blank line, and the PR's URL,
-  nothing else. Keep save data, personal paths and game files out of messages.
+  then Context / Changes / Testing. Keep save data, personal paths and game files out of messages.
+- **Merging:** don't merge PRs. The PR bot squash-merges them once they're approved, green and up to date, and it
+  writes the commit message (title, blank line, PR URL). Use a draft or the `hold` label to keep a PR open
+  ([CONTRIBUTING.md](CONTRIBUTING.md#how-a-pr-gets-merged)).
