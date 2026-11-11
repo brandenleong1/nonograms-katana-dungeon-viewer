@@ -10,12 +10,13 @@ All tests are plain Node scripts (Node 18+, no dependencies). They fall into thr
 ## Standalone
 
 ```sh
-npm test        # = node test/run.mjs && node test/solve.mjs
+npm test        # = node test/run.mjs && node test/version.mjs && node test/solve.mjs
 ```
 
 | Suite | Checks | Time |
 |---|---|---|
 | `test/run.mjs` | The generator against the 10 sample dungeons in `test/fixtures/`: every cell, object, creature, room and the final random-number states. | ~2 s |
+| `test/version.mjs` | `data/game-version.json` and the README's Game version table agree. | instant |
 | `test/solve.mjs` | Solver: resource ledger, route walker, the wiki's first-strike rule, robust and exact solves on small budgets, MP top-ups (including mid-fight), the plan schema, the worker pool. Use `--quick` to skip the slow cases and `--no-workers` to skip the pool. | ~1 min |
 
 `npm test` must pass before a pull request is merged.

@@ -1,5 +1,6 @@
 // Browser smoke test: serve the site on loopback, load a dungeon of every family in every theme in headless
-// Chromium, open the Your hero and Your progress popups, and fail on any page error or console error.
+// Chromium, check the Help popup shows the game version, open the Your hero and Your progress popups, and fail on any
+// page error or console error.
 //
 //   node test/smoke.mjs [-v]
 //
@@ -14,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LABELS = ['3C-172582050', 'F1-1026320547', '6A-123456789', 'EB-1325623421'];
 const THEMES = ['Light', 'Dark', 'Dark High Contrast', 'Sepia'];
+const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/game-version.json'), 'utf8'));
 const verbose = process.argv.includes('-v');
 
 const chromium = await loadChromium();
@@ -45,11 +47,13 @@ async function checkPage(browser, base, label, themeId, theme) {
 	try {
 		await page.goto(`${base}/index.html#${label}`);
 		await page.waitForFunction(() => window.nkd && window.nkd.state.level && window.nkd.solve, null, { timeout: 60000 });
+		await page.waitForFunction(() => document.querySelector('#game-version b'), null, { timeout: 15000 }).catch(() => {});
 		const shown = await page.evaluate(() => {
 			const { level } = window.nkd.state;
-			return { creatures: level.critters.length, objects: level.objects.length, theme: document.querySelector('#theme-label-2')?.textContent };
+			return { creatures: level.critters.length, objects: level.objects.length, version: document.querySelector('#game-version')?.textContent || '' };
 		});
 		if (!(shown.creatures > 0 && shown.objects > 0)) errors.push(`empty level: ${JSON.stringify(shown)}`);
+		if (!shown.version.includes(GAME.versionName)) errors.push(`Help popup doesn't show game version ${GAME.versionName}: "${shown.version}"`);
 		await page.evaluate(() => window.nkd.state.hero.open());
 		await page.waitForTimeout(400);
 		await page.evaluate(() => window.nkd.state.hero.openProgress());
