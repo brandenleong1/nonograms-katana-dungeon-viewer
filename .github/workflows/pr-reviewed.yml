@@ -1,0 +1,14 @@
+# Does nothing itself. A review (or a dismissed one) finishing this run triggers the PR bot (pr-bot.yml, via
+# workflow_run), which has the write token that review events from forks don't get.
+name: PR Reviewed
+on:
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "review on PR ${{ github.event.pull_request.number }}; the PR bot re-checks it"

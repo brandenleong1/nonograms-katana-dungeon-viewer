@@ -1,0 +1,74 @@
+# The PR bot (tools/pr-bot.mjs) reports the required `pr-bot` status on every open PR: success once the PR is ready
+# (checks green on its head, up to date with main, not a draft, no conflicts, no changes requested, and a person with
+# write access approved the head commit), pending with the reason until then. Reviews on an older head are dismissed
+# and their reviewers re-requested, so no code merges unreviewed.
+#   - review: when Precommit, PR Policy or PR Reviewed finishes (a push, an edit, a review), and hourly as a catch-up;
+#   - after a merge (push to main): deletes the merged PR's branch, and sets every other PR back to pending (behind main);
+#   - daily: deletes branches with no open PR that are merged into main or 30+ days without a commit.
+# It never checks out or runs PR code: it runs tools/pr-bot.mjs from main.
+name: PR Bot
+on:
+  workflow_run:
+    workflows: [Precommit, PR Policy, PR Reviewed]
+    types: [completed]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 * * * *'   # review
+    - cron: '45 4 * * *'   # prune branches
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: write
+  checks: read
+
+jobs:
+  review:
+    if: github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch' || github.event.schedule == '17 * * * *'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pr-bot-review
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/pr-bot.mjs review
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  after-merge:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pr-bot-merge-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/pr-bot.mjs after-merge "$SHA"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+
+  prune-branches:
+    if: github.event.schedule == '45 4 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/pr-bot.mjs branches && node tools/pr-bot.mjs prune-branches
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

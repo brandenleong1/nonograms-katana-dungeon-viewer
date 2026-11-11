@@ -1,0 +1,48 @@
+# Post-commit checks on main: the commit message format, and the same unit and integration tests as precommit, on the
+# merged commit. Also weekly (tests only), to catch drift in browsers, runners and the lib/utils submodule.
+name: Postcommit
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  commit-format:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The merged commit follows docs/pr_guidelines.md (title, blank line, PR URL)
+        run: git log -1 --format=%B | node tools/check-pr.mjs --commit
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright (CI only; not a site dependency)
+        run: |
+          npm install --no-save playwright@1.49.1
+          npx playwright install --with-deps chromium
+      - run: npm run test:smoke

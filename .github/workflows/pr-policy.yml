@@ -1,0 +1,30 @@
+# PR policy (docs/pr_guidelines.md): the title (which becomes the commit subject), the description, and the branch name
+# (<username>/<short-name>). Re-runs when the title or description is edited. `pr-policy` is a required status check (.github/rulesets/main.json).
+name: PR Policy
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}   # the checker as on main, not as edited by the PR
+      - name: Bootstrap only - main has no checker yet, so use the PR's
+        if: hashFiles('tools/check-pr.mjs') == ''
+        uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the title and description
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: node tools/check-pr.mjs
