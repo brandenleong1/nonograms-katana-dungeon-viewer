@@ -65,7 +65,9 @@ The bot merges a PR as soon as all of this is true:
    rebase `main` yourself.
 3. **A person with write access approved the latest commit.** Any push (new code, a rebase, "Update branch") resets
    every review; the bot dismisses the old ones and asks those reviewers to look again. Nothing merges unreviewed.
-4. **Nobody requests changes**, there are no merge conflicts, and the PR isn't a draft.
+4. **Every requested reviewer has approved.** If you (or anyone) request a review from someone, the bot waits for them,
+   even if someone else already approved. To go ahead without them, remove the request.
+5. **Nobody requests changes**, there are no merge conflicts, and the PR isn't a draft.
 
 The **`pr-bot`** check on your PR says what it's waiting for, e.g. "Needs a review of the latest commit" or
 "2 commit(s) behind main: update the branch". It runs after every push, edit, review or label change, and hourly. It

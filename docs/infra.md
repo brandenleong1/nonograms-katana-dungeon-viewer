@@ -73,11 +73,13 @@ Ready means the PR:
 - is up to date with `main`;
 - has `precommit` and `pr-policy` green on its head commit;
 - has no reviewer requesting changes;
+- has **no outstanding review requests**: every requested reviewer, person or team, has responded (GitHub removes a
+  request once that reviewer submits a review, and the bot re-requests everyone whose review it resets);
 - has an approval **of its head commit** from someone with write access;
 - has a title that passes `tools/check-pr.mjs`.
 
-Example pending reasons: "3 commit(s) behind main: update the branch", "Needs a review of the latest commit", "Ready,
-but held: remove the `hold` label".
+Example pending reasons: "3 commit(s) behind main: update the branch", "Waiting for review from @alice", "Needs a
+review of the latest commit", "Ready, but held: remove the `hold` label".
 
 It merges at most one PR per pass, since a merge moves `main` and puts every other PR behind. Merges made with the
 workflow token don't trigger `push` workflows, so after its own merge the bot deletes the branch, re-checks the other
