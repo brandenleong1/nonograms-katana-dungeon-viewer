@@ -78,3 +78,16 @@ The full suites compare against reference output from the game's own code, which
 "oracle". The oracle and its output are not part of this repository; `test:oracle` needs them under
 `~/.cache/nk-oracle/`. Porting conventions (Java names, the `_` method suffix, int semantics) are in
 `js/gen/PORTING.md` and `js/combat/PORTING.md`.
+
+## License and credits
+
+The original code in this repository is released under the [MIT License](LICENSE). That covers the viewer and
+renderer, the sprites, the route planner, the solver, the user interface, the save reader, and the tests and tools.
+
+The MIT License does not cover the game. *Nonograms Katana* belongs to its developer: its name, its item, quest and
+skill names (`data/names.json`), its numeric tables (`data/tables.json`), and the dungeon generation and combat rules
+that `js/gen/` and `js/combat/` reproduce. They are here only so the site can show dungeons exactly as the game builds
+them. The game's art, sounds and app are not included, and all graphics are drawn procedurally.
+
+This is an unofficial fan project. It is not affiliated with or endorsed by the developer of Nonograms Katana. If you
+are the developer and would like anything changed or removed, please open an issue and it will be taken down.
