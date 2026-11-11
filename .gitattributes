@@ -1,0 +1,5 @@
+* text=auto eol=lf
+
+# generated from the game (docs/infra.md); collapsed in diffs and left out of language stats
+data/*.json linguist-generated=true
+test/fixtures/*.json linguist-generated=true

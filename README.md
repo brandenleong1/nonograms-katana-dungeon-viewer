@@ -32,6 +32,19 @@ rebuilds that dungeon with the same rules the game uses and draws it isometrical
 Labels: `1A`–`5C` dungeons, `F1`–`F4` forest, `6A`–`6D` caves, `EA`–`ED` tombs. The number after the dash
 is the dungeon's seed.
 
+## Game version
+
+| | |
+|---|---|
+| Matches | **Nonograms Katana 22.11** |
+| `versionName` / `versionCode` | `22.11` / `22110` (from the APK's `AndroidManifest.xml`) |
+| Package | `com.ucdevs.jcross` |
+
+The generator, combat engine, save reader and `data/` all follow this version. The game shows its version on its
+About screen. If yours is newer and a dungeon doesn't match, the game may have changed: please open an issue. Updating
+to a new version is one `[Game] Sync:` PR ([docs/pr_guidelines.md](docs/pr_guidelines.md#game-version-syncs)), and
+it updates this table.
+
 ## Run locally
 
 It's a static site. Clone with the `lib/utils` submodule, then serve the folder:
@@ -64,20 +77,17 @@ your progress.
 
 All art is drawn procedurally; no game assets are included.
 
-## Development
+## Contributing
 
-Node 18+, no dependencies.
+See [CONTRIBUTING.md](CONTRIBUTING.md). In short: `npm test` (Node 18+, no install), no game assets and no save files
+in the repo, and the generator and combat engine only change to match the game more closely. More docs:
 
-```sh
-npm test             # generator vs the sample dungeons, and the solver's tests (work from a fresh clone)
-npm run test:oracle  # the full suites: generator, save import, dungeon entry, combat and state cloning
-npm run test:progress  # generation under ~360 progress states vs the oracle (add -- --oracle to rebuild its dumps)
-```
-
-The full suites compare against reference output from the game's own code, which runs on the JVM as a local
-"oracle". The oracle and its output are not part of this repository; `test:oracle` needs them under
-`~/.cache/nk-oracle/`. Porting conventions (Java names, the `_` method suffix, int semantics) are in
-`js/gen/PORTING.md` and `js/combat/PORTING.md`.
+- [docs/repo_layout.md](docs/repo_layout.md): what every directory does
+- [docs/testing.md](docs/testing.md): the test suites, including the maintainer-only parity suites
+- [docs/infra.md](docs/infra.md): serving, hosting, browser requirements, CI, data files
+- [docs/style_guide.md](docs/style_guide.md): how we structure code
+- [docs/pr_guidelines.md](docs/pr_guidelines.md): pull request titles and descriptions
+- [AGENTS.md](AGENTS.md): notes for AI coding agents (`CLAUDE.md` links to it)
 
 ## License and credits
 

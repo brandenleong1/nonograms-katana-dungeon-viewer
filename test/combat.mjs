@@ -41,6 +41,10 @@ const only = opt('only') ? new RegExp(opt('only')) : null;
 const maxFail = opt('max') ? +opt('max') : Infinity;
 const inputs = args.filter((a) => !a.startsWith('-'));
 if (!inputs.length) inputs.push(path.join(os.homedir(), '.cache/nk-oracle/fights'));
+for (const p of inputs) if (!fs.existsSync(p)) {
+	console.error(`${p}: not found. This suite compares against the maintainer's oracle data (docs/testing.md); use npm test.`);
+	process.exit(2);
+}
 
 const files = [];
 for (const p of inputs) {
