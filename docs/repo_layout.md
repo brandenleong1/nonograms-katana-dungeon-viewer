@@ -28,6 +28,7 @@ player progress (what changes the map):
 | `js/` | All site code, as ES modules (below). |
 | `data/tables.json` | Numeric game tables the generator and engine read: room shapes, object and creature definitions, items, decoration weights, a new player's profile. Generated; don't edit by hand ([infra.md](infra.md#data-files)). |
 | `data/names.json` | English display names for items, skills and quests. Generated. |
+| `data/game-version.json` | The game version everything follows; shown in Help, and kept equal to the README's table by `test/version.mjs`. |
 | `lib/utils/` | Git submodule [brandenleong1/utils](https://github.com/brandenleong1/utils): layout CSS, themes, popups, cookies. |
 | `test/` | Test suites and fixtures ([testing.md](testing.md)). |
 | `tools/` | Developer tools (below). |
@@ -41,6 +42,7 @@ player progress (what changes the map):
 |---|---|
 | `app.js` | UI glue: label → level → map, layers, selection, objectives, route panel. Exposes `window.nkd` for debugging. |
 | `labels.js` | Dungeon labels (`3C-172582050`) ↔ dungeon type and seed. |
+| `game-version.js` | The game version line in the Help popup. |
 | `hero.js` | The "Your hero" panel: imports a save, shows heroes, gear, pack and progress. `effectiveProfile()` is what maps and the solver use. |
 
 ### `js/gen/`: dungeon generator (bit-exact port)

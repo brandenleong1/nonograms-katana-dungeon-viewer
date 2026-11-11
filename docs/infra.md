@@ -154,8 +154,9 @@ It sets:
 ## Game version
 
 The ports, `data/` and `test/fixtures/` match the game version in the README's
-[Game version](../README.md#game-version) table (the APK manifest's `versionName` and `versionCode`). That table is
-the one place it's recorded. Dungeons from other versions of the game may differ wherever the game's rules or tables
+[Game version](../README.md#game-version) table (the APK manifest's `versionName` and `versionCode`). The site reads
+the same values from `data/game-version.json` and shows them in Help. `test/version.mjs` (part of `npm test`) fails if
+the two disagree. Dungeons from other versions of the game may differ wherever the game's rules or tables
 changed.
 
 When the game updates, a maintainer syncs everything in one `[Game] Sync:` PR ([pr_guidelines.md](pr_guidelines.md#game-version-syncs)):
@@ -164,7 +165,7 @@ When the game updates, a maintainer syncs everything in one `[Game] Sync:` PR ([
 2. Regenerate `data/tables.json`, `data/names.json` and the reference output.
 3. Port the changed methods into `js/gen/`, `js/combat/` and `js/save/`.
 4. Run every parity suite.
-5. Update the README's version table.
+5. Update the README's version table and `data/game-version.json`.
 
 Until then, the site keeps matching the old version.
 

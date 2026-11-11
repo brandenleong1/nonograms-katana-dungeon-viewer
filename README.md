@@ -40,8 +40,9 @@ is the dungeon's seed.
 | `versionName` / `versionCode` | `22.11` / `22110` (from the APK's `AndroidManifest.xml`) |
 | Package | `com.ucdevs.jcross` |
 
-The generator, combat engine, save reader and `data/` all follow this version. The game shows its version on its
-About screen. If yours is newer and a dungeon doesn't match, the game may have changed: please open an issue. Updating
+The generator, combat engine, save reader and `data/` all follow this version. The site shows it in Help, from
+`data/game-version.json`; `test/version.mjs` fails if that file and this table disagree. The game shows its version
+on its About screen. If yours is newer and a dungeon doesn't match, the game may have changed: please open an issue. Updating
 to a new version is one `[Game] Sync:` PR ([docs/pr_guidelines.md](docs/pr_guidelines.md#game-version-syncs)), and
 it updates this table.
 

@@ -155,8 +155,8 @@ sense together, so don't split it.
 - **Changes:** per area: which ported methods changed, which tables, and the save format version, if it moved.
 - **Testing:** every oracle suite rebuilt against the new version, with results ([testing.md](testing.md)). Also
   `npm test`, after regenerating `test/fixtures/`.
-- **Version:** update the README's [Game version](../README.md#game-version) table (`versionName`, `versionCode`) in
-  the same PR.
+- **Version:** update the README's [Game version](../README.md#game-version) table and `data/game-version.json` in the
+  same PR; `npm test` checks they agree.
 
 ## Commit messages
 

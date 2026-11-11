@@ -13,8 +13,9 @@ A static website for the mobile game *Nonograms Katana*. You type a dungeon labe
 - can simulate and solve its fights with a port of the game's combat rules.
 
 There are no dependencies and no build step: plain ES modules in the browser, and Node 18+ for tests.
-The ports match the game version in the README's [Game version](README.md#game-version) table. A new game version is
-synced in one `[Game] Sync:` PR, which updates that table.
+The ports match the game version in the README's [Game version](README.md#game-version) table and
+`data/game-version.json`, which the site shows. A new game version is synced in one `[Game] Sync:` PR, which updates
+both.
 
 More docs:
 - [docs/repo_layout.md](docs/repo_layout.md): every directory and what it does.

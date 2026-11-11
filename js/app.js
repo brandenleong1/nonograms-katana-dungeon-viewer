@@ -1,4 +1,5 @@
 // UI glue: label input -> level -> isometric view, layers, selection info, objectives, route.
+import { showGameVersion } from './game-version.js';
 import { parseLabel, formatLabel, typeLabel, family } from './labels.js';
 import { IsoView } from './view/iso.js';
 import { KINDS, objectKind, critterKind, tileName, linkGroup } from './view/catalog.js';
@@ -290,6 +291,7 @@ async function main() {
 	]);
 	initTables(tablesJson);
 	state.generator = generator;
+	showGameVersion($('#game-version'));
 	state.fresh = V.i2;   // the new-game profile
 
 	// Your hero: the imported save (kept in this tab's sessionStorage) and whether maps use it
