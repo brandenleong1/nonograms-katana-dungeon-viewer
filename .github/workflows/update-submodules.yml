@@ -1,8 +1,7 @@
-# Daily: if brandenleong1/utils moved, open (or update) a PR that bumps lib/utils. main is protected, so the bot
-# can't push to it directly. PRs and pushes made with GITHUB_TOKEN don't trigger workflows, so this dispatches the
-# pre-commit checks on the PR's branch itself, and reports `pr-policy` (its fixed title is the exception in
-# tools/check-pr.mjs). The PR bot then reports `pr-bot`; a maintainer approves and squash-merges.
-# Needs: Settings -> Actions -> General -> "Allow GitHub Actions to create and approve pull requests".
+# Daily: if brandenleong1/utils moved, push the bump to the `bot/bump-utils` branch, and put a one-click "open a PR"
+# link in the run summary. Anyone with write access opens the PR from there; it then goes through review and the
+# PR bot like any other. The bot doesn't open PRs itself: that needs "Allow GitHub Actions to create and approve pull
+# requests", which would also let a workflow approve PRs and stand in for the second person (docs/infra.md).
 name: Update Submodules
 on:
   schedule:
@@ -11,9 +10,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
-  actions: write
-  statuses: write
 
 jobs:
   bump:
@@ -23,29 +19,25 @@ jobs:
         with:
           submodules: recursive
       - run: git submodule update --remote lib/utils
-      - name: Open or update the bump PR
+      - name: Push the bump branch
         env:
-          GH_TOKEN: ${{ github.token }}
           BRANCH: bot/bump-utils
         run: |
           if git diff --quiet lib/utils; then
-            echo "lib/utils is up to date"
+            echo "lib/utils is up to date" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           SHA=$(git -C lib/utils rev-parse --short HEAD)
-          TITLE="Auto-Bump [Utils] Submodule (-> $SHA)"
+          TITLE="[UI] Fix: Bump Utils Submodule To \`$SHA\`"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git switch -C "$BRANCH"
           git add lib/utils
           git commit -m "$TITLE"
           git push --force origin "$BRANCH"
-          if [ "$(gh pr view "$BRANCH" --json state --jq .state 2>/dev/null)" = OPEN ]; then
-            gh pr edit "$BRANCH" --title "$TITLE"
-          else
-            gh pr create --head "$BRANCH" --base main --title "$TITLE" \
-              --body "Bumps \`lib/utils\` to brandenleong1/utils@$SHA. Opened by the daily Update Submodules workflow."
-          fi
-          gh workflow run precommit.yml --ref "$BRANCH"
-          gh api "repos/$GITHUB_REPOSITORY/statuses/$(git rev-parse HEAD)" -f state=success -f context=pr-policy \
-            -f description="Submodule bump: fixed title" >/dev/null
+          URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...$BRANCH?expand=1&title=$(jq -rn --arg t "$TITLE" '$t|@uri')"
+          {
+            echo "### lib/utils has updates"
+            echo "Pushed \`$BRANCH\` with \`lib/utils\` at brandenleong1/utils@$SHA."
+            echo "[Open the pull request]($URL). Fill in Context / Changes / Testing; review and the PR bot do the rest."
+          } >> "$GITHUB_STEP_SUMMARY"

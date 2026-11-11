@@ -13,8 +13,7 @@ import fs from 'node:fs';
 export const AREAS = ['Gen', 'Combat', 'Save', 'Plan', 'Solve', 'View', 'UI', 'Data', 'Tests', 'Tools', 'CI', 'Docs', 'Game'];
 export const QUALIFIERS = ['Parity', 'Fix', 'Feature', 'Performance', 'Refactor', 'Sync'];
 const MAX_TITLE = 80;
-const BOT_TITLE = /^Auto-Bump \[Utils\] Submodule \(-> [0-9a-f]{7,40}\)$/;
-const BOT_AUTHORS = new Set(['github-actions', 'github-actions[bot]', 'app/github-actions']);
+const BOT_TITLE = /^Auto-Bump \[Utils\] Submodule \(-> [0-9a-f]{7,40}\)$/;   // old direct-to-main bumps, in history only
 const BRANCH = /^([A-Za-z0-9][A-Za-z0-9-]*)\/([a-z0-9][a-z0-9._-]*)$/;
 const REQUIRED_SECTIONS = ['Context', 'Changes', 'Testing'];
 const PAST_TENSE = /^(\w+ed|Ran|Made|Wrote|Built|Kept|Split|Set|Put|Cut|Left|Took|Gave|Found|Brought|Rewrote|Undid|Bumped)$/;
@@ -42,7 +41,6 @@ async function main() {
 /** A pull request: { title, body, author, branch } -> { errors, warnings }. Omitted fields aren't checked. */
 export function checkPr({ title = null, body = null, author = '', branch = null }) {
 	const report = { errors: [], warnings: [] };
-	if (title != null && isBot(title, author)) return report;
 	if (title != null) checkTitle(title, report);
 	if (body != null) checkBody(body, report);
 	if (branch != null) checkBranch(branch, author, report);
@@ -72,6 +70,7 @@ function checkBranch(branch, author, report) {
 		report.errors.push(`Branch: "${branch}" should be ${expected}.`);
 		return;
 	}
+	if (branch === 'bot/bump-utils') return;   // pushed by the submodule workflow; anyone may open the PR for it
 	if (author && m[1].toLowerCase() !== author.toLowerCase()) report.errors.push(`Branch: "${branch}" should start with your username: ${expected}.`);
 }
 
@@ -131,10 +130,6 @@ function sectionsOf(text) {
 		if (current) sections.set(current, sections.get(current) + line + '\n');
 	}
 	return sections;
-}
-
-function isBot(title, author) {
-	return BOT_AUTHORS.has(author) && BOT_TITLE.test(title.trim());
 }
 
 function imperativeOf(word) {

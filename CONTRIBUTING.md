@@ -63,8 +63,10 @@ The bot merges a PR as soon as all of this is true:
    - `pr-policy`: title, description and branch name.
 2. **It's up to date with `main`.** If GitHub says the branch is out of date, press "Update branch", or merge or
    rebase `main` yourself.
-3. **A person with write access approved the latest commit.** Any push (new code, a rebase, "Update branch") resets
-   every review; the bot dismisses the old ones and asks those reviewers to look again. Nothing merges unreviewed.
+3. **A person with write access approved the latest commit**: two people if the PR changes CI or the PR tools
+   (`.github/`, `tools/pr-bot.mjs`, `tools/check-pr.mjs`, the setup and merge scripts, `package.json`). Any push (new
+   code, a rebase, "Update branch") resets every review; the bot dismisses the old ones and asks those reviewers to
+   look again. Nothing merges unreviewed.
 4. **Every requested reviewer has approved.** If you (or anyone) request a review from someone, the bot waits for them,
    even if someone else already approved. To go ahead without them, remove the request.
 5. **Nobody requests changes**, there are no merge conflicts, and the PR isn't a draft.
@@ -81,6 +83,10 @@ never stays green: it only turns green at the moment the bot merges, so there's 
 - The bot deletes the PR's branch.
 - Every other open PR is now behind `main` and goes back to waiting. Update it, the checks run again against the new
   `main`, and it needs a fresh review.
+
+**Submodule bumps:** when the shared `utils` library changes, a daily workflow pushes the bump to `bot/bump-utils` and
+leaves an "Open the pull request" link in its run summary (Actions → Update Submodules). Anyone with write access
+opens it, and it's reviewed and merged like any other PR.
 
 **Maintainers:** admins can bypass the rules, e.g. for a solo maintainer's own PRs, which nobody else can approve.
 Use `tools/merge-pr.sh <n> --admin` so the commit message is still right. The details are in [docs/infra.md](docs/infra.md#the-pr-bot).

@@ -18,7 +18,7 @@
 //
 // Ready to merge: not a draft, no merge conflict, up to date with main, every check it depends on passed on the head
 // commit, nobody requests changes, every requested reviewer (person or team) has responded, and someone with write
-// access approved the head commit.
+// access approved the head commit (two people when the PR changes CI, the rulesets or the PR tools: CI_PATHS).
 //
 // Needs GITHUB_TOKEN (contents: write, pull-requests: write, statuses: write, checks: read, actions: write) and
 // GITHUB_REPOSITORY.
@@ -31,6 +31,8 @@ const DEPENDS_ON = ['precommit', 'pr-policy'];
 const STALE_DAYS = 30;
 const BOT = 'github-actions[bot]';
 const CAN_APPROVE = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);   // review author_association with write access
+// PRs touching these need two approvals: a PR's own workflows run from its files, so it could weaken what checks it
+const CI_PATHS = [/^\.github\//, /^tools\/(pr-bot|check-pr)\.mjs$/, /^tools\/(github-setup|merge-pr)\.sh$/, /^package\.json$/];
 const API = 'https://api.github.com';
 const REPO = process.env.GITHUB_REPOSITORY;
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -149,10 +151,22 @@ async function notReadyReason(pr, mainSha) {
 	if (verdicts.some((r) => r.state === 'CHANGES_REQUESTED')) return 'Changes requested';
 	const waitingFor = [...(detail.requested_reviewers || []).map((u) => `@${u.login}`), ...(detail.requested_teams || []).map((t) => `team ${t.name}`)];
 	if (waitingFor.length) return `Waiting for review from ${waitingFor.join(', ')}`;
-	if (!verdicts.some((r) => r.state === 'APPROVED' && r.commit_id === pr.head.sha && CAN_APPROVE.has(r.author_association))) {
-		return 'Needs a review of the latest commit';
+	const approvers = verdicts.filter((r) => r.state === 'APPROVED' && r.commit_id === pr.head.sha && CAN_APPROVE.has(r.author_association));
+	const needed = (await changesCi(pr)) ? 2 : 1;
+	if (approvers.length < needed) {
+		return needed === 2
+			? `Changes CI or the PR tools: needs 2 reviews of the latest commit (has ${approvers.length})`
+			: 'Needs a review of the latest commit';
 	}
 	return null;
+}
+
+async function changesCi(pr) {
+	for (let page = 1; ; page++) {
+		const files = await github(`/repos/${REPO}/pulls/${pr.number}/files?per_page=100&page=${page}`);
+		if (files.some((f) => CI_PATHS.some((re) => re.test(f.filename) || (f.previous_filename && re.test(f.previous_filename))))) return true;
+		if (files.length < 100) return false;
+	}
 }
 
 /** Each reviewer's latest standing verdict (approve / request changes); comments and dismissed reviews don't count. */
