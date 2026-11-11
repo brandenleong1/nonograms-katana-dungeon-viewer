@@ -1,0 +1,80 @@
+# The PR bot (tools/pr-bot.mjs) merges pull requests; people don't. It keeps the required `pr-bot` status pending
+# (with the reason) until a PR is ready: checks green on its head, up to date with main, not a draft, no conflicts, no
+# changes requested, and a person with write access approved the head commit. Then it turns the status green and
+# squash-merges at once, with the guideline commit message, so nobody can press Merge and type their own. Reviews on
+# an older head are dismissed and re-requested, so no code merges unreviewed. PRs labelled `hold` wait.
+#   - review (and merge): after Precommit, PR Policy or PR Reviewed; on label or ready-for-review changes; hourly;
+#   - after an admin's manual merge (push to main): deletes the branch, sets the other PRs back to pending;
+#   - daily: deletes branches with no open PR that are merged into main or 30+ days without a commit.
+# It never checks out or runs PR code: it runs tools/pr-bot.mjs from main (also for pull_request_target events).
+name: PR Bot
+on:
+  workflow_run:
+    workflows: [Precommit, PR Policy, PR Reviewed]
+    types: [completed]
+  pull_request_target:
+    types: [labeled, unlabeled, ready_for_review]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 * * * *'   # review
+    - cron: '45 4 * * *'   # prune branches
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: write
+  checks: read
+  actions: write
+
+jobs:
+  review:
+    if: >-
+      github.event_name == 'workflow_run' || github.event_name == 'pull_request_target' ||
+      github.event_name == 'workflow_dispatch' || github.event.schedule == '17 * * * *'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pr-bot-review
+      cancel-in-progress: false   # never stop a pass between turning the status green and merging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/pr-bot.mjs review
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  after-merge:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pr-bot-merge-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/pr-bot.mjs after-merge "$SHA"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+
+  prune-branches:
+    if: github.event.schedule == '45 4 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/pr-bot.mjs branches && node tools/pr-bot.mjs prune-branches
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

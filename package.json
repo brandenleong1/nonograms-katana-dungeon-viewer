@@ -13,6 +13,7 @@
 		"test:combat": "node test/combat.mjs",
 		"test:clone": "node test/clone.mjs",
 		"test:progress": "node test/progress.mjs",
+		"test:smoke": "node test/smoke.mjs",
 		"snaptest": "node test/snaptest.mjs",
 		"serve": "python3 -m http.server 8000 --bind 127.0.0.1"
 	},

@@ -1,0 +1,29 @@
+# A pull request with no activity for 30 days is closed and its branch deleted (branches in forks are left alone).
+# Label a PR `keep-open` to exempt it. Issues are left alone.
+name: Stale PRs
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
+          days-before-pr-stale: 30
+          days-before-pr-close: 0
+          delete-branch: true
+          stale-pr-label: stale
+          exempt-pr-labels: keep-open
+          close-pr-message: >
+            Closed, and its branch deleted, after 30 days without activity. To pick it up again, push the branch and
+            reopen (or open a new PR), and update it with `main`.
