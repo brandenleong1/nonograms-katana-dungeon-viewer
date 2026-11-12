@@ -78,8 +78,10 @@ export function critterKind(cr, bw) {
 	if (cr.id === 199) return 'spider';
 	if (cr.h === 1101 || cr.h === 1103) return 'boss';
 	if (cr.h === 1100) return 'miniboss';
-	// bw.N0: talking to it clears its tag and starts a fight (c30, the NPC talk branch)
-	if (cr.k === 0 || cr.k === 1) return bw && bw.N0 ? 'shapeshifter' : 'npc';
+	// shapeshifters look like people but fight when you talk to them (c30, the NPC talk branch): species with bw.N0
+	// (quests 41 and 57), and wandering merchants tagged 1000 instead of 1001 (x30.P: 12% on 3B-4C, F3, EB and EC once
+	// you have traded 3 times), which vanish and leave a monster (284; 350 in the forest; 649 in the tombs)
+	if (cr.k === 0 || cr.k === 1) return (bw && bw.N0) || cr.h === 1000 ? 'shapeshifter' : 'npc';
 	if (cr.g === 167) return 'goldmonster';   // drops key 167 for the locked door
 	if (bw && bw.l0) return 'unique';
 	if (bw && bw.m0) return 'boss';
