@@ -1,6 +1,6 @@
 // Isometric dungeon renderer (canvas 2D), using the game's projection (c30.C0):
 //   screen x = (x + y) * HW,  screen y = (y - x) * HH   — +x goes up-right, +y goes down-right.
-import { KINDS, TILE, objectKind, critterKind, isHiddenTrap } from './catalog.js';
+import { KINDS, TILE, objectKind, critterKind, isHiddenTrap, isPressurePlate } from './catalog.js';
 import { drawSprite } from './sprites.js';
 
 const HW = 32;   // half tile width at scale 1
@@ -21,6 +21,7 @@ const PALETTES = {
 	},
 };
 const LIQUID = { 1: '#2f6fb3', 2: '#2f6fb3', 3: '#8fd3ff', 4: '#2f6fb3', 5: '#2b78c2', 6: '#5a3f9e' };
+const STAIRS = { top: '#ffd84a', left: '#c9a227', right: '#a6841c' };
 
 export class IsoView {
 	constructor(canvas, { onHover = () => {}, onSelect = () => {} } = {}) {
@@ -52,7 +53,7 @@ export class IsoView {
 	setLevel(level, info) {
 		this.level = level;
 		this.info = info;
-		this.palette = PALETTES[this.theme][info.family] || PALETTES[this.theme].Dungeon;
+		this.palette = paletteFor(this.theme, info.family);
 		this.objAt = new Map();
 		for (const o of level.objects) this.objAt.set(o.y * level.w + o.x, o);
 		this.critAt = new Map();
@@ -68,7 +69,7 @@ export class IsoView {
 	setLayers(layers) { this.layers = new Set([...layers, 'always']); this.redraw(); }
 	setTheme(theme) {
 		this.theme = theme === 'light' ? 'light' : 'dark';
-		if (this.info) this.palette = PALETTES[this.theme][this.info.family] || PALETTES[this.theme].Dungeon;
+		if (this.info) this.palette = paletteFor(this.theme, this.info.family);
 		this.redraw();
 	}
 	setRoute(route, leg = null) { this.route = route; this.routeLeg = leg; this.redraw(); }
@@ -87,14 +88,7 @@ export class IsoView {
 	 */
 	setSolveOverlay(o) {
 		this.solve = { ...this.solve, ...o };
-		if ('actors' in o) {
-			const m = new Map();
-			if (this.level && o.actors) for (const a of o.actors) {
-				const i = a.y * this.level.w + a.x;
-				(m.get(i) || m.set(i, []).get(i)).push(a);
-			}
-			this.solve.actAt = m;
-		}
+		if ('actors' in o) this.solve.actAt = this.level && o.actors ? actorsByCell(o.actors, this.level.w) : new Map();
 		this.redraw();
 	}
 	clearSolveOverlay() { this.solve = emptySolve(); this.redraw(); }
@@ -199,34 +193,65 @@ export class IsoView {
 		ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 		ctx.clearRect(0, 0, this.cssW, this.cssH);
 		if (!this.level) return;
-		const { w, h, cells } = this.level;
+		const frame = this._frame();
+		this._drawCells(ctx, frame);
+		this._overlays(ctx, frame);
+	}
+
+	/**
+	 * What one redraw needs: tile half sizes and wall height (CSS px), the palette, layer switches, and the shape and
+	 * colours of each kind of block.
+	 */
+	_frame() {
 		const s = this.scale;
 		const hw = HW * s, hh = HH * s, wh = this.wallHeight * s;
 		const pal = this.palette;
-		const margin = hw * 2 + wh;
-		const showDecor = this.layers.has('decor') && s > 0.35;
-		const showTraps = this.layers.has('traps');
-		const glyphs = true;
+		const wall = { top: pal.wall, left: pal.wallL, right: pal.wallR };
+		const outerWall = { top: pal.out, left: shade(pal.out, -0.25), right: shade(pal.out, -0.4) };
+		const standsAlone = () => false;
+		return {
+			hw, hh, wh, pal,
+			showDecor: this.layers.has('decor') && s > 0.35,
+			showTraps: this.layers.has('traps'),
+			showPuzzles: this.layers.has('puzzles'),
+			blocks: {
+				[TILE.WALL]: { hw, hh, height: wh, faces: wall, joins: isWallTile },
+				[TILE.OUTWALL]: { hw, hh, height: wh * 1.2, faces: outerWall, joins: isWallTile },
+				[TILE.EXIT]: { hw, hh, height: wh, faces: STAIRS, joins: isWallTile },
+				[TILE.PILLAR]: { hw: hw * 0.45, hh: hh * 0.45, height: wh * 1.3, faces: wall, joins: standsAlone },
+			},
+		};
+	}
 
-		// back to front: increasing (y - x)
+	/** every cell on screen, back to front (increasing y - x): its tile, object, creature and solver actors */
+	_drawCells(ctx, frame) {
+		const { w, h, cells } = this.level;
+		const margin = frame.hw * 2 + frame.wh;
+		// one record, moved from cell to cell: this loop runs for every visible cell on every redraw
+		const cell = { x: 0, y: 0, i: 0, a: 0, b: 0, cx: 0, cy: 0 };
 		for (let d = -(w - 1); d <= h - 1; d++) {
 			const x0 = Math.max(0, -d), x1 = Math.min(w - 1, h - 1 - d);
 			for (let x = x0; x <= x1; x++) {
 				const y = x + d;
 				const [cx, cy] = this.project(x, y);
 				if (cx < -margin || cx > this.cssW + margin || cy < -margin || cy > this.cssH + margin) continue;
-				const i = y * w + x;
-				const a = cells[2 * i], b = cells[2 * i + 1];
-				this._tile(ctx, x, y, cx, cy, a, b, hw, hh, wh, pal, showTraps);
-				const o = this.objAt.get(i);
-				if (o && glyphs) this._object(ctx, o, cx, cy, hw, hh, showDecor);
-				const c = this.critAt.get(i);
-				if (c && glyphs && !(this.solve.replace && this.solve.actAt)) this._critter(ctx, c, cx, cy, hw, hh);
-				const acts = this.solve.actAt && this.solve.actAt.get(i);
-				if (acts) for (const a of acts) this._actor(ctx, a, cx, cy, hw);
+				cell.x = x; cell.y = y; cell.i = y * w + x;
+				cell.a = cells[2 * cell.i]; cell.b = cells[2 * cell.i + 1];
+				cell.cx = cx; cell.cy = cy;
+				this._drawCell(ctx, cell, frame);
 			}
 		}
-		this._overlays(ctx, hw, hh);
+	}
+
+	_drawCell(ctx, cell, frame) {
+		this._tile(ctx, cell, frame);
+		const o = this.objAt.get(cell.i);
+		if (o) this._object(ctx, o, cell, frame);
+		const c = this.critAt.get(cell.i);
+		// the script player draws the engine's creatures instead of the level's
+		if (c && !(this.solve.replace && this.solve.actAt)) this._critter(ctx, c, cell, frame);
+		const actors = this.solve.actAt && this.solve.actAt.get(cell.i);
+		if (actors) for (const actor of actors) this._actor(ctx, actor, cell, frame.hw);
 	}
 
 	_diamond(ctx, cx, cy, hw, hh) {
@@ -238,92 +263,68 @@ export class IsoView {
 		ctx.closePath();
 	}
 
-	_block(ctx, x, y, cx, cy, hw, hh, height, top, left, right, wallTest) {
-		const w = this.level.w, h = this.level.h, cells = this.level.cells;
-		const solid = (xx, yy) => xx >= 0 && yy >= 0 && xx < w && yy < h && wallTest(cells[2 * (yy * w + xx)]);
+	/** a raised block on the cell: side faces only where no neighbouring block it joins hides them */
+	_block(ctx, cell, { hw, hh, height, faces, joins }) {
+		const { x, y, cx, cy } = cell;
 		const ty = cy - height;
-		if (!solid(x - 1, y)) {          // face toward (x-1, y): lower-left edge
-			ctx.fillStyle = left;
+		if (!joins(this._cellA(x - 1, y))) {   // face toward (x-1, y): lower-left edge
+			ctx.fillStyle = faces.left;
 			ctx.beginPath();
 			ctx.moveTo(cx - hw, ty); ctx.lineTo(cx, ty + hh); ctx.lineTo(cx, cy + hh); ctx.lineTo(cx - hw, cy);
 			ctx.closePath(); ctx.fill();
 		}
-		if (!solid(x, y + 1)) {          // face toward (x, y+1): lower-right edge
-			ctx.fillStyle = right;
+		if (!joins(this._cellA(x, y + 1))) {   // face toward (x, y+1): lower-right edge
+			ctx.fillStyle = faces.right;
 			ctx.beginPath();
 			ctx.moveTo(cx, ty + hh); ctx.lineTo(cx + hw, ty); ctx.lineTo(cx + hw, cy); ctx.lineTo(cx, cy + hh);
 			ctx.closePath(); ctx.fill();
 		}
-		ctx.fillStyle = top;
+		ctx.fillStyle = faces.top;
 		this._diamond(ctx, cx, ty, hw, hh);
 		ctx.fill();
 	}
 
-	_tile(ctx, x, y, cx, cy, a, b, hw, hh, wh, pal, showTraps) {
-		const isWall = (t) => t === TILE.WALL || t === TILE.OUTWALL || t === TILE.PILLAR;
+	_tile(ctx, cell, frame) {
+		const { cx, cy, a, b } = cell;
+		const { hw, hh } = frame;
 		switch (a) {
 			case TILE.VOID:
 				return;
 			case TILE.WALL:
-				this._block(ctx, x, y, cx, cy, hw, hh, wh, pal.wall, pal.wallL, pal.wallR, isWall);
-				return;
 			case TILE.OUTWALL:
-				this._block(ctx, x, y, cx, cy, hw, hh, wh * 1.2, pal.out, shade(pal.out, -0.25), shade(pal.out, -0.4), isWall);
+			case TILE.EXIT:
+				this._block(ctx, cell, frame.blocks[a]);
 				return;
 			case TILE.PILLAR:
-				ctx.fillStyle = pal.room; this._diamond(ctx, cx, cy, hw, hh); ctx.fill();
-				this._block(ctx, x, y, cx, cy, hw * 0.45, hh * 0.45, wh * 1.3, pal.wall, pal.wallL, pal.wallR, () => false);
+				ctx.fillStyle = frame.pal.room; this._diamond(ctx, cx, cy, hw, hh); ctx.fill();
+				this._block(ctx, cell, frame.blocks[a]);
 				return;
 			case TILE.LIQUID:
 				ctx.fillStyle = LIQUID[b & 15] || '#2f6fb3';
 				this._diamond(ctx, cx, cy, hw, hh); ctx.fill();
 				return;
-			case TILE.EXIT:
-				this._block(ctx, x, y, cx, cy, hw, hh, wh, '#ffd84a', '#c9a227', '#a6841c', isWall);
-				return;
-			default: {
-				let color = pal.room;
-				if (a === TILE.FLOOR) {
-					const f = b & 31;
-					if (f === 1) color = pal.corridor;
-					else if (f === 2 || f === 11) color = '#8a6a43';
-					else if (f === 18 || f === 19) color = '#8b6b40';
-					else if (f === 12 && this.layers.has('puzzles')) color = '#5d4a6e';
-					if ((b & 63) === 44 && this.layers.has('puzzles')) color = '#7d6a4a';
-				} else if (a === TILE.DOOR || a === TILE.OUTDOOR) {
-					color = '#9b7a4d';
-				} else if (a === TILE.BUSH) {
-					color = '#4f7a32';
-				} else if (a === TILE.PATCH) {
-					color = '#6f9a3c';
-				}
-				ctx.fillStyle = color;
-				this._diamond(ctx, cx, cy, hw, hh);
-				ctx.fill();
-				if (hw > 6) { ctx.strokeStyle = this.theme === 'light' ? 'rgba(0,0,0,0.10)' : 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1; ctx.stroke(); }
-				if (a === TILE.FLOOR && (b & 63) === 44 && this.layers.has('puzzles')) {
-					ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = Math.max(1, hw * 0.06);
-					ctx.beginPath(); ctx.ellipse(cx, cy, hw * 0.45, hh * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
-				}
-				if (showTraps && isHiddenTrap(a, b)) this._cross(ctx, cx, cy, hw, hh, '#ff4747');
-			}
+			default:
+				this._ground(ctx, cell, frame);
 		}
 	}
 
-	_cross(ctx, cx, cy, hw, hh, color) {
-		ctx.strokeStyle = color;
-		ctx.lineWidth = Math.max(1.5, hw * 0.08);
-		ctx.beginPath();
-		ctx.moveTo(cx - hw * 0.4, cy - hh * 0.4); ctx.lineTo(cx + hw * 0.4, cy + hh * 0.4);
-		ctx.moveTo(cx + hw * 0.4, cy - hh * 0.4); ctx.lineTo(cx - hw * 0.4, cy + hh * 0.4);
-		ctx.stroke();
+	/** a walkable tile: its colour and grid line, plus the pressure-plate ring and hidden-trap cross when shown */
+	_ground(ctx, cell, frame) {
+		const { cx, cy, a, b } = cell;
+		const { hw, hh } = frame;
+		ctx.fillStyle = groundColor(a, b, frame);
+		this._diamond(ctx, cx, cy, hw, hh);
+		ctx.fill();
+		if (hw > 6) { ctx.strokeStyle = this.theme === 'light' ? 'rgba(0,0,0,0.10)' : 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1; ctx.stroke(); }
+		if (frame.showPuzzles && isPressurePlate(a, b)) plateRing(ctx, cell, frame);
+		if (frame.showTraps && isHiddenTrap(a, b)) trapCross(ctx, cell, frame);
 	}
 
-	_badge(ctx, cx, cy, hw, kind, selected = false, variant = '') {
-		const k = KINDS[kind];
-		if (hw < 7) {   // zoomed out: plain dot
-			ctx.fillStyle = selected ? (this.theme === 'light' ? '#111' : '#fff') : k.color;
-			ctx.beginPath(); ctx.arc(cx, cy, Math.max(1.6, hw * 0.55), 0, Math.PI * 2); ctx.fill();
+	/** a sprite standing on the tile centred at (cx, cy), or a plain dot when zoomed out too far to read one */
+	_badge(ctx, kind, { cx, cy, hw, selected = false, variant = '' }) {
+		if (hw < 7) {
+			ctx.fillStyle = selected ? (this.theme === 'light' ? '#111' : '#fff') : KINDS[kind].color;
+			fillCircle(ctx, cx, cy, Math.max(1.6, hw * 0.55));
 			return;
 		}
 		drawSprite(ctx, kind, cx, cy, hw, { selected, theme: this.theme, dpr: this.dpr, variant });
@@ -334,230 +335,107 @@ export class IsoView {
 		return x < 0 || y < 0 || x >= w || y >= h ? 0 : cells[2 * (y * w + x)];
 	}
 
-	_object(ctx, o, cx, cy, hw, hh, showDecor) {
+	_object(ctx, o, cell, frame) {
 		const kind = objectKind(o, this.info.rw(o.id));
-		const layer = KINDS[kind].layer;
+		const { layer } = KINDS[kind];
 		if (!this.layers.has(layer)) return;
-		if (layer === 'decor') {
-			if (!showDecor) return;
-			if (hw < 14) {
-				ctx.fillStyle = KINDS[kind].color;
-				ctx.beginPath(); ctx.arc(cx, cy - hh * 0.3, Math.max(1.5, hw * 0.12), 0, Math.PI * 2); ctx.fill();
-				return;
-			}
-		}
-		const isWall = (t) => t === TILE.WALL || t === TILE.OUTWALL || t === TILE.PILLAR;
-		const walkable = (t) => t === TILE.FLOOR || t === TILE.DOOR || t === TILE.OUTDOOR;
-		let variant = '';
-		const a = this._cellA(o.x, o.y);
-		if (isWall(a)) {
-			// wall-mounted objects (ladders etc.) sit on the wall face that looks into their room
-			if (walkable(this._cellA(o.x, o.y + 1))) { cx += hw * 0.5; cy += hh * 0.5; variant = 'x'; }
-			else if (walkable(this._cellA(o.x - 1, o.y))) { cx -= hw * 0.5; cy += hh * 0.5; variant = 'y'; }
-		} else if (KINDS[kind].layer === 'doors' && kind !== 'lever') {
-			// door leaves follow their wall: walls left/right in x -> the leaf spans the x axis
-			variant = isWall(this._cellA(o.x - 1, o.y)) || isWall(this._cellA(o.x + 1, o.y)) ? 'x' : 'y';
-		} else if (kind === 'fountain') {
-			variant = o.id === 58 ? 'mp' : '';
-		}
-		this._badge(ctx, cx, cy, hw, kind, this.selected === o, variant);
-	}
-
-	_critter(ctx, c, cx, cy, hw, hh) {
-		const kind = critterKind(c, this.info.bw(c.id));
-		if (!this.layers.has(KINDS[kind].layer)) return;
-		this._badge(ctx, cx, cy, hw, kind, this.selected === c, kind === 'monster' ? String(c.id) : '');
-	}
-
-	_actor(ctx, a, cx, cy, hw) {
-		if (hw < 7) {
-			ctx.fillStyle = a.hero ? '#4f9ef8' : (KINDS[a.kind] || KINDS.monster).color;
-			ctx.beginPath(); ctx.arc(cx, cy, Math.max(2, hw * 0.6), 0, Math.PI * 2); ctx.fill();
+		if (layer === 'decor' && !frame.showDecor) return;
+		if (layer === 'decor' && frame.hw < 14) {
+			ctx.fillStyle = KINDS[kind].color;
+			fillCircle(ctx, cell.cx, cell.cy - frame.hh * 0.3, Math.max(1.5, frame.hw * 0.12));
 			return;
 		}
-		drawSprite(ctx, a.kind, cx, cy, hw, { theme: this.theme, dpr: this.dpr, variant: a.variant || '' });
+		const sprite = { cx: cell.cx, cy: cell.cy, hw: frame.hw, selected: this.selected === o, variant: '' };
+		if (isWallTile(this._cellA(o.x, o.y))) this._mountOnWall(o, sprite, frame.hh);
+		else sprite.variant = this._objectVariant(o, kind);
+		this._badge(ctx, kind, sprite);
 	}
 
-	/** the solver's overlay: trail, cell marks, HP bars, fight pins, callout (see setSolveOverlay) */
-	_solveOverlay(ctx, hw, hh) {
-		const S = this.solve;
-		const light = this.theme === 'light';
-		if (S.trail && S.trail.length > 1 && this.layers.has('route')) {
-			ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-			const seg = (from, to, style, width, dash) => {
-				ctx.strokeStyle = style; ctx.lineWidth = width; ctx.setLineDash(dash);
-				ctx.beginPath();
-				let pen = false;
-				for (let k = Math.max(0, from); k <= to && k < S.trail.length; k++) {
-					const p = S.trail[k];
-					if (p.jump) { pen = false; continue; }
-					const [x, y] = this.project(p.x, p.y);
-					if (pen) ctx.lineTo(x, y); else ctx.moveTo(x, y);
-					pen = true;
-				}
-				ctx.stroke();
-				ctx.setLineDash([]);
-			};
-			const upto = S.upto < 0 ? S.trail.length - 1 : S.upto;
-			seg(upto, S.trail.length - 1, light ? 'rgba(200,110,0,0.45)' : 'rgba(255,190,80,0.45)', Math.max(1.5, hw * 0.1), [Math.max(3, hw * 0.25), Math.max(3, hw * 0.25)]);
-			seg(0, upto, light ? 'rgba(214,100,0,0.95)' : 'rgba(255,176,46,0.95)', Math.max(2.5, hw * 0.18), []);
+	/** wall-mounted objects (ladders etc.) sit on the wall face that looks into their room */
+	_mountOnWall(o, sprite, hh) {
+		if (isWalkableTile(this._cellA(o.x, o.y + 1))) {
+			sprite.cx += sprite.hw * 0.5; sprite.cy += hh * 0.5; sprite.variant = 'x';
+		} else if (isWalkableTile(this._cellA(o.x - 1, o.y))) {
+			sprite.cx -= sprite.hw * 0.5; sprite.cy += hh * 0.5; sprite.variant = 'y';
 		}
-		for (const m of S.marks || []) {
-			const [cx, cy] = this.project(m.x, m.y);
-			if (m.fill) {
-				ctx.fillStyle = m.fill === true ? hexA(m.color, 0.28) : m.fill;
-				this._diamond(ctx, cx, cy, hw, hh); ctx.fill();
-			}
-			ctx.strokeStyle = m.color; ctx.lineWidth = Math.max(2, hw * 0.1);
-			this._diamond(ctx, cx, cy, hw * (m.size || 1.08), hh * (m.size || 1.08)); ctx.stroke();
+	}
+
+	/** door leaves follow their wall (walls left/right in x: the leaf spans the x axis); fountain 58 restores MP */
+	_objectVariant(o, kind) {
+		if (KINDS[kind].layer === 'doors' && kind !== 'lever') return isWallTile(this._cellA(o.x - 1, o.y)) || isWallTile(this._cellA(o.x + 1, o.y)) ? 'x' : 'y';
+		if (kind === 'fountain' && o.id === 58) return 'mp';
+		return '';
+	}
+
+	_critter(ctx, c, cell, frame) {
+		const kind = critterKind(c, this.info.bw(c.id));
+		if (!this.layers.has(KINDS[kind].layer)) return;
+		this._badge(ctx, kind, { cx: cell.cx, cy: cell.cy, hw: frame.hw, selected: this.selected === c, variant: kind === 'monster' ? String(c.id) : '' });
+	}
+
+	_actor(ctx, actor, { cx, cy }, hw) {
+		if (hw < 7) {
+			ctx.fillStyle = actor.hero ? '#4f9ef8' : (KINDS[actor.kind] || KINDS.monster).color;
+			fillCircle(ctx, cx, cy, Math.max(2, hw * 0.6));
+			return;
 		}
-		// HP bars above creatures
-		if (S.actors && hw >= 5) {
-			for (const a of S.actors) {
-				if (!a.bar || !(a.hpM > 0)) continue;
-				const [cx, cy] = this.project(a.x, a.y);
-				const lift = hw < 7 ? hw * 0.9 : hw * (BAR_LIFT[a.kind] || 0.72);
-				const w = Math.max(18, hw * 1.0), h = Math.max(4, Math.min(8, hw * 0.13));
-				const x0 = cx - w / 2, y0 = cy - lift - h;
-				const f = Math.max(0, Math.min(1, a.hp / a.hpM));
-				ctx.fillStyle = light ? 'rgba(20,20,20,0.75)' : 'rgba(0,0,0,0.8)';
-				ctx.fillRect(x0 - 1, y0 - 1, w + 2, h + 2);
-				ctx.fillStyle = a.hero ? '#4f9ef8' : f > 0.5 ? '#3ec46d' : f > 0.25 ? '#f0b429' : '#e5484d';
-				ctx.fillRect(x0, y0, w * f, h);
-				if (hw >= 22) {
-					ctx.font = `bold ${Math.round(Math.max(10, Math.min(13, hw * 0.3)))}px system-ui, sans-serif`;
-					ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-					const t = `${a.hp}/${a.hpM}`;
-					ctx.lineWidth = 3; ctx.strokeStyle = light ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.85)';
-					ctx.strokeText(t, cx, y0 - 2);
-					ctx.fillStyle = light ? '#111' : '#fff';
-					ctx.fillText(t, cx, y0 - 2);
-				}
-			}
+		drawSprite(ctx, actor.kind, cx, cy, hw, { theme: this.theme, dpr: this.dpr, variant: actor.variant || '' });
+	}
+
+	/** moveTo / lineTo through points[from..to] in cell coordinates; a { jump } entry lifts the pen */
+	_tracePath(ctx, points, { from, to }) {
+		ctx.beginPath();
+		let pen = false;
+		for (let k = from; k <= to && k < points.length; k++) {
+			const p = points[k];
+			if (p.jump) { pen = false; continue; }
+			const [x, y] = this.project(p.x, p.y);
+			if (pen) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+			pen = true;
 		}
-		// fight pins (fixed screen size): a light beam from each pin down to its cell, then the pins on top
-		const pins = [];
-		for (const m of S.markers || []) {
-			const [cx, cy] = this.project(m.x, m.y);
-			const px = cx + (m.off || 0);   // a second pin on the same cell (e.g. an MP top-up next to a fight)
-			if (px < -20 || cy < -20 || px > this.cssW + 20 || cy > this.cssH + 20) continue;
-			const r = m.active ? 12 : 10;
-			// above the creature's head (and its HP bar) once sprites are drawn, else just above the cell
-			const py = hw >= 7 ? cy - hw * 1.3 - r - (hw >= 22 ? 20 : 8) : cy - Math.max(r + 2, hw * 0.5);
-			pins.push({ m, cx, cy, px, py, r });
-		}
-		for (const { m, cx, cy, py, r } of pins) {
-			if (m.off) continue;   // shares its cell with a pin that already has the beam
-			const strong = (m.active ? 1 : 0.75) * (light ? 1 : 1.3);   // dark floors need a brighter beam
-			// the cell it points at
-			ctx.fillStyle = hexA(m.color, 0.24 * strong);
-			this._diamond(ctx, cx, cy, hw * 0.92, hh * 0.92); ctx.fill();
-			ctx.strokeStyle = hexA(m.color, 0.9 * strong); ctx.lineWidth = m.active ? 2.5 : 1.75;
-			this._diamond(ctx, cx, cy, hw * 0.92, hh * 0.92); ctx.stroke();
-			// the beam: a translucent column from under the pin to the floor, brightest at both ends
-			const top = py + r * 0.5, w = Math.max(r * 0.7, hw * 0.3), ry = w * hh / hw;
-			if (cy - top > 2) {
-				const g = ctx.createLinearGradient(0, top, 0, cy);
-				g.addColorStop(0, hexA(m.color, 0.5 * strong));
-				g.addColorStop(0.5, hexA(m.color, 0.16 * strong));
-				g.addColorStop(1, hexA(m.color, 0.36 * strong));
-				ctx.fillStyle = g;
-				ctx.beginPath();
-				ctx.ellipse(cx, top, w, ry, 0, Math.PI, 0);   // the far half of the top cap
-				ctx.lineTo(cx + w, cy);
-				ctx.ellipse(cx, cy, w, ry, 0, 0, Math.PI);    // the near half of the floor ring
-				ctx.closePath(); ctx.fill();
-				// the column's top rim, so it reads as a cylinder
-				ctx.strokeStyle = hexA(m.color, 0.45 * strong); ctx.lineWidth = 1;
-				ctx.beginPath(); ctx.ellipse(cx, top, w, ry, 0, 0, Math.PI * 2); ctx.stroke();
-			}
-		}
-		for (const { m, px, py, r } of pins) {
-			// a circle, or a pill when the text is wider (e.g. "MP")
-			ctx.font = `bold ${m.active ? 13 : 12}px system-ui, sans-serif`;
-			const pw = Math.max(2 * r, ctx.measureText(m.text).width + 8);
-			if (pw > 2 * r) roundRect(ctx, px - pw / 2, py - r, pw, 2 * r, r);
-			else { ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); }
-			ctx.fillStyle = m.color; ctx.fill();
-			ctx.lineWidth = m.active ? 2.5 : 1.5; ctx.strokeStyle = light ? '#ffffff' : '#0b0b0d'; ctx.stroke();
-			ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-			ctx.fillStyle = '#ffffff';
-			ctx.fillText(m.text, px, py + 0.5);
-		}
-		if (S.callout && S.callout.text) {
-			const { x, y } = S.callout;
-			let text = S.callout.text;
+	}
+
+	_overlays(ctx, frame) {
+		if (this.puzzle && this.layers.has('solutions')) this._puzzleSolution(ctx, frame);
+		if (this.route && this.route.length > 1 && this.layers.has('route') && !this.solve.hideRoute) this._route(ctx, frame);
+		this._linkArcs(ctx, frame);
+		this._highlights(ctx, frame);
+		this._solveOverlay(ctx, frame);
+		if (this.hover) this._hoverOutline(ctx, frame);
+	}
+
+	/** the floor nonogram's answer: the cells to fill and the clue numbers */
+	_puzzleSolution(ctx, { hw, hh }) {
+		for (const [x, y, kind, text] of this.puzzle.cells) {
 			const [cx, cy] = this.project(x, y);
-			ctx.font = 'bold 13px system-ui, sans-serif';
-			const pad = 6, bh = 22;
-			// fit the canvas: cut the end with an ellipsis (the panel has the full instruction)
-			const room = this.cssW - 8 - 2 * pad;
-			if (ctx.measureText(text).width > room) {
-				while (text.length > 4 && ctx.measureText(text + '…').width > room) text = text.slice(0, -1);
-				text += '…';
+			if (kind === 'fill') {
+				ctx.fillStyle = 'rgba(206,71,255,0.55)';
+				this._diamond(ctx, cx, cy, hw * 0.8, hh * 0.8); ctx.fill();
+			} else if (kind === 'clue' && hw > 5) {
+				ctx.fillStyle = '#f0e6ff';
+				ctx.font = `bold ${Math.round(hh * 1.1)}px system-ui, sans-serif`;
+				ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+				ctx.fillText(text, cx, cy);
 			}
-			const tw = ctx.measureText(text).width;
-			const bx = Math.max(4, Math.min(this.cssW - tw - 2 * pad - 4, cx - tw / 2 - pad));
-			// below the tile: above it sit the sprite, its HP bar and the fight pin
-			const by = Math.min(this.cssH - bh - 4, Math.max(4, cy + hh + 8));
-			ctx.fillStyle = light ? 'rgba(255,255,255,0.95)' : 'rgba(18,18,22,0.92)';
-			ctx.strokeStyle = light ? 'rgba(214,100,0,0.95)' : 'rgba(255,176,46,0.95)';
-			ctx.lineWidth = 1.5;
-			roundRect(ctx, bx, by, tw + 2 * pad, bh, 5);
-			ctx.fill(); ctx.stroke();
-			ctx.fillStyle = light ? '#111' : '#fff';
-			ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-			ctx.fillText(text, bx + pad, by + bh / 2 + 0.5);
 		}
 	}
 
-	_overlays(ctx, hw, hh) {
-		// puzzle solution cells
-		if (this.puzzle && this.layers.has('solutions')) {
-			for (const [x, y, kind, text] of this.puzzle.cells) {
-				const [cx, cy] = this.project(x, y);
-				if (kind === 'fill') {
-					ctx.fillStyle = 'rgba(206,71,255,0.55)';
-					this._diamond(ctx, cx, cy, hw * 0.8, hh * 0.8); ctx.fill();
-				} else if (kind === 'clue' && hw > 5) {
-					ctx.fillStyle = '#f0e6ff';
-					ctx.font = `bold ${Math.round(hh * 1.1)}px system-ui, sans-serif`;
-					ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-					ctx.fillText(text, cx, cy);
-				}
-			}
-		}
-		// route
-		if (this.route && this.route.length > 1 && this.layers.has('route') && !this.solve.hideRoute) {
-			ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-			ctx.strokeStyle = 'rgba(79,158,248,0.9)';
-			ctx.lineWidth = Math.max(2, hw * 0.18);
-			ctx.beginPath();
-			let pen = false;
-			for (const p of this.route) {
-				if (p.jump) { pen = false; continue; }
-				const [x, y] = this.project(p.x, p.y);
-				if (pen) ctx.lineTo(x, y); else ctx.moveTo(x, y);
-				pen = true;
-			}
-			ctx.stroke();
-			if (this.routeLeg) {
-				// highlighted leg on top, brighter and thicker
-				ctx.strokeStyle = '#ffffff';
-				ctx.lineWidth = Math.max(3, hw * 0.26);
-				ctx.beginPath();
-				let p2 = false;
-				for (let k = this.routeLeg.from; k <= this.routeLeg.to && k < this.route.length; k++) {
-					const p = this.route[k];
-					if (p.jump) { p2 = false; continue; }
-					const [x, y] = this.project(p.x, p.y);
-					if (p2) ctx.lineTo(x, y); else ctx.moveTo(x, y);
-					p2 = true;
-				}
-				ctx.stroke();
-			}
-		}
-		// links between paired objects
+	/** the planner's route, with the selected leg on top, brighter and thicker */
+	_route(ctx, { hw }) {
+		ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+		ctx.strokeStyle = 'rgba(79,158,248,0.9)';
+		ctx.lineWidth = Math.max(2, hw * 0.18);
+		this._tracePath(ctx, this.route, { from: 0, to: this.route.length - 1 });
+		ctx.stroke();
+		if (!this.routeLeg) return;
+		ctx.strokeStyle = '#ffffff';
+		ctx.lineWidth = Math.max(3, hw * 0.26);
+		this._tracePath(ctx, this.route, this.routeLeg);
+		ctx.stroke();
+	}
+
+	/** dashed arcs between paired objects */
+	_linkArcs(ctx, { hw, hh }) {
 		for (const [p, q, color] of this.links) {
 			const [x1, y1] = this.project(p.x, p.y);
 			const [x2, y2] = this.project(q.x, q.y);
@@ -567,69 +445,249 @@ export class IsoView {
 			ctx.beginPath(); ctx.moveTo(x1, y1 - hh * 0.6); ctx.quadraticCurveTo(mx, my, x2, y2 - hh * 0.6); ctx.stroke();
 			ctx.setLineDash([]);
 		}
+	}
+
+	_highlights(ctx, { hw, hh }) {
 		for (const { x, y, color } of this.highlights) {
 			const [cx, cy] = this.project(x, y);
 			ctx.strokeStyle = color; ctx.lineWidth = Math.max(2, hw * 0.12);
 			this._diamond(ctx, cx, cy, hw * 1.15, hh * 1.15); ctx.stroke();
 		}
-		this._solveOverlay(ctx, hw, hh);
-		if (this.hover) {
-			const [cx, cy] = this.project(this.hover.x, this.hover.y);
-			ctx.strokeStyle = this.theme === 'light' ? 'rgba(20,20,20,0.85)' : 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5;
-			this._diamond(ctx, cx, cy, hw, hh); ctx.stroke();
+	}
+
+	_hoverOutline(ctx, { hw, hh }) {
+		const [cx, cy] = this.project(this.hover.x, this.hover.y);
+		ctx.strokeStyle = this.theme === 'light' ? 'rgba(20,20,20,0.85)' : 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5;
+		this._diamond(ctx, cx, cy, hw, hh); ctx.stroke();
+	}
+
+	/** the solver's overlay: trail, cell marks, HP bars, fight pins, callout (see setSolveOverlay) */
+	_solveOverlay(ctx, frame) {
+		const S = this.solve;
+		if (S.trail && S.trail.length > 1 && this.layers.has('route')) this._solveTrail(ctx, frame);
+		this._cellMarks(ctx, frame);
+		if (S.actors && frame.hw >= 5) this._hpBars(ctx, frame);
+		this._fightPins(ctx, frame);
+		if (S.callout && S.callout.text) this._callout(ctx, frame);
+	}
+
+	/** the trail walked so far, solid; the rest of it faint and dashed underneath */
+	_solveTrail(ctx, { hw }) {
+		const { trail } = this.solve;
+		const light = this.theme === 'light';
+		const upto = this.solve.upto < 0 ? trail.length - 1 : this.solve.upto;
+		const dash = Math.max(3, hw * 0.25);
+		ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+		ctx.strokeStyle = light ? 'rgba(200,110,0,0.45)' : 'rgba(255,190,80,0.45)';
+		ctx.lineWidth = Math.max(1.5, hw * 0.1);
+		ctx.setLineDash([dash, dash]);
+		this._tracePath(ctx, trail, { from: upto, to: trail.length - 1 });
+		ctx.stroke();
+		ctx.setLineDash([]);
+		ctx.strokeStyle = light ? 'rgba(214,100,0,0.95)' : 'rgba(255,176,46,0.95)';
+		ctx.lineWidth = Math.max(2.5, hw * 0.18);
+		this._tracePath(ctx, trail, { from: 0, to: upto });
+		ctx.stroke();
+	}
+
+	_cellMarks(ctx, { hw, hh }) {
+		for (const mark of this.solve.marks || []) {
+			const [cx, cy] = this.project(mark.x, mark.y);
+			if (mark.fill) {
+				ctx.fillStyle = mark.fill === true ? hexA(mark.color, 0.28) : mark.fill;
+				this._diamond(ctx, cx, cy, hw, hh); ctx.fill();
+			}
+			const size = mark.size || 1.08;
+			ctx.strokeStyle = mark.color; ctx.lineWidth = Math.max(2, hw * 0.1);
+			this._diamond(ctx, cx, cy, hw * size, hh * size); ctx.stroke();
 		}
+	}
+
+	/** HP bars above creatures, with the numbers once there is room */
+	_hpBars(ctx, { hw }) {
+		const light = this.theme === 'light';
+		for (const actor of this.solve.actors) {
+			if (!actor.bar || !(actor.hpM > 0)) continue;
+			const [cx, cy] = this.project(actor.x, actor.y);
+			const lift = hw < 7 ? hw * 0.9 : hw * (BAR_LIFT[actor.kind] || 0.72);
+			const w = Math.max(18, hw * 1.0), h = Math.max(4, Math.min(8, hw * 0.13));
+			const x0 = cx - w / 2, y0 = cy - lift - h;
+			const health = Math.max(0, Math.min(1, actor.hp / actor.hpM));
+			ctx.fillStyle = light ? 'rgba(20,20,20,0.75)' : 'rgba(0,0,0,0.8)';
+			ctx.fillRect(x0 - 1, y0 - 1, w + 2, h + 2);
+			ctx.fillStyle = actor.hero ? '#4f9ef8' : health > 0.5 ? '#3ec46d' : health > 0.25 ? '#f0b429' : '#e5484d';
+			ctx.fillRect(x0, y0, w * health, h);
+			if (hw >= 22) this._hpText(ctx, actor, { x: cx, y: y0 - 2, hw });
+		}
+	}
+
+	_hpText(ctx, actor, { x, y, hw }) {
+		const light = this.theme === 'light';
+		const text = `${actor.hp}/${actor.hpM}`;
+		ctx.font = `bold ${Math.round(Math.max(10, Math.min(13, hw * 0.3)))}px system-ui, sans-serif`;
+		ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+		ctx.lineWidth = 3; ctx.strokeStyle = light ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.85)';
+		ctx.strokeText(text, x, y);
+		ctx.fillStyle = light ? '#111' : '#fff';
+		ctx.fillText(text, x, y);
+	}
+
+	/** fight pins (fixed screen size): a light beam from each pin down to its cell, then the pins on top */
+	_fightPins(ctx, frame) {
+		const pins = this._pinPlacements(frame);
+		for (const pin of pins) {
+			if (pin.marker.off) continue;   // shares its cell with a pin that already has the beam
+			this._pinTarget(ctx, pin, frame);
+			this._pinBeam(ctx, pin, frame);
+		}
+		for (const pin of pins) this._pinHead(ctx, pin);
+	}
+
+	/** where each marker's pin goes on screen, for markers whose pin is on the canvas */
+	_pinPlacements({ hw }) {
+		const pins = [];
+		for (const marker of this.solve.markers || []) {
+			const [cx, cy] = this.project(marker.x, marker.y);
+			const px = cx + (marker.off || 0);   // a second pin on the same cell (e.g. an MP top-up next to a fight)
+			if (px < -20 || cy < -20 || px > this.cssW + 20 || cy > this.cssH + 20) continue;
+			const r = marker.active ? 12 : 10;
+			// above the creature's head (and its HP bar) once sprites are drawn, else just above the cell
+			const py = hw >= 7 ? cy - hw * 1.3 - r - (hw >= 22 ? 20 : 8) : cy - Math.max(r + 2, hw * 0.5);
+			const strength = (marker.active ? 1 : 0.75) * (this.theme === 'light' ? 1 : 1.3);   // dark floors need a brighter beam
+			pins.push({ marker, cx, cy, px, py, r, strength });
+		}
+		return pins;
+	}
+
+	/** the cell a pin points at */
+	_pinTarget(ctx, { marker, cx, cy, strength }, { hw, hh }) {
+		ctx.fillStyle = hexA(marker.color, 0.24 * strength);
+		this._diamond(ctx, cx, cy, hw * 0.92, hh * 0.92); ctx.fill();
+		ctx.strokeStyle = hexA(marker.color, 0.9 * strength); ctx.lineWidth = marker.active ? 2.5 : 1.75;
+		this._diamond(ctx, cx, cy, hw * 0.92, hh * 0.92); ctx.stroke();
+	}
+
+	/** a translucent column from under the pin to the floor, brightest at both ends */
+	_pinBeam(ctx, { marker, cx, cy, py, r, strength }, { hw, hh }) {
+		const top = py + r * 0.5, w = Math.max(r * 0.7, hw * 0.3), ry = w * hh / hw;
+		if (!(cy - top > 2)) return;   // no room for a column
+		const g = ctx.createLinearGradient(0, top, 0, cy);
+		g.addColorStop(0, hexA(marker.color, 0.5 * strength));
+		g.addColorStop(0.5, hexA(marker.color, 0.16 * strength));
+		g.addColorStop(1, hexA(marker.color, 0.36 * strength));
+		ctx.fillStyle = g;
+		ctx.beginPath();
+		ctx.ellipse(cx, top, w, ry, 0, Math.PI, 0);   // the far half of the top cap
+		ctx.lineTo(cx + w, cy);
+		ctx.ellipse(cx, cy, w, ry, 0, 0, Math.PI);    // the near half of the floor ring
+		ctx.closePath(); ctx.fill();
+		// the column's top rim, so it reads as a cylinder
+		ctx.strokeStyle = hexA(marker.color, 0.45 * strength); ctx.lineWidth = 1;
+		ctx.beginPath(); ctx.ellipse(cx, top, w, ry, 0, 0, Math.PI * 2); ctx.stroke();
+	}
+
+	/** the pin: a circle, or a pill when the text is wider (e.g. "MP") */
+	_pinHead(ctx, { marker, px, py, r }) {
+		ctx.font = `bold ${marker.active ? 13 : 12}px system-ui, sans-serif`;
+		const pw = Math.max(2 * r, ctx.measureText(marker.text).width + 8);
+		if (pw > 2 * r) roundRect(ctx, px - pw / 2, py - r, pw, 2 * r, r);
+		else { ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); }
+		ctx.fillStyle = marker.color; ctx.fill();
+		ctx.lineWidth = marker.active ? 2.5 : 1.5; ctx.strokeStyle = this.theme === 'light' ? '#ffffff' : '#0b0b0d'; ctx.stroke();
+		ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+		ctx.fillStyle = '#ffffff';
+		ctx.fillText(marker.text, px, py + 0.5);
+	}
+
+	/** a text label in a box below a cell (the script player's instruction) */
+	_callout(ctx, { hh }) {
+		const light = this.theme === 'light';
+		const [cx, cy] = this.project(this.solve.callout.x, this.solve.callout.y);
+		ctx.font = 'bold 13px system-ui, sans-serif';
+		const pad = 6, bh = 22;
+		// fit the canvas: cut the end with an ellipsis (the panel has the full instruction)
+		const text = fitText(ctx, this.solve.callout.text, this.cssW - 8 - 2 * pad);
+		const tw = ctx.measureText(text).width;
+		const bx = Math.max(4, Math.min(this.cssW - tw - 2 * pad - 4, cx - tw / 2 - pad));
+		// below the tile: above it sit the sprite, its HP bar and the fight pin
+		const by = Math.min(this.cssH - bh - 4, Math.max(4, cy + hh + 8));
+		ctx.fillStyle = light ? 'rgba(255,255,255,0.95)' : 'rgba(18,18,22,0.92)';
+		ctx.strokeStyle = light ? 'rgba(214,100,0,0.95)' : 'rgba(255,176,46,0.95)';
+		ctx.lineWidth = 1.5;
+		roundRect(ctx, bx, by, tw + 2 * pad, bh, 5);
+		ctx.fill(); ctx.stroke();
+		ctx.fillStyle = light ? '#111' : '#fff';
+		ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+		ctx.fillText(text, bx + pad, by + bh / 2 + 0.5);
 	}
 
 	// ---- input -----------------------------------------------------------------------------
 	_bindInput() {
 		const c = this.canvas;
-		const pts = new Map();
-		let drag = null, moved = false, pinch = null;
-		const pos = (e) => { const r = c.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-
-		c.addEventListener('pointerdown', (e) => {
-			c.setPointerCapture(e.pointerId);
-			pts.set(e.pointerId, pos(e));
-			if (pts.size === 1) { drag = { p: pos(e), ox: this.ox, oy: this.oy }; moved = false; }
-			if (pts.size === 2) {
-				const [a, b] = [...pts.values()];
-				pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), scale: this.scale };
-				drag = null;
-			}
-		});
-		c.addEventListener('pointermove', (e) => {
-			const p = pos(e);
-			if (pts.has(e.pointerId)) pts.set(e.pointerId, p);
-			if (pinch && pts.size === 2) {
-				const [a, b] = [...pts.values()];
-				const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
-				this.zoomAt((pinch.scale * d / pinch.d) / this.scale, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
-				moved = true;
-				return;
-			}
-			if (drag) {
-				const dx = p[0] - drag.p[0], dy = p[1] - drag.p[1];
-				if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
-				if (moved) { this.ox = drag.ox + dx; this.oy = drag.oy + dy; this.redraw(); }
-				return;
-			}
-			this._hoverAt(p);
-		});
-		const up = (e) => {
-			const wasClick = drag && !moved && pts.size === 1;
-			pts.delete(e.pointerId);
-			if (pts.size < 2) pinch = null;
-			if (wasClick) this._clickAt(pos(e));
-			if (pts.size === 0) drag = null;
-		};
+		const gesture = { pointers: new Map(), drag: null, moved: false, pinch: null };
+		c.addEventListener('pointerdown', (e) => this._pointerDown(gesture, e));
+		c.addEventListener('pointermove', (e) => this._pointerMove(gesture, e));
+		const up = (e) => this._pointerUp(gesture, e);
 		c.addEventListener('pointerup', up);
 		c.addEventListener('pointercancel', up);
 		c.addEventListener('pointerleave', () => { this.hover = null; this.onHover(null); this.redraw(); });
 		c.addEventListener('wheel', (e) => {
 			e.preventDefault();
-			const [x, y] = pos(e);
+			const [x, y] = this._canvasPoint(e);
 			this.zoomAt(Math.exp(-e.deltaY * 0.0015), x, y);
 		}, { passive: false });
+	}
+
+	/** one pointer starts a drag (or a click), a second one turns it into a pinch */
+	_pointerDown(gesture, e) {
+		this.canvas.setPointerCapture(e.pointerId);
+		const { pointers } = gesture;
+		pointers.set(e.pointerId, this._canvasPoint(e));
+		if (pointers.size === 1) { gesture.drag = { p: this._canvasPoint(e), ox: this.ox, oy: this.oy }; gesture.moved = false; }
+		if (pointers.size === 2) {
+			const [a, b] = [...pointers.values()];
+			gesture.pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), scale: this.scale };
+			gesture.drag = null;
+		}
+	}
+
+	_pointerMove(gesture, e) {
+		const p = this._canvasPoint(e);
+		if (gesture.pointers.has(e.pointerId)) gesture.pointers.set(e.pointerId, p);
+		if (gesture.pinch && gesture.pointers.size === 2) { this._pinchZoom(gesture); return; }
+		if (gesture.drag) { this._dragPan(gesture, p); return; }
+		this._hoverAt(p);
+	}
+
+	_pinchZoom(gesture) {
+		const [a, b] = [...gesture.pointers.values()];
+		const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+		this.zoomAt((gesture.pinch.scale * d / gesture.pinch.d) / this.scale, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+		gesture.moved = true;
+	}
+
+	/** pan once the pointer has moved more than a few pixels (less is still a click) */
+	_dragPan(gesture, p) {
+		const { drag } = gesture;
+		const dx = p[0] - drag.p[0], dy = p[1] - drag.p[1];
+		if (Math.abs(dx) + Math.abs(dy) > 4) gesture.moved = true;
+		if (!gesture.moved) return;
+		this.ox = drag.ox + dx; this.oy = drag.oy + dy; this.redraw();
+	}
+
+	_pointerUp(gesture, e) {
+		const { pointers } = gesture;
+		const wasClick = gesture.drag && !gesture.moved && pointers.size === 1;
+		pointers.delete(e.pointerId);
+		if (pointers.size < 2) gesture.pinch = null;
+		if (wasClick) this._clickAt(this._canvasPoint(e));
+		if (pointers.size === 0) gesture.drag = null;
+	}
+
+	/** an event's position on the canvas (CSS px) */
+	_canvasPoint(e) {
+		const r = this.canvas.getBoundingClientRect();
+		return [e.clientX - r.left, e.clientY - r.top];
 	}
 
 	_cellAt(p) {
@@ -678,6 +736,70 @@ function hhOffset(scale) { return HH * scale * 0.6; }
 
 function emptySolve() {
 	return { markers: [], actors: null, actAt: null, replace: false, marks: [], callout: null, trail: null, upto: -1, hideRoute: false };
+}
+
+function paletteFor(theme, family) {
+	return PALETTES[theme][family] || PALETTES[theme].Dungeon;
+}
+
+/** solver actors grouped by cell index (y * w + x), in their order */
+function actorsByCell(actors, w) {
+	const byCell = new Map();
+	for (const actor of actors) {
+		const i = actor.y * w + actor.x;
+		if (!byCell.has(i)) byCell.set(i, []);
+		byCell.get(i).push(actor);
+	}
+	return byCell;
+}
+
+const isWallTile = (t) => t === TILE.WALL || t === TILE.OUTWALL || t === TILE.PILLAR;
+const isWalkableTile = (t) => t === TILE.FLOOR || t === TILE.DOOR || t === TILE.OUTDOOR;
+
+/** fill colour of a walkable tile; pressure plates and nonogram floors stand out with the puzzles layer */
+function groundColor(a, b, { pal, showPuzzles }) {
+	if (showPuzzles && isPressurePlate(a, b)) return '#7d6a4a';
+	switch (a) {
+		case TILE.FLOOR: return floorColor(b & 31, pal, showPuzzles);
+		case TILE.DOOR: case TILE.OUTDOOR: return '#9b7a4d';
+		case TILE.BUSH: return '#4f7a32';
+		case TILE.PATCH: return '#6f9a3c';
+		default: return pal.room;
+	}
+}
+
+/** by floor code (b & 31, as in catalog.js tileName) */
+function floorColor(code, pal, showPuzzles) {
+	if (code === 1) return pal.corridor;
+	if (code === 2 || code === 11) return '#8a6a43';    // bridge
+	if (code === 18 || code === 19) return '#8b6b40';   // boardwalk
+	if (code === 12 && showPuzzles) return '#5d4a6e';   // nonogram floor
+	return pal.room;
+}
+
+function plateRing(ctx, { cx, cy }, { hw, hh }) {
+	ctx.strokeStyle = '#ffd84a'; ctx.lineWidth = Math.max(1, hw * 0.06);
+	ctx.beginPath(); ctx.ellipse(cx, cy, hw * 0.45, hh * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+}
+
+function trapCross(ctx, { cx, cy }, { hw, hh }) {
+	ctx.strokeStyle = '#ff4747';
+	ctx.lineWidth = Math.max(1.5, hw * 0.08);
+	ctx.beginPath();
+	ctx.moveTo(cx - hw * 0.4, cy - hh * 0.4); ctx.lineTo(cx + hw * 0.4, cy + hh * 0.4);
+	ctx.moveTo(cx + hw * 0.4, cy - hh * 0.4); ctx.lineTo(cx - hw * 0.4, cy + hh * 0.4);
+	ctx.stroke();
+}
+
+function fillCircle(ctx, x, y, r) {
+	ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+}
+
+/** `text`, cut at the end with an ellipsis to fit `room` px in the current font */
+function fitText(ctx, text, room) {
+	if (ctx.measureText(text).width <= room) return text;
+	while (text.length > 4 && ctx.measureText(text + '…').width > room) text = text.slice(0, -1);
+	return text + '…';
 }
 
 // HP bar height above a creature's tile centre, in half tile widths (sprite sizes in sprites.js)
