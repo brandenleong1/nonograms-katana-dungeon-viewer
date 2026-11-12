@@ -61,7 +61,7 @@ More docs:
 ## Commands
 
 ```sh
-npm test                 # standalone: generator vs test/fixtures, solver tests (~1 min)
+npm test                 # every standalone suite in test/ (tools/run-tests.mjs; ~1 min)
 npm run serve            # http://127.0.0.1:8000/#3C-172582050
 npm run test:oracle      # maintainers: full parity suites (needs ~/.cache/nk-oracle)
 npm run test:smoke       # browser smoke test, needs Playwright (docs/testing.md#integration)

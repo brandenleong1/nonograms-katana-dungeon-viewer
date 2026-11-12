@@ -19,7 +19,7 @@
 //    to cost (scouted: the largest expected HP loss of a later encounter, x1.25), the EP and MP still to be spent on the
 //    route. At the last encounter every need is 0: leftovers are worth nothing, as in the game.
 //  - Ties after (items, MP) are broken by the shadow-priced score, then HP left, then fewer inputs.
-import { learned, SKILL } from './sim.js';
+import { learned, SKILL, AMBROSIA } from './sim.js';
 
 /** tolerance in mean items / MP under which two policies count as tied on that criterion */
 export const TOL = { items: 0.02, mp: 0.1 };
@@ -30,15 +30,7 @@ export const TOL = { items: 0.02, mp: 0.1 };
  * (the old stock model: an MP item per Z MP).
  */
 export function pricesFor(h, opts = {}) {
-	const best = (field) => {
-		let v = 0;
-		for (const e of h.f.D.c) {
-			const it = e.a;
-			if (e.a_() > 0 && it.a !== 123 && !it.b0 && it[field] > v && (it.a0 === 0 || it.a0 === 2)) v = it[field];
-		}
-		return v;
-	};
-	const X = best('X') || 20, Y = best('Y') || 20, Z = best('Z') || 0;
+	const X = bestRestore(h, 'X') || 20, Y = bestRestore(h, 'Y') || 20, Z = bestRestore(h, 'Z') || 0;
 	const doctor = learned(h, SKILL.DOCTOR), charge = learned(h, SKILL.CHARGE);
 	return {
 		hpLow: doctor ? [0, 0.6] : [1 / X, 0],
@@ -49,6 +41,16 @@ export function pricesFor(h, opts = {}) {
 		// never enough to outweigh an item or a death
 		mp: opts.useItemsForMp ? [1 / (Z || 20), 0] : [0, 0.01],
 	};
+}
+
+/** the most one plain item in the pack restores of field (X HP, Y EP, Z MP); never ambrosia, no buff side effects */
+function bestRestore(h, field) {
+	let v = 0;
+	for (const e of h.f.D.c) {
+		const it = e.a;
+		if (e.a_() > 0 && it.a !== AMBROSIA && !it.b0 && it[field] > v && (it.a0 === 0 || it.a0 === 2)) v = it[field];
+	}
+	return v;
 }
 
 /**
@@ -84,22 +86,22 @@ export function scoreOutcome(o, need, prices) {
 /** aggregate outcome scores of one policy over samples */
 export function aggregate(scores) {
 	const n = scores.length;
-	let dead = 0, i0 = 0, m0 = 0, s0 = 0, s1 = 0, hp = 0, inp = 0, alive = 0;
-	let si = 0, si2 = 0, sm2 = 0;
+	let dead = 0, alive = 0, items = 0, mp = 0, hp = 0, inputs = 0;
+	let score0 = 0, score1 = 0, score0Sq = 0, score1Sq = 0;   // sums of the shadow-priced scores and of their squares
 	for (const s of scores) {
 		if (s.dead) { dead++; continue; }
 		alive++;
-		i0 += s.items; m0 += s.mp; s0 += s.s[0]; s1 += s.s[1]; hp += s.hp || 0; inp += s.inputs || 0;
-		si += s.s[0]; si2 += s.s[0] * s.s[0]; sm2 += s.s[1] * s.s[1];
+		items += s.items; mp += s.mp; score0 += s.s[0]; score1 += s.s[1]; hp += s.hp || 0; inputs += s.inputs || 0;
+		score0Sq += s.s[0] * s.s[0]; score1Sq += s.s[1] * s.s[1];
 	}
 	const a = Math.max(alive, 1);
-	const mean0 = s0 / a, mean1 = s1 / a;
+	const mean0 = score0 / a, mean1 = score1 / a;
 	return {
 		n, dead, pDeath: n ? dead / n : 0,
-		items: i0 / a, mp: m0 / a,           // immediate means (alive samples)
+		items: items / a, mp: mp / a,        // immediate means (alive samples)
 		score: [mean0, mean1],               // shadow-priced means
-		se: [Math.sqrt(Math.max(0, si2 / a - mean0 * mean0) / a), Math.sqrt(Math.max(0, sm2 / a - mean1 * mean1) / a)],
-		hp: hp / a, inputs: inp / a,
+		se: [Math.sqrt(Math.max(0, score0Sq / a - mean0 * mean0) / a), Math.sqrt(Math.max(0, score1Sq / a - mean1 * mean1) / a)],
+		hp: hp / a, inputs: inputs / a,
 	};
 }
 

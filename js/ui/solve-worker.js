@@ -18,15 +18,7 @@ let tablesJson = null;
 async function handle({ method, args = [] }) {
 	switch (method) {
 		case 'tables': {
-			const src = args[0];
-			if (!tablesJson) {
-				if (src.json) tablesJson = src.json;
-				else {
-					const r = await fetch(src.url);
-					if (!r.ok) throw new Error(`tables: HTTP ${r.status}`);
-					tablesJson = await r.json();
-				}
-			}
+			if (!tablesJson) tablesJson = await loadTables(args[0]);
 			resetStatics(tablesJson);
 			await loadEntry();
 			return { ok: true };
@@ -38,19 +30,31 @@ async function handle({ method, args = [] }) {
 		}
 		case 'exact': {
 			resetStatics(tablesJson);
-			const p = args[0].problem;
-			const problem = { ...p, hero: await resolveProfile(p.hero) };
-			if (p.saveBytes) {
-				problem.save = await importSave(p.saveBytes);
-				delete problem.saveBytes;
-			}
-			target = new ExactWorker({ ...args[0], problem });
+			target = new ExactWorker({ ...args[0], problem: await exactProblem(args[0].problem) });
 			return target.init();
 		}
 		default:
 			if (!target || typeof target[method] !== 'function') throw new Error(`worker: no method ${method}`);
 			return target[method](...args);
 	}
+}
+
+/** data/tables.json, posted as { json } or fetched from { url } */
+async function loadTables(src) {
+	if (src.json) return src.json;
+	const r = await fetch(src.url);
+	if (!r.ok) throw new Error(`tables: HTTP ${r.status}`);
+	return r.json();
+}
+
+/** the exact problem with its hero resolved and the save imported from problem.saveBytes */
+async function exactProblem(p) {
+	const problem = { ...p, hero: await resolveProfile(p.hero) };
+	if (p.saveBytes) {
+		problem.save = await importSave(p.saveBytes);
+		delete problem.saveBytes;
+	}
+	return problem;
 }
 
 self.onmessage = async (e) => {
