@@ -23,7 +23,8 @@ export const KINDS = {
 	barrel:    { layer: 'puzzles',   color: '#a0522d', glyph: '●', label: 'Barrel (push onto plates)' },
 	trap:      { layer: 'traps',     color: '#ff4747', glyph: '✕', label: 'Trap' },
 	fountain:  { layer: 'loot',      color: '#47ffb3', glyph: '♨', label: 'Fountain' },
-	special:   { layer: 'loot',      color: '#ff9cf5', glyph: '✺', label: 'Shrine / cauldron' },
+	special:   { layer: 'loot',      color: '#ff9cf5', glyph: '✺', label: 'Cauldron' },
+	torchstatue: { layer: 'loot',    color: '#ffb84d', glyph: '♆', label: 'Torch statue (+10 energy, lights your torch)' },
 	cover:     { layer: 'decor',     color: '#6b8e23', glyph: '"', label: 'Reeds (cover)' },
 	marker:    { layer: 'decor',     color: '#888888', glyph: '·', label: 'Marker' },
 	decor:     { layer: 'decor',     color: '#777777', glyph: '·', label: 'Furnishing' },
@@ -59,7 +60,10 @@ set('teleport', 126);
 set('barrel', 59);
 set('trap', 30);
 set('fountain', 48, 58, 124, 54);
-set('special', 85, 86, 87, 95);
+set('special', 85, 86, 87);
+// the tombs' goddess statue: using it once gives 10 energy and lights the hero's torch, widening sight from 6 to 10
+// tiles (actions.js activate, T0_)
+set('torchstatue', 95);
 set('cover', 84);
 set('marker', 52);
 
