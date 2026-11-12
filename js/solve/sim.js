@@ -23,6 +23,11 @@ import { planRoute } from '../plan/planner.js';
 export const DIR4 = [[-1, 0], [0, -1], [1, 0], [0, 1]];
 const TELEPORTS = new Set([38, 39, 40, 74, 88, 126]);
 const DOOR_IDS = new Set([27, 28, 29, 33, 35, 53, 60, 73]);
+const HERO_ID = 180;
+const REEDS = 84;          // the one object the hero walks through
+const STAIRS_TILE = 5;
+/** seal MP from here up marks bw.m0 bosses (100000) until their quest is done: no MP opens them */
+const UNSEALABLE = 1000;
 /** recovery objects worth a detour (actions.js activate): 48 fountain +10 EP, 58 fountain +7 MP, 95 lantern +10 EP */
 export const RECOVERY = new Map([[48, { ep: 10 }], [58, { mp: 7 }], [95, { ep: 10 }]]);
 export const SPIDER = 168;
@@ -87,23 +92,31 @@ export function canSkill(h, id) {
  */
 export function expDamage(src, dst, mult = 100, defOverride = null) {
 	const base = src.o_();
-	const spread = base >= 15 ? (base / 5) | 0 : base >= 12 ? 3 : 2;
+	const spread = rollSpread(base);
 	const def = defOverride ?? dst.n_(false);
-	let s = 0;
-	for (let r = base - spread; r <= base + spread; r++) {
-		const roll = Math.max(r, 1);
-		const d = mult === 100 ? roll : Math.max(((mult * roll) / 100) | 0, 2);
-		s += Math.max(d - def, 1);
-	}
-	return s / (2 * spread + 1);
+	let total = 0;
+	for (let r = base - spread; r <= base + spread; r++) total += hitDamage(r, mult, def);
+	return total / (2 * spread + 1);
 }
 /** min / max melee damage of src on dst */
 export function dmgRange(src, dst, mult = 100) {
 	const base = src.o_();
-	const spread = base >= 15 ? (base / 5) | 0 : base >= 12 ? 3 : 2;
+	const spread = rollSpread(base);
 	const def = dst.n_(false);
-	const f = (r) => { const roll = Math.max(r, 1); const d = mult === 100 ? roll : Math.max(((mult * roll) / 100) | 0, 2); return Math.max(d - def, 1); };
-	return [f(base - spread), f(base + spread)];
+	return [hitDamage(base - spread, mult, def), hitDamage(base + spread, mult, def)];
+}
+
+/** how far a melee roll strays either side of the attack stat (damage.js e) */
+function rollSpread(attack) {
+	if (attack >= 15) return (attack / 5) | 0;
+	return attack >= 12 ? 3 : 2;
+}
+
+/** damage of one roll at mult percent against defence def: never below 1 (a scaled roll never below 2 first) */
+function hitDamage(roll, mult, def) {
+	const r = Math.max(roll, 1);
+	const scaled = mult === 100 ? r : Math.max(((mult * r) / 100) | 0, 2);
+	return Math.max(scaled - def, 1);
 }
 
 /**
@@ -210,6 +223,51 @@ export class Ledger {
 		this.mpPeak = Math.max(this.mpPeak, this.mp - o.mp + o.mpPeak);
 		for (const [k, v] of Object.entries(o.mpBy)) this.mpBy[k] = (this.mpBy[k] || 0) + v;
 	}
+
+	/** gross MP spent on one input, by cause (mpBy) */
+	addMpSpent(amount, cause) {
+		this.mpOut += amount;
+		this.mpBy[cause] = (this.mpBy[cause] || 0) + amount;
+	}
+
+	/** the pool level after an input: the latest top-up keeps the lowest one (trimTopUps shrinks it by that) */
+	notePoolLevel(mp) {
+		if (!this.topUps.length) return;
+		const latest = this.topUps[this.topUps.length - 1];
+		if (mp < latest.min) latest.min = mp;
+	}
+
+	/** items used and picked up between two packFlat() lists; the spider counts by its net change */
+	addPackChange(before, after) {
+		if (sameFlat(before, after)) return;
+		const countsBefore = flatCounts(before), countsAfter = flatCounts(after);
+		for (const [id, was] of countsBefore) {
+			const now = countsAfter.get(id) || 0;
+			if (now >= was) continue;
+			if (id === SPIDER) this.spiderNet += was - now;
+			else this.used.set(id, (this.used.get(id) || 0) + was - now);
+		}
+		for (const [id, now] of countsAfter) {
+			const was = countsBefore.get(id) || 0;
+			if (now <= was) continue;
+			if (id === SPIDER) this.spiderNet -= now - was;
+			else this.gained.set(id, (this.gained.get(id) || 0) + now - was);
+		}
+	}
+}
+
+/** [id, count, ...] lists (packFlat) equal entry for entry */
+function sameFlat(a, b) {
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+	return true;
+}
+
+/** a packFlat() list as id -> total count, in pack order */
+function flatCounts(flat) {
+	const counts = new Map();
+	for (let i = 0; i < flat.length; i += 2) counts.set(flat[i], (counts.get(flat[i]) || 0) + flat[i + 1]);
+	return counts;
 }
 
 /**
@@ -219,15 +277,15 @@ export class Ledger {
  */
 export function trimTopUps(tops) {
 	const n = tops.length;
-	const suf = new Array(n);
-	let m = Infinity;
-	for (let j = n - 1; j >= 0; j--) { m = Math.min(m, tops[j].min); suf[j] = m; }
+	const lowestFrom = new Array(n);   // lowestFrom[j]: the lowest pool level from top-up j to the end
+	let lowest = Infinity;
+	for (let j = n - 1; j >= 0; j--) { lowest = Math.min(lowest, tops[j].min); lowestFrom[j] = lowest; }
 	const out = [];
-	let D = 0;
+	let shrunk = 0;   // MP taken off the top-ups so far (every later pool level is that much lower)
 	for (let j = 0; j < n; j++) {
-		const Dj = Math.max(D, Math.min(D + tops[j].amount, suf[j]));
-		out.push(tops[j].amount - (Dj - D));
-		D = Dj;
+		const shrunkNow = Math.max(shrunk, Math.min(shrunk + tops[j].amount, lowestFrom[j]));
+		out.push(tops[j].amount - (shrunkNow - shrunk));
+		shrunk = shrunkNow;
 	}
 	return out;
 }
@@ -261,7 +319,12 @@ export function probe(h) {
 }
 
 /** the MP cause of an input (Ledger.mpBy): a skill id, unseal, or route (taps / steps: doors, chests, traps) */
-const mpCause = (inp) => (!inp ? 'route' : inp.t === 'skill' ? String(inp.id) : inp.t === 'unseal' ? 'unseal' : inp.t === 'item' ? 'item' : 'route');
+function mpCause(inp) {
+	if (!inp) return 'route';
+	if (inp.t === 'skill') return String(inp.id);
+	if (inp.t === 'unseal' || inp.t === 'item') return inp.t;
+	return 'route';
+}
 
 /** account one input: before = probe(h) taken before it */
 export function account(led, before, h, inp = null) {
@@ -271,29 +334,10 @@ export function account(led, before, h, inp = null) {
 	led.ep += before.ep - ep;
 	led.mp += before.mp - mp;
 	if (led.mp > led.mpPeak) led.mpPeak = led.mp;
-	if (led.topUps.length) { const t = led.topUps[led.topUps.length - 1]; if (mp < t.min) t.min = mp; }
-	if (mp < before.mp) { led.mpOut += before.mp - mp; const k = mpCause(inp); led.mpBy[k] = (led.mpBy[k] || 0) + before.mp - mp; }
+	led.notePoolLevel(mp);
+	if (mp < before.mp) led.addMpSpent(before.mp - mp, mpCause(inp));
 	led.inputs++;
-	const a = packFlat(h), b = before.pack;
-	if (a.length !== b.length || a.some((v, i) => v !== b[i])) {
-		const m0 = new Map(), m1 = new Map();
-		for (let i = 0; i < b.length; i += 2) m0.set(b[i], (m0.get(b[i]) || 0) + b[i + 1]);
-		for (let i = 0; i < a.length; i += 2) m1.set(a[i], (m1.get(a[i]) || 0) + a[i + 1]);
-		for (const [id, k] of m0) {
-			const k2 = m1.get(id) || 0;
-			if (k2 < k) {
-				if (id === SPIDER) led.spiderNet += k - k2;
-				else led.used.set(id, (led.used.get(id) || 0) + k - k2);
-			}
-		}
-		for (const [id, k2] of m1) {
-			const k = m0.get(id) || 0;
-			if (k2 > k) {
-				if (id === SPIDER) led.spiderNet -= k2 - k;
-				else led.gained.set(id, (led.gained.get(id) || 0) + k2 - k);
-			}
-		}
-	}
+	led.addPackChange(before.pack, packFlat(h));
 	if (me.u_()) led.dead = true;
 }
 
@@ -313,30 +357,39 @@ export async function loadEntry() {
  * Returns a Fight or { error }.
  */
 const EDITS = ['level', 'gear', 'kit', 'kit2', 'skills', 'quests', 'pets', 'run', 'trapsindif'];
-export function makeFight(hero, { type, seed, xseed, at = 'start' }) {
-	if (hero && hero.profile) {
-		// the player's hero (js/combat/entry.js): { profile: { vj0 (importSave(bytes).vj0), hero: index, premium } }
-		if (!entryMod || !entryMod.newFightFromProfile) return { error: 'profile hero: js/combat/entry.js (newFightFromProfile) is not available' };
-		const P = hero.profile;
-		if (!P.vj0) return { error: 'profile hero: not imported (resolveProfile first)' };
-		const spec = { vj0: P.vj0, type, seed, xseed, at, profile: P.name || 'profile' };
-		if (P.hero != null) spec.hero = P.hero;
-		if (P.premium) spec.premium = true;
-		for (const k of EDITS) if (hero[k] != null && hero[k] !== false) spec[k] = hero[k];
-		const f = entryMod.newFightFromProfile(spec, { lean: true });
-		if (!f.error && hero.mp != null) f.h.f.G_(Math.max(0, Math.min(hero.mp | 0, f.h.e.n_())));
-		if (!f.error && hero.items) for (const [id, n] of hero.items) f.h.f.D.b_(id, n);
-		return f;
-	}
-	const spec = { mode: 'fightgen', type, seed, xseed, at };
-	for (const k of EDITS) if (hero && hero[k] != null && hero[k] !== false) spec[k] = hero[k];
-	const f = newFight(spec, { lean: true });
-	// solver-side edits after the setup (not in the oracle's flags: robust mode only): MP pool, extra pack items
-	if (!f.error && hero) {
-		if (hero.mp != null) f.h.f.G_(Math.max(0, Math.min(hero.mp | 0, f.h.e.n_())));
-		if (hero.items) for (const [id, n] of hero.items) f.h.f.D.b_(id, n);
-	}
+export function makeFight(hero, where) {
+	const f = hero && hero.profile ? profileFight(hero, where) : fightgenFight(hero, where);
+	if (!f.error) applySolverEdits(f, hero);
 	return f;
+}
+
+/** the player's hero (js/combat/entry.js): { profile: { vj0 (importSave(bytes).vj0), hero: index, premium } } */
+function profileFight(hero, { type, seed, xseed, at = 'start' }) {
+	if (!entryMod || !entryMod.newFightFromProfile) return { error: 'profile hero: js/combat/entry.js (newFightFromProfile) is not available' };
+	const P = hero.profile;
+	if (!P.vj0) return { error: 'profile hero: not imported (resolveProfile first)' };
+	const spec = { vj0: P.vj0, type, seed, xseed, at, profile: P.name || 'profile' };
+	if (P.hero != null) spec.hero = P.hero;
+	if (P.premium) spec.premium = true;
+	copyOracleEdits(spec, hero);
+	return entryMod.newFightFromProfile(spec, { lean: true });
+}
+
+function fightgenFight(hero, { type, seed, xseed, at = 'start' }) {
+	const spec = { mode: 'fightgen', type, seed, xseed, at };
+	if (hero) copyOracleEdits(spec, hero);
+	return newFight(spec, { lean: true });
+}
+
+function copyOracleEdits(spec, hero) {
+	for (const k of EDITS) if (hero[k] != null && hero[k] !== false) spec[k] = hero[k];
+}
+
+/** solver-side edits after the setup (not in the oracle's flags: robust mode only): MP pool, extra pack items */
+function applySolverEdits(f, hero) {
+	if (!hero) return;
+	if (hero.mp != null) f.h.f.G_(Math.max(0, Math.min(hero.mp | 0, f.h.e.n_())));
+	if (hero.items) for (const [id, n] of hero.items) f.h.f.D.b_(id, n);
 }
 
 /** the hero spec only uses oracle-replayable edits (exact mode can check its script in the JVM oracle) */
@@ -413,6 +466,9 @@ export function levelOf(h) {
 // freeze turns each ref into its position in hw.n / hw.o (the snapshot keeps both lists in order), thaw looks them
 // up in the restored level.
 
+/** what Walker.walk returns when the route moved on without an input: look again (null: the walk is over) */
+const AGAIN = undefined;
+
 export class Walker {
 	/**
 	 * opts: { recovery: true (visit unused fountains 48 / 58 / 95 as extra stops), rest: RestRule (between fights:
@@ -435,9 +491,11 @@ export class Walker {
 		this.legs = [];
 		this.cur = 0;
 		this.stall = 0;
-		this.tries = {};
-		this.lastKey = '';
+		this.tries = {};         // route index -> attempts at it
 		this.exitTries = 0;
+		this.exitReplans = 0;    // re-plans because the stairs did not take us (objectives left)
+		this.doorFails = {};     // cell -> times its door made us give up a leg
+		this.planError = null;
 		this.finished = false;
 		this.done = [];          // ref indexes bumped
 		this.failed = [];        // ref indexes given up
@@ -486,61 +544,94 @@ export class Walker {
 		return { t: 'step', dx, dy };
 	}
 
+	/** plan the route from here (js/plan/planner.js) and turn it into waypoints; a planner error leaves no route */
 	plan() {
-		const h = this.h;
-		const level = levelOf(h);
+		const level = this.planningLevel();
 		this.stats.plans++;
-		for (const i of this.blocked) level.cells[2 * i] = 0;
-		const doneSet = new Set([...this.done, ...this.failed].map((i) => this.refs[i]).filter(Boolean));
-		// done stops are used; given-up objects keep blocking their cells but are no stops (id -1: no type)
-		const failedSet = new Set(this.failed.map((i) => this.refs[i]).filter(Boolean));
-		for (const o of level.objects) { if (doneSet.has(o.ref)) o.e = 1; if (failedSet.has(o.ref)) o.id = -1; }
-		level.critters = level.critters.filter((c) => c.id === 180 || !doneSet.has(c.ref) || c.k !== 0);
-		// recovery stops: an unused fountain is worth the detour only while the pool it fills is short by half its value
-		const want = (id) => this.wantRecovery(id);
-		const extra = this.opts.recovery !== false;
-		const rw = (id) => {
-			const d = zw.Q.get(id) ?? zw.R.get(id) ?? null;
-			if (d == null) return undefined;
-			if (extra && zw.Q.has(id) && RECOVERY.has(id) && !d.t && want(id)) { const e = Object.create(d); e.t = true; e.n = true; return e; }
-			return d;
-		};
+		const options = this.planOptions();
 		let plan;
 		try {
-			// the first plan is exact up to 16 stops (Held-Karp, 50-200 ms); re-plans mid-dungeon up to 10 (~1 ms), heuristic beyond
-			plan = planRoute(level, { rw, bw: (id) => zw.R.get(id) ?? null, pwOf: (t) => zw.M[t], patterns: this.nonogramDone ? null : zw.O, tiles: zw.u, endAtExit: true, exactLimit: this.stats.plans > 1 ? (this.opts.replanExact ?? 10) : (this.opts.planExact ?? 16) });
+			plan = planRoute(level, options);
 		} catch (e) {
 			this.route = [];
 			this.planError = String(e && e.message || e);
 			return;
 		}
-		// recovery stops that are already used, or that the hero would not profit from, are dropped by the planner
-		// (used objects are no objectives: rw.n) -- fountains have rw.n? if not, mark used ones done here
-		const out = [];
+		this.followPlan(plan);
+	}
+
+	/** the live level as the planner sees it: walled-up cells, done stops used, given-up ones no stops */
+	planningLevel() {
+		const level = levelOf(this.h);
+		for (const i of this.blocked) level.cells[2 * i] = 0;
+		const doneSet = new Set([...this.done, ...this.failed].map((i) => this.refs[i]).filter(Boolean));
+		// given-up objects keep blocking their cells but are no stops (id -1: no type)
+		const failedSet = new Set(this.failed.map((i) => this.refs[i]).filter(Boolean));
+		for (const o of level.objects) { if (doneSet.has(o.ref)) o.e = 1; if (failedSet.has(o.ref)) o.id = -1; }
+		level.critters = level.critters.filter((c) => c.id === HERO_ID || !doneSet.has(c.ref) || c.k !== 0);
+		return level;
+	}
+
+	planOptions() {
+		// the first plan is exact up to 16 stops (Held-Karp, 50-200 ms); re-plans mid-dungeon up to 10 (~1 ms), heuristic beyond
+		const exactLimit = this.stats.plans > 1 ? (this.opts.replanExact ?? 10) : (this.opts.planExact ?? 16);
+		return { rw: (id) => this.objectDef(id), bw: (id) => zw.R.get(id) ?? null, pwOf: (t) => zw.M[t], patterns: this.nonogramDone ? null : zw.O, tiles: zw.u, endAtExit: true, exactLimit };
+	}
+
+	/**
+	 * An object's definition for the planner. An unused fountain becomes an objective (a recovery stop) while the pool
+	 * it fills is short by half its value: only then is it worth the detour.
+	 */
+	objectDef(id) {
+		const d = zw.Q.get(id) ?? zw.R.get(id) ?? null;
+		if (d == null) return undefined;
+		const recoveryStop = this.opts.recovery !== false && zw.Q.has(id) && RECOVERY.has(id) && !d.t && this.wantRecovery(id);
+		if (!recoveryStop) return d;
+		const stop = Object.create(d);
+		stop.t = true;
+		stop.n = true;
+		return stop;
+	}
+
+	/** adopt a planner result: one leg record per stop, and the waypoints that walk them */
+	followPlan(plan) {
+		const route = [];
 		const legs = [];
 		for (const leg of plan.legs) {
-			const s = leg.stop;
-			const exactFrom = s.walk ? leg.to - s.walk.length + 1 : Infinity;
-			const first = out.length;
-			const L = { kind: s.kind, label: s.label || null, rec: s.rec ? { id: s.rec.id, x: s.rec.x, y: s.rec.y, k: s.rec.k, ri: s.rec.ref ? this.ref(s.rec.ref) : -1 } : null, at: leg.at, steps: leg.steps, doing: leg.doing.map((d) => ({ text: d.text, at: d.at, ep: d.ep, mp: d.mp })), walk: !!s.walk };
+			const first = route.length;
 			const li = legs.length;
+			const L = this.legRecord(leg);
 			legs.push(L);
-			for (let k = leg.from + 1; k <= leg.to; k++) {
-				const p = plan.route[k];
-				if (p.jump) { out.push({ jump: true, leg: li }); continue; }
-				out.push({ i: this.cellIdx(p.x, p.y), exact: k >= exactFrom, leg: li });
-			}
-			if (s.kind === 'exit') out.push({ exit: true, leg: li });
-			else if (s.kind === 'barrels') out.push({ barrels: true, leg: li });
-			else if (s.rec && s.rec.ref && !s.walk) out.push({ bump: s.rec.k !== undefined ? 'cr' : 'obj', ri: L.rec.ri, leg: li });
-			else if (s.walk) out.push({ walkDone: true, leg: li });
-			if (s.walk) { const k = out.findIndex((w, j) => j >= first && w.exact); if (k >= 0) out[k].walkStart = true; }
+			for (const waypoint of this.cellWaypoints(plan.route, leg, li)) route.push(waypoint);
+			const stopWaypoint = stopWaypointOf(leg.stop, L, li);
+			if (stopWaypoint) route.push(stopWaypoint);
+			if (leg.stop.walk) markWalkStart(route, first);
 			L.first = first;
-			L.last = out.length - 1;
+			L.last = route.length - 1;
 		}
-		this.route = out;
+		this.route = route;
 		this.legs = legs;
 		this.cur = 0;
+	}
+
+	/** a leg as plain data: its stop (rec.ri: the stop's ref index), where it starts, its steps and the planner's doings */
+	legRecord(leg) {
+		const s = leg.stop;
+		const rec = s.rec ? { id: s.rec.id, x: s.rec.x, y: s.rec.y, k: s.rec.k, ri: s.rec.ref ? this.ref(s.rec.ref) : -1 } : null;
+		return { kind: s.kind, label: s.label || null, rec, at: leg.at, steps: leg.steps, doing: leg.doing.map((d) => ({ text: d.text, at: d.at, ep: d.ep, mp: d.mp })), walk: !!s.walk };
+	}
+
+	/** the cells of a leg (cells: the planner's route); the last s.walk.length of a nonogram leg must be walked exactly */
+	cellWaypoints(cells, leg, li) {
+		const s = leg.stop;
+		const exactFrom = s.walk ? leg.to - s.walk.length + 1 : Infinity;
+		const out = [];
+		for (let k = leg.from + 1; k <= leg.to; k++) {
+			const p = cells[k];
+			if (p.jump) out.push({ jump: true, leg: li });
+			else out.push({ i: this.cellIdx(p.x, p.y), exact: k >= exactFrom, leg: li });
+		}
+		return out;
 	}
 
 	/** a recovery object (fountain) is worth a detour now: its pool is short by more than half its value */
@@ -557,15 +648,17 @@ export class Walker {
 	 */
 	afterEncounter() {
 		if (this.opts.recovery === false || this.finished) return;
+		if (!this.unplannedFountainWanted()) return;
+		const replans = this.replans;
+		this.replan();
+		this.replans = replans;
+	}
+
+	/** an unused fountain is worth visiting now, and the rest of the route does not bump it */
+	unplannedFountainWanted() {
 		const planned = new Set();
 		for (let k = this.cur; k < this.route.length; k++) { const w = this.route[k]; if (w.bump === 'obj') planned.add(this.refs[w.ri]); }
-		for (const o of this.h.n) {
-			if (!RECOVERY.has(o.a.a) || o.e || planned.has(o) || !this.wantRecovery(o.a.a)) continue;
-			const r = this.replans;
-			this.replan();
-			this.replans = r;
-			return;
-		}
+		return this.h.n.some((o) => RECOVERY.has(o.a.a) && !o.e && !planned.has(o) && this.wantRecovery(o.a.a));
 	}
 
 	/**
@@ -573,20 +666,20 @@ export class Walker {
 	 * from the current one on, plus the seals of objective critters still alive.
 	 */
 	routeNeeds() {
-		const w = this.route[Math.min(this.cur, this.route.length - 1)];
+		const w = this.currentWaypoint();
 		const from = w ? w.leg : this.legs.length;
 		let mp = 0, ep = 0;
 		for (let i = from; i < this.legs.length; i++) {
 			const L = this.legs[i];
 			for (const d of L.doing) { mp += d.mp || 0; ep += d.ep || 0; }
-			if (L.rec && L.rec.k === undefined) { const def = zw.Q.get(L.rec.id); if (def && def.v) mp += def.v; }
+			if (L.rec && L.rec.k === undefined) mp += objectMp(L.rec.id);
 		}
 		const h = this.h;
 		let invincible = 0;
 		for (const m of h.o) {
 			if (m === h.f || m.u_() || !m.a.t) continue;
 			const seal = sealOf(h, m);
-			if (seal >= 1000) invincible++;   // bw.m0 bosses (100000) until their quest is done: no MP opens them
+			if (seal >= UNSEALABLE) invincible++;
 			else mp += seal;
 		}
 		return { mp, ep, invincible };
@@ -594,7 +687,7 @@ export class Walker {
 
 	/** EP of the current leg only (undergrowth, stuck doors) */
 	legEp() {
-		const w = this.route[Math.min(this.cur, this.route.length - 1)];
+		const w = this.currentWaypoint();
 		if (!w) return 0;
 		let ep = 0;
 		for (const d of this.legs[w.leg].doing) ep += d.ep || 0;
@@ -603,30 +696,39 @@ export class Walker {
 
 	/** MP of the current leg only: its doors / traps / undergrowth, the chest or sealed object at its stop, its critter's seal */
 	legNeeds() {
-		const w = this.route[Math.min(this.cur, this.route.length - 1)];
+		const w = this.currentWaypoint();
 		if (!w) return 0;
 		const L = this.legs[w.leg];
 		let mp = 0;
 		for (const d of L.doing) mp += d.mp || 0;
-		if (L.rec) {
-			if (L.rec.k === undefined) { const def = zw.Q.get(L.rec.id); if (def && def.v) mp += def.v; }
-			else { const o = L.rec.ri >= 0 ? this.refs[L.rec.ri] : null; if (o && o.e_ && o.e_() && !o.u_()) { const sl = sealOf(this.h, o); if (sl < 1000) mp += sl; } }
-		}
-		return mp;
+		if (!L.rec) return mp;
+		if (L.rec.k === undefined) return mp + objectMp(L.rec.id);
+		return mp + this.stopCritterSeal(L.rec);
+	}
+
+	/** the seal MP of a leg's live critter stop (0: gone, dead, unsealed, or one no MP opens) */
+	stopCritterSeal(rec) {
+		const o = rec.ri >= 0 ? this.refs[rec.ri] : null;
+		if (!o || !o.e_ || !o.e_() || o.u_()) return 0;
+		const seal = sealOf(this.h, o);
+		return seal < UNSEALABLE ? seal : 0;
 	}
 
 	/** the current stop: { kind, label, rec, at } (for encounter keys and the plan) */
 	stop() {
-		const w = this.route[Math.min(this.cur, this.route.length - 1)];
+		const w = this.currentWaypoint();
 		return w ? this.legs[w.leg] : null;
 	}
 
-	/** give up the current leg (markStop: its stop is not retried) and re-plan from here */
-	failLeg(markStop = true) {
+	/** the waypoint being walked to (the last one once the route is done; undefined with no route) */
+	currentWaypoint() { return this.route[Math.min(this.cur, this.route.length - 1)]; }
+
+	/** give up the current leg and re-plan from here; its stop is not retried unless keepStop */
+	failLeg({ keepStop = false } = {}) {
 		this.stats.skips++;
 		const w = this.route[this.cur];
 		const L = w ? this.legs[w.leg] : null;
-		if (markStop && L && L.rec && L.rec.ri >= 0) this.failed.push(L.rec.ri);
+		if (!keepStop && L && L.rec && L.rec.ri >= 0) this.failed.push(L.rec.ri);
 		if (L && L.walk) this.nonogramDone = true;
 		if (L && L.kind === 'exit') { this.finished = true; return; }
 		this.replan();
@@ -656,7 +758,7 @@ export class Walker {
 		this.stats.walkInputs++;
 		for (let guard = 0; guard < 200; guard++) {
 			const r = this.walk();
-			if (r !== undefined) return r;
+			if (r !== AGAIN) return r;
 			if (this.finished) return null;
 		}
 		this.finished = true;
@@ -682,138 +784,194 @@ export class Walker {
 		if (!h.n.includes(o) || o.e || (!o.f_(h) && !RECOVERY.has(o.a.a))) this.done.push(ri);
 	}
 
+	/** one look at the route: an input, AGAIN when the route moved on (look again), or null when it is done */
 	walk() {
-		const h = this.h;
-		if (this.cur >= this.route.length) {
-			if (h.i_() > 0 && this.route.length && this.replans < (this.opts.maxReplans ?? 60)) { this.replan(); return undefined; }
-			this.finished = true;
-			return null;
-		}
-		const w0 = this.route[this.cur];
-		if (this.stall > 8) { this.failLeg(); return undefined; }
+		if (this.cur >= this.route.length) return this.routeEnd();
+		const w = this.route[this.cur];
+		if (this.stall > 8) { this.failLeg(); return AGAIN; }
 		const H = this.heroCell();
+		this.skipReachedCells(H);
+		if (this.route[this.cur] !== w) return AGAIN;
+		const tries = (this.tries[this.cur] || 0) + 1;
+		this.tries[this.cur] = tries;
+		if (tries > 14) { this.failLeg(); return AGAIN; }
+		if (w.walkDone) { this.nonogramDone = true; this.cur++; return AGAIN; }
+		if (w.barrels) return this.barrels(H, tries);
+		if (this.startsNonogramWalk(w)) { this.walkNonogramDips(w); return AGAIN; }
+		if (w.exit) return this.walkExit();
+		if (w.bump) return this.walkBump(w, H, tries);
+		if (w.jump) return this.walkJump(H, tries);
+		return this.walkCell(w, H, tries);
+	}
+
+	/** past the last waypoint: re-plan while objectives are left (and re-plans remain), else the walk is over */
+	routeEnd() {
+		if (this.h.i_() > 0 && this.route.length && this.replans < (this.opts.maxReplans ?? 60)) { this.replan(); return AGAIN; }
+		this.finished = true;
+		return null;
+	}
+
+	/** move cur past the plain cells ahead that the hero already stands on (an exact cell only when it is the current one) */
+	skipReachedCells(H) {
+		// the window is cur + 60 for the cur at each step: it moves on with every cell skipped
 		for (let k = this.cur; k < Math.min(this.route.length, this.cur + 60); k++) {
 			const q = this.route[k];
-			if (q.jump || q.bump || q.exit || q.walkDone || q.barrels) break;
+			if (isActionWaypoint(q)) break;
 			if (q.exact) { if (k === this.cur && q.i === H) this.cur = k + 1; break; }
 			if (q.i === H) this.cur = k + 1;
 		}
-		if (this.route[this.cur] !== w0) return undefined;
-		const w = w0;
-		const tk = this.cur;
-		const tries = (this.tries[tk] || 0) + 1;
-		this.tries[tk] = tries;
-		if (tries > 14) { this.failLeg(); return undefined; }
-		const L = this.legs[w.leg];
+	}
 
-		if (w.walkDone) { this.nonogramDone = true; this.cur++; return undefined; }
-		if (w.barrels) return this.barrels(H, tries);
-		if (w.exact && this.cur > 0 && this.route[this.cur - 1].walkStart && !L.rewalked) {
-			this.legs = this.legs.slice();
-			this.legs[w.leg] = { ...L, rewalked: true };
-			const walk = this.nonogramDips();
-			let end = this.cur;
-			while (end < this.route.length && this.route[end].exact) end++;
-			this.route = this.route.slice();
-			this.route.splice(this.cur, end - this.cur, ...walk.map((i) => ({ i, exact: true, leg: w.leg })));
-			this.tries = {};
-			return undefined;
+	/** the first exact cell of a nonogram leg, not yet rewalked: its walk is replaced by the dips the floor needs now */
+	startsNonogramWalk(w) {
+		return w.exact && this.cur > 0 && this.route[this.cur - 1].walkStart && !this.legs[w.leg].rewalked;
+	}
+
+	walkNonogramDips(w) {
+		// legs and route are shared with checkpoints (freeze): copy, never change them in place
+		this.legs = this.legs.slice();
+		this.legs[w.leg] = { ...this.legs[w.leg], rewalked: true };
+		const walk = this.nonogramDips();
+		let end = this.cur;
+		while (end < this.route.length && this.route[end].exact) end++;
+		this.route = this.route.slice();
+		this.route.splice(this.cur, end - this.cur, ...walk.map((i) => ({ i, exact: true, leg: w.leg })));
+		this.tries = {};
+	}
+
+	/** step onto the stairs next to the hero; after 3 tries that did not take us, re-plan (objectives left) or stop */
+	walkExit() {
+		const h = this.h;
+		const stairs = this.stairsStep();
+		if (!stairs) { this.failLeg(); return AGAIN; }
+		if (++this.exitTries <= 3) return stairs;
+		// the stairs did not take us: objectives left (a forest exit lock, a stop given up too early) -> re-plan
+		if (h.i_() > 0 && ++this.exitReplans <= 3) { this.exitTries = 0; this.replan(); return AGAIN; }
+		this.finished = true;
+		return null;
+	}
+
+	/** the step onto a stairs tile next to the hero, or null */
+	stairsStep() {
+		const h = this.h;
+		for (const [dx, dy] of DIR4) {
+			const x = h.f.b.a + dx, y = h.f.b.b + dy;
+			if (x < 0 || y < 0 || x >= h.g || y >= h.h) continue;
+			if (h.j[y * h.g + x].a === STAIRS_TILE) return { t: 'step', dx, dy };
 		}
-		if (w.exit) {
-			for (const [dx, dy] of DIR4) {
-				const x = h.f.b.a + dx, y = h.f.b.b + dy;
-				if (x < 0 || y < 0 || x >= h.g || y >= h.h) continue;
-				if (h.j[y * h.g + x].a === 5) {
-					if (++this.exitTries > 3) {
-						// the stairs did not take us: objectives left (a forest exit lock, a stop given up too early) -> re-plan
-						if (h.i_() > 0 && (this.exitReplans = (this.exitReplans || 0) + 1) <= 3) { this.exitTries = 0; this.replan(); return undefined; }
-						this.finished = true;
-						return null;
-					}
-					return { t: 'step', dx, dy };
-				}
-			}
-			this.failLeg();
-			return undefined;
-		}
-		if (w.bump) {
-			const live = this.refs[w.ri];
-			const gone = live == null || (w.bump === 'obj' ? !h.n.includes(live) : !h.o.includes(live) || live.u_());
-			const used = live != null && w.bump === 'obj' && RECOVERY.has(live.a.a) && live.e;
-			if (gone || used || this.done.includes(w.ri)) { this.stats.stops++; this.cur++; return undefined; }
-			if (tries > 6) { this.failLeg(); return undefined; }
-			this.stats.bumps++;
-			const tgt = this.footNear(live);
-			if (this.adjacent(H, tgt) || w.bump === 'cr' || tries > 3) this.pendingBump = this.adjacent(H, tgt) ? w.ri : -1;
-			return this.tapCell(tgt);
-		}
-		if (w.jump) {
-			const land = this.route[this.cur + 1];
-			if (this.jumpFrom != null && H !== this.jumpFrom) { this.jumpFrom = null; this.cur++; return undefined; }
-			if (land && land.i === H) { this.cur += 2; return undefined; }
-			if (land && land.i !== undefined && this.pathLen(land.i) > 0) { this.cur++; return undefined; }
-			const t = this.teleportNear(H);
-			if (t == null || tries > 4) {
-				const prev = this.route[this.cur - 1];
-				if (t == null && prev && prev.i !== undefined && prev.i !== H && tries <= 4 && this.pathLen(prev.i) > 0) return this.tapCell(prev.i);
-				this.failLeg();
-				return undefined;
-			}
+		return null;
+	}
+
+	/** tap the stop's object or critter (from a cell next to it) until it is used, gone or given up */
+	walkBump(w, H, tries) {
+		const live = this.refs[w.ri];
+		if (this.bumpDone(w, live)) { this.stats.stops++; this.cur++; return AGAIN; }
+		if (tries > 6) { this.failLeg(); return AGAIN; }
+		this.stats.bumps++;
+		const tgt = this.footNear(live);
+		if (this.adjacent(H, tgt) || w.bump === 'cr' || tries > 3) this.pendingBump = this.adjacent(H, tgt) ? w.ri : -1;
+		return this.tapCell(tgt);
+	}
+
+	/** a bump stop needs no more taps: its target is gone (or dead), a fountain already used, or it was seen done */
+	bumpDone(w, live) {
+		const h = this.h;
+		const gone = live == null || (w.bump === 'obj' ? !h.n.includes(live) : !h.o.includes(live) || live.u_());
+		const used = live != null && w.bump === 'obj' && RECOVERY.has(live.a.a) && live.e;
+		return gone || used || this.done.includes(w.ri);
+	}
+
+	/** a teleport (ladder, hatch, portal): tap it, then move on once the hero has landed somewhere else */
+	walkJump(H, tries) {
+		const land = this.route[this.cur + 1];
+		if (this.jumpFrom != null && H !== this.jumpFrom) { this.jumpFrom = null; this.cur++; return AGAIN; }
+		if (land && land.i === H) { this.cur += 2; return AGAIN; }
+		if (land && land.i !== undefined && this.pathLen(land.i) > 0) { this.cur++; return AGAIN; }
+		const t = this.teleportNear(H);
+		if (t != null && tries <= 4) {
 			this.stats.bumps++;
 			this.jumpFrom = H;
 			return this.tapCell(t);
 		}
+		const prev = this.route[this.cur - 1];
+		if (t == null && prev && prev.i !== undefined && prev.i !== H && tries <= 4 && this.pathLen(prev.i) > 0) return this.tapCell(prev.i);
+		this.failLeg();
+		return AGAIN;
+	}
+
+	/** a route cell: open what stands on it, walk an exact (nonogram) cell step by step, or tap ahead */
+	walkCell(w, H, tries) {
 		const i = w.i;
-		const o = h.k[i];
-		if (o != null && o !== h.f && !(o.a.a === 84) && this.adjacent(H, i)) {
-			if (tries > 6) {
-				// a door that needs something first (a key: one per locked door) is re-planned around, not walled up,
-				// until it failed twice
-				const k = 'door' + i;
-				this.tries[k] = (this.tries[k] || 0);
-				this.doorFails = this.doorFails || {};
-				this.doorFails[i] = (this.doorFails[i] || 0) + 1;
-				const retry = DOOR_IDS.has(o.a.a) && this.doorFails[i] <= 2;
-				if (!retry) this.blocked.push(i);
-				this.failLeg(!retry);
-				return undefined;
-			}
+		const o = this.h.k[i];
+		if (this.blocksCell(o) && this.adjacent(H, i)) return this.openBlocker(i, o, tries);
+		if (w.exact && this.adjacent(H, i)) return this.stepTo(i);
+		if (w.exact && H !== i) {
+			if (this.pathLen(i) > 0) return this.tapCell(i);
+			return this.stepOrFail(i);
+		}
+		return this.tapAhead(i, H);
+	}
+
+	/** an object on the route next to the hero (a door, a wall to smash): tap it; after 6 tries wall it up and re-plan */
+	openBlocker(i, o, tries) {
+		if (tries <= 6) {
 			this.stats.bumps++;
 			return this.tapCell(i);
 		}
-		if (w.exact) {
-			if (this.adjacent(H, i)) return this.stepTo(i);
-			if (H !== i) {
-				if (this.pathLen(i) > 0) return this.tapCell(i);
-				const s = this.stepTo(i);
-				if (s) return s;
-				this.failLeg();
-				return undefined;
-			}
-		}
-		// tap a route cell ahead: the furthest plain one the game can path to (fewer inputs; the engine walks it)
-		// (a tap that does not move us -- its path bumps something the route does not, e.g. a sealed critter -- is
-		// retried shorter, then as single steps)
+		// a door that needs something first (a key: one per locked door) is re-planned around, not walled up, until it
+		// failed twice
+		this.doorFails[i] = (this.doorFails[i] || 0) + 1;
+		const retry = DOOR_IDS.has(o.a.a) && this.doorFails[i] <= 2;
+		if (!retry) this.blocked.push(i);
+		this.failLeg({ keepStop: retry });
+		return AGAIN;
+	}
+
+	/**
+	 * Tap a route cell ahead: the furthest plain one the game can path to (fewer inputs; the engine walks it). A tap
+	 * that does not move us (its path bumps something the route does not, e.g. a sealed critter) is retried shorter,
+	 * then as single steps.
+	 */
+	tapAhead(i, H) {
 		if (this.stall >= 4) { const st = this.stepTo(i); if (st && this.stall % 2 === 0) return st; }
+		const ahead = this.opts.tapAhead ?? 30;
+		const reach = this.stall >= 1 ? Math.max(2, ahead >> (this.stall + 1)) : ahead;
+		const tap = this.tapBackFrom(this.lastPlainCell(reach), H);
+		if (tap) return tap;
+		return this.stepOrFail(i);
+	}
+
+	/** the route index of the last plain, unblocked cell within reach of cur (cur itself when there is none) */
+	lastPlainCell(reach) {
 		let last = this.cur;
-		const lim = this.stall >= 1 ? Math.max(2, (this.opts.tapAhead ?? 30) >> (this.stall + 1)) : (this.opts.tapAhead ?? 30);
-		for (let k = this.cur; k < Math.min(this.route.length, this.cur + lim); k++) {
+		for (let k = this.cur; k < Math.min(this.route.length, this.cur + reach); k++) {
 			const q = this.route[k];
-			if (q.jump || q.bump || q.exit || q.exact || q.walkDone || q.barrels) break;
-			const oo = h.k[q.i];
-			if (oo != null && oo !== h.f && oo.a.a !== 84) break;
+			if (isActionWaypoint(q) || q.exact || this.blocksCell(this.h.k[q.i])) break;
 			last = k;
 		}
+		return last;
+	}
+
+	/** a tap on the furthest route cell from `last` back to cur (at most 12) the hero can path to; null if none */
+	tapBackFrom(last, H) {
 		for (let k = last, n = 0; k >= this.cur && n < 12; k--, n++) {
 			const ci = this.route[k].i;
 			if (ci === H) continue;
 			if (this.pathLen(ci) > 0) return this.tapCell(ci);
 		}
+		return null;
+	}
+
+	/** a single step toward cell i, or give the leg up when there is none */
+	stepOrFail(i) {
 		const s = this.stepTo(i);
 		if (s) return s;
 		this.failLeg();
-		return undefined;
+		return AGAIN;
 	}
+
+	/** an object other than the hero that stands in the way (everything but reeds) */
+	blocksCell(o) { return o != null && o !== this.h.f && o.a.a !== REEDS; }
 
 	/** the floor nonogram (c30.u0): dips from the corner (2,2) that toggle exactly the cells that differ */
 	nonogramDips() {
@@ -849,13 +1007,13 @@ export class Walker {
 
 	barrels(H, tries) {
 		const h = this.h, c = this.c, g = h.g;
-		if (c.u0 === 0 || h.k[c.u0] == null) { this.cur++; return undefined; }
+		if (c.u0 === 0 || h.k[c.u0] == null) { this.cur++; return AGAIN; }
 		if (!this.pushes) { this.pushes = this.solveBarrels() || []; this.pushAt = 0; }
-		if (this.pushAt >= this.pushes.length || tries > 200) { this.pushes = null; this.cur++; return undefined; }
+		if (this.pushAt >= this.pushes.length || tries > 200) { this.pushes = null; this.cur++; return AGAIN; }
 		const p = this.pushes[this.pushAt];
 		if (H === p.from) {
 			const o = h.k[p.from + p.d[0] + p.d[1] * g];
-			if (o == null || !o.a.u) { this.pushes = null; this.cur++; return undefined; }
+			if (o == null || !o.a.u) { this.pushes = null; this.cur++; return AGAIN; }
 			this.pushAt++;
 			return { t: 'step', dx: p.d[0], dy: p.d[1] };
 		}
@@ -863,89 +1021,22 @@ export class Walker {
 		if (this.pathLen(p.from) > 0) return this.tapCell(p.from);
 		this.pushes = null;
 		this.cur++;
-		return undefined;
+		return AGAIN;
 	}
 
+	/** the pushes that cover the plates, or null (js/solve README: barrels) */
 	solveBarrels() {
-		const h = this.h, c = this.c, g = h.g;
-		const dx0 = c.u0 % g, dy0 = (c.u0 / g) | 0;
-		const near = (i) => Math.max(Math.abs((i % g) - dx0), Math.abs(((i / g) | 0) - dy0)) <= 12;
-		const plates = [];
-		for (let i = 0; i < h.j.length; i++) if (h.j[i].n_() && near(i)) plates.push(i);
-		const boxes = [];
-		for (const o of h.n) { const i = o.b.b * g + o.b.a; if (o.a.u && near(i)) boxes.push(i); }
-		const open = plates.filter((p) => !boxes.includes(p));
-		const loose = boxes.filter((b) => !plates.includes(b));
-		if (!open.length || loose.length < open.length || loose.length > 6) return null;
-		const H0 = this.heroCell();
-		const floor = (i, occ) => !occ.has(i) && (h.z_(i % g, (i / g) | 0) || i === H0 || boxes.includes(i)) && c.j[i] > 0;
-		const reach = (from, occ) => {
-			const seen = new Set([from]);
-			const q = [from];
-			while (q.length) {
-				const u = q.pop();
-				for (const [dx, dy] of DIR4) {
-					const v = u + dx + dy * g;
-					if (!seen.has(v) && floor(v, occ) && near(v)) { seen.add(v); q.push(v); }
-				}
-			}
-			return seen;
-		};
-		const one = (box, goal, hero, occ) => {
-			const key = (b, p) => b * h.j.length + p;
-			const prev = new Map([[key(box, hero), null]]);
-			const q = [[box, hero]];
-			while (q.length) {
-				const [b, p] = q.shift();
-				if (b === goal) {
-					const out = [];
-					for (let k = key(b, p); prev.get(k); k = prev.get(k).k) out.push(prev.get(k).push);
-					return { pushes: out.reverse(), hero: p };
-				}
-				const occ2 = new Set(occ); occ2.add(b);
-				const r = reach(p, occ2);
-				for (const [dx, dy] of DIR4) {
-					const from = b - dx - dy * g, to = b + dx + dy * g;
-					if (!r.has(from)) continue;
-					const nb = floor(to, occ2) && near(to) ? to : from;
-					const k = key(nb, b);
-					if (prev.has(k)) continue;
-					prev.set(k, { k: key(b, p), push: { from, d: [dx, dy] } });
-					q.push([nb, b]);
-				}
-				if (prev.size > 200000) return null;
-			}
-			return null;
-		};
-		let budget = 600;
-		const dist = (a, b) => Math.abs((a % g) - (b % g)) + Math.abs(((a / g) | 0) - ((b / g) | 0));
-		const dfs = (loose, open, placed, hero) => {
-			if (!open.length) return [];
-			const pairs = [];
-			for (const b of loose) for (const pl of open) pairs.push([dist(b, pl), b, pl]);
-			pairs.sort((x, y) => x[0] - y[0]);
-			for (const [, b, pl] of pairs) {
-				if (--budget < 0) return null;
-				const occ = new Set([...placed, ...loose.filter((x) => x !== b)]);
-				const r = one(b, pl, hero, occ);
-				if (!r) continue;
-				const rest = dfs(loose.filter((x) => x !== b), open.filter((x) => x !== pl), new Set([...placed, pl]), r.hero);
-				if (rest) return [...r.pushes, ...rest];
-			}
-			return null;
-		};
-		return dfs(loose, open, new Set(boxes.filter((b) => plates.includes(b))), H0);
+		return new BarrelPuzzle(this.h, this.c, this.heroCell()).solve();
 	}
 
+	/** the cell to tap to use object or critter o: of its footprint, the one nearest the hero (next to the hero on a tie) */
 	footNear(o) {
 		const h = this.h;
-		const rt = o.a;
-		const T = rt.T || 1, U = rt.U || 1;
-		const th = o.c ? T : U, tw = o.c ? U : T;
+		if (o.e_()) return o.b.b * h.g + o.b.a;
 		const H = this.heroCell();
+		const { w, h: depth } = footprint(o);
 		let best = o.b.b * h.g + o.b.a, bd = Infinity;
-		if (o.e_()) return best;
-		for (let dy = 0; dy < th; dy++) for (let dx = 0; dx < tw; dx++) {
+		for (let dy = 0; dy < depth; dy++) for (let dx = 0; dx < w; dx++) {
 			const x = o.b.a + dx, y = o.b.b - dy;
 			if (x < 0 || y < 0 || x >= h.g || y >= h.h) continue;
 			const i = y * h.g + x;
@@ -955,21 +1046,157 @@ export class Walker {
 		return best;
 	}
 
+	/** a teleport cell next to hero cell H, or null */
 	teleportNear(H) {
 		const h = this.h, g = h.g;
 		const hx = H % g, hy = (H / g) | 0;
 		for (const o of h.n) {
 			if (!TELEPORTS.has(o.a.a)) continue;
-			const rt = o.a;
-			const T = rt.T || 1, U = rt.U || 1;
-			const th = o.c ? T : U, tw = o.c ? U : T;
-			for (let dy = 0; dy < th; dy++) for (let dx = 0; dx < tw; dx++) {
+			const { w, h: depth } = footprint(o);
+			for (let dy = 0; dy < depth; dy++) for (let dx = 0; dx < w; dx++) {
 				const x = o.b.a + dx, y = o.b.b - dy;
 				if (Math.abs(x - hx) + Math.abs(y - hy) === 1) return y * g + x;
 			}
 		}
 		return null;
 	}
+}
+
+/** a waypoint that is an action (jump, bump, exit, nonogram end, barrels), not a plain cell to walk */
+function isActionWaypoint(q) { return q.jump || q.bump || q.exit || q.walkDone || q.barrels; }
+
+/** the waypoint that does a leg's stop (L: its leg record, li: its index), or null when walking there is all */
+function stopWaypointOf(s, L, li) {
+	if (s.kind === 'exit') return { exit: true, leg: li };
+	if (s.kind === 'barrels') return { barrels: true, leg: li };
+	if (s.rec && s.rec.ref && !s.walk) return { bump: s.rec.k !== undefined ? 'cr' : 'obj', ri: L.rec.ri, leg: li };
+	if (s.walk) return { walkDone: true, leg: li };
+	return null;
+}
+
+/** flag the first exact cell of a nonogram leg (its waypoints start at `first`): the dips are worked out there */
+function markWalkStart(route, first) {
+	const k = route.findIndex((w, j) => j >= first && w.exact);
+	if (k >= 0) route[k].walkStart = true;
+}
+
+/** MP to open an object stop (a sealed chest: rw.v), 0 for none */
+function objectMp(id) {
+	const def = zw.Q.get(id);
+	return def && def.v ? def.v : 0;
+}
+
+/** an object's footprint in cells: w along x, h along -y from its anchor (o.c: turned) */
+function footprint(o) {
+	const T = o.a.T || 1, U = o.a.U || 1;
+	return o.c ? { w: U, h: T } : { w: T, h: U };
+}
+
+/**
+ * The barrel room (c30.u0): push the loose barrels onto the open pressure plates within 12 cells of it. A depth-first
+ * search over (barrel, plate) pairs, nearest first, at most 600 tries; each push path is a breadth-first search over
+ * (barrel, hero) cells. solve() returns the pushes ({ from: the hero's cell, d: [dx, dy] }) in order, or null.
+ */
+class BarrelPuzzle {
+	constructor(h, c, heroCell) {
+		this.h = h;
+		this.c = c;
+		this.g = h.g;
+		this.cx = c.u0 % h.g;
+		this.cy = (c.u0 / h.g) | 0;
+		this.hero0 = heroCell;
+		this.plates = [];
+		for (let i = 0; i < h.j.length; i++) if (h.j[i].n_() && this.near(i)) this.plates.push(i);
+		this.boxes = [];
+		for (const o of h.n) { const i = o.b.b * h.g + o.b.a; if (o.a.u && this.near(i)) this.boxes.push(i); }
+		this.budget = 600;
+	}
+
+	solve() {
+		const open = this.plates.filter((p) => !this.boxes.includes(p));
+		const loose = this.boxes.filter((b) => !this.plates.includes(b));
+		if (!open.length || loose.length < open.length || loose.length > 6) return null;
+		const placed = new Set(this.boxes.filter((b) => this.plates.includes(b)));
+		return this.search({ loose, open, placed, hero: this.hero0 });
+	}
+
+	/** pushes that put the loose barrels on the open plates from this state, or null (out of tries, or none) */
+	search({ loose, open, placed, hero }) {
+		if (!open.length) return [];
+		for (const [b, pl] of this.pairsByDistance(loose, open)) {
+			if (--this.budget < 0) return null;
+			const occupied = new Set([...placed, ...loose.filter((x) => x !== b)]);
+			const pushed = this.pushPath(b, pl, { hero, occupied });
+			if (!pushed) continue;
+			const rest = this.search({ loose: loose.filter((x) => x !== b), open: open.filter((x) => x !== pl), placed: new Set([...placed, pl]), hero: pushed.hero });
+			if (rest) return [...pushed.pushes, ...rest];
+		}
+		return null;
+	}
+
+	/** every (barrel, plate) pair, nearest first */
+	pairsByDistance(loose, open) {
+		const pairs = [];
+		for (const b of loose) for (const pl of open) pairs.push([this.distance(b, pl), b, pl]);
+		pairs.sort((x, y) => x[0] - y[0]);
+		return pairs.map(([, b, pl]) => [b, pl]);
+	}
+
+	/** pushes that move barrel `box` onto `goal` with the other barrels fixed: { pushes, hero: where the hero ends }, or null */
+	pushPath(box, goal, { hero, occupied }) {
+		const g = this.g;
+		const prev = new Map([[this.stateKey(box, hero), null]]);
+		const queue = [[box, hero]];
+		while (queue.length) {
+			const [b, p] = queue.shift();
+			if (b === goal) return { pushes: pushesTo(prev, this.stateKey(b, p)), hero: p };
+			const occ = new Set(occupied); occ.add(b);
+			const reachable = this.reach(p, occ);
+			for (const [dx, dy] of DIR4) {
+				const from = b - dx - dy * g, to = b + dx + dy * g;
+				if (!reachable.has(from)) continue;
+				const nb = this.floor(to, occ) && this.near(to) ? to : from;
+				const k = this.stateKey(nb, b);
+				if (prev.has(k)) continue;
+				prev.set(k, { k: this.stateKey(b, p), push: { from, d: [dx, dy] } });
+				queue.push([nb, b]);
+			}
+			if (prev.size > 200000) return null;
+		}
+		return null;
+	}
+
+	/** the cells the hero can walk to from `from` around the occupied ones (a flood fill) */
+	reach(from, occ) {
+		const g = this.g;
+		const seen = new Set([from]);
+		const stack = [from];
+		while (stack.length) {
+			const u = stack.pop();
+			for (const [dx, dy] of DIR4) {
+				const v = u + dx + dy * g;
+				if (!seen.has(v) && this.floor(v, occ) && this.near(v)) { seen.add(v); stack.push(v); }
+			}
+		}
+		return seen;
+	}
+
+	/** a cell the hero or a barrel can stand on, unless occupied */
+	floor(i, occ) {
+		const g = this.g;
+		return !occ.has(i) && (this.h.z_(i % g, (i / g) | 0) || i === this.hero0 || this.boxes.includes(i)) && this.c.j[i] > 0;
+	}
+
+	near(i) { return Math.max(Math.abs((i % this.g) - this.cx), Math.abs(((i / this.g) | 0) - this.cy)) <= 12; }
+	distance(a, b) { const g = this.g; return Math.abs((a % g) - (b % g)) + Math.abs(((a / g) | 0) - ((b / g) | 0)); }
+	stateKey(box, hero) { return box * this.h.j.length + hero; }
+}
+
+/** the pushes that led to state key k, first to last (prev: key -> { k: the key before, push }) */
+function pushesTo(prev, k) {
+	const out = [];
+	for (let at = k; prev.get(at); at = prev.get(at).k) out.push(prev.get(at).push);
+	return out.reverse();
 }
 
 /** deep copy of plain data (arrays / objects / primitives) */
@@ -1004,18 +1231,32 @@ export class RestRule {
 		const h = fight.h;
 		const P = heroOf(h);
 		const reserve = this.mpReserve === 'route' ? (walker ? walker.routeNeeds().mp : 0) : this.mpReserve;
-		// MP is spent only where it buys something: with free MP (top-ups), Doctor / Charge repair HP / EP up to what the
-		// coming fights need (this.need = { hp, ep }, set by the solver from its scout: robust.js / exact.js), Doctor
-		// never above half HP (its engine limit). Without a need: the old rule (Doctor below half, Charge below a quarter).
-		const free = MP_FREE;
-		const need = this.need;
 		const half = (P.hpM + 1) >> 1;
-		const hpTarget = free && need ? Math.min(half, need.hp) : half;
-		const legEp = walker ? walker.legEp() : 0;
-		const epTarget = this.epLow === 'auto' ? (free && need ? Math.min(P.epM, need.ep + legEp) : Math.max(6, (P.epM / 4) | 0)) : this.epLow;
-		const mpFor = (c) => free || P.mp - c >= reserve;
-		if (this.doctor && P.hp < half && P.hp < hpTarget && mpFor(6) && canSkill(h, SKILL.DOCTOR)) return { t: 'skill', id: SKILL.DOCTOR };
-		if (this.charge && P.ep < epTarget && P.ep + 10 <= P.epM + 4 && mpFor(6) && canSkill(h, SKILL.CHARGE)) return { t: 'skill', id: SKILL.CHARGE };
+		const mpFor = (cost) => MP_FREE || P.mp - cost >= reserve;
+		if (this.doctor && P.hp < half && P.hp < this.hpTarget(P) && mpFor(6) && canSkill(h, SKILL.DOCTOR)) return { t: 'skill', id: SKILL.DOCTOR };
+		if (this.charge && P.ep < this.epTarget(P, walker) && P.ep + 10 <= P.epM + 4 && mpFor(6) && canSkill(h, SKILL.CHARGE)) return { t: 'skill', id: SKILL.CHARGE };
+		return this.itemRest(h, P, walker);
+	}
+
+	// MP is spent only where it buys something: with free MP (top-ups), Doctor / Charge repair HP / EP up to what the
+	// coming fights need (this.need = { hp, ep }, set by the solver from its scout: robust.js / exact.js), Doctor never
+	// above half HP (its engine limit). Without a need: the old rule (Doctor below half, Charge below a quarter).
+
+	/** the HP Doctor heals up to */
+	hpTarget(P) {
+		const half = (P.hpM + 1) >> 1;
+		return MP_FREE && this.need ? Math.min(half, this.need.hp) : half;
+	}
+
+	/** the EP Charge tops up to (with a need: the coming fights' EP plus the current leg's undergrowth and stuck doors) */
+	epTarget(P, walker) {
+		if (this.epLow !== 'auto') return this.epLow;
+		if (MP_FREE && this.need) return Math.min(P.epM, this.need.ep + (walker ? walker.legEp() : 0));
+		return Math.max(6, (P.epM / 4) | 0);
+	}
+
+	/** a potion or food below the item floors, or null */
+	itemRest(h, P, walker) {
 		// MP for the route (seals, doors, chests): an MP item only when allowed and the pool cannot pay what is ahead
 		if (this.mpItems && P.mp < 8 && walker && walker.routeNeeds().mp > P.mp) { const id = bestItem(h, 'mp', P.mpM - P.mp, false); if (id) return { t: 'potion', id }; }
 		if (this.hpItemFrac > 0 && P.hp < P.hpM * this.hpItemFrac) { const id = bestItem(h, 'hp', P.hpM - P.hp, false); if (id) return { t: 'potion', id }; }
@@ -1073,23 +1314,33 @@ export class Run {
 	 * Ledger.topUps (at = the input it comes before); trimTopUps gives the least the player must solve for.
 	 */
 	topUpFor(inp) {
-		const o = this.opts.topUp;
 		const h = this.fight.h, me = h.f;
 		if (me.u_() || !inp) return;
-		const mpM = h.e.n_(), P = me.E_();
-		if (P >= mpM) return;
-		let need = Math.min(mpM, o.reserve ?? 30);
-		if (inp.t === 'skill') { const sk = zw.q.get(inp.id); if (sk) need = Math.max(need, sk.g); }
-		else if (inp.t === 'unseal' || inp.t === 'tap') {
-			const x = inp.x, y = inp.y;
-			const occ = x >= 0 && y >= 0 && x < h.g && y < h.h ? h.k[y * h.g + x] : null;
-			if (occ && occ !== me && typeof occ.i_ === 'function') { const v = occ.i_(h.e); if (v > 0 && v < 1000) need = Math.max(need, v); }
-		}
-		if (!h.C && this._walker) need = Math.max(need, this._walker.legNeeds() + (o.reserve ?? 30));
-		if (P >= Math.min(mpM, need)) return;
-		const st = this._walker ? this._walker.stop() : null;
+		const mpM = h.e.n_(), pool = me.E_();
+		if (pool >= mpM) return;
+		if (pool >= Math.min(mpM, this.mpWanted(inp, mpM))) return;
+		const topUp = this.topUpRecord(mpM, pool);
 		me.G_(mpM);
-		this.led.topUps.push({ at: this.led.inputs, stop: st ? { kind: st.kind, rec: st.rec ? { id: st.rec.id, x: st.rec.x, y: st.rec.y } : null, at: st.at || null } : null, enc: h.C ? Math.max(0, this.fights - 1) : this.fights, amount: mpM - P, pool: P, min: mpM, fight: !!h.C });
+		this.led.topUps.push(topUp);
+	}
+
+	/** the pool an input wants: the reserve, the MP of the skill or seal it uses, out of combat the current leg's MP too */
+	mpWanted(inp, mpM) {
+		const h = this.fight.h;
+		const reserve = this.opts.topUp.reserve ?? 30;
+		let need = Math.min(mpM, reserve);
+		if (inp.t === 'skill') { const sk = zw.q.get(inp.id); if (sk) need = Math.max(need, sk.g); }
+		else if (inp.t === 'unseal' || inp.t === 'tap') { const seal = sealAt(h, inp.x, inp.y); if (seal > 0) need = Math.max(need, seal); }
+		if (!h.C && this._walker) need = Math.max(need, this._walker.legNeeds() + reserve);
+		return need;
+	}
+
+	/** a Ledger.topUps entry for filling the pool from `pool` to mpM before the next input */
+	topUpRecord(mpM, pool) {
+		const h = this.fight.h;
+		const st = this._walker ? this._walker.stop() : null;
+		const stop = st ? { kind: st.kind, rec: st.rec ? { id: st.rec.id, x: st.rec.x, y: st.rec.y } : null, at: st.at || null } : null;
+		return { at: this.led.inputs, stop, enc: h.C ? Math.max(0, this.fights - 1) : this.fights, amount: mpM - pool, pool, min: mpM, fight: !!h.C };
 	}
 
 	get walker() {
@@ -1106,7 +1357,17 @@ export class Run {
 
 	/** freeze: { state, walker, ledger, ... }; the run keeps going */
 	checkpoint() {
-		return { state: snapshot(this.fight, { record: false }), walker: this._walker ? this._walker.freeze() : null, led: this.led.clone(), log: this.log ? this.log.slice() : null, encounters: this.encounters, status: this.status, opts: this.opts, events: this.events.slice(), fights: this.fights };
+		return {
+			state: snapshot(this.fight, { record: false }),
+			walker: this._walker ? this._walker.freeze() : null,
+			led: this.led.clone(),
+			log: this.log ? this.log.slice() : null,
+			encounters: this.encounters,
+			status: this.status,
+			opts: this.opts,
+			events: this.events.slice(),
+			fights: this.fights,
+		};
 	}
 
 	/** thaw a checkpoint into a live Run (into: a dead Fight to refill) */
@@ -1163,36 +1424,11 @@ export class Run {
 	 * hero dies or the input cap. Returns the encounter ledger + { end: 'won' | 'dead' | 'stuck' | 'over', turns }.
 	 */
 	fightWith(policy, maxInputs = LIMITS.encounterInputs) {
-		const f = this.fight, h = f.h;
+		const h = this.fight.h;
 		const led = new Ledger();
 		const hp0 = h.f.j.v_(), ep0 = h.f.z.v_(), mp0 = h.f.E_();
-		policy.begin(f);
-		let stuck = 0, end = 'stuck';
-		for (let n = 0; n < maxInputs; n++) {
-			if (h.f.u_()) { end = 'dead'; break; }
-			if (f.c.w) { end = 'over'; break; }
-			if (!this.ready()) { end = f.st === 'err' ? 'error' : 'over'; break; }
-			if (!h.C && !policy.wantsMore(f)) { end = 'won'; break; }
-			let inp = policy.next(f);
-			// the policy has nothing (stand-off in combat, or done): the route walker moves on -- walking away ends a
-			// combat nobody can win
-			if (inp == null) { inp = this.walker.next(); if (inp != null) policy.walked = (policy.walked || 0) + 1; }
-			if (inp == null) { end = h.C ? 'stuck' : 'won'; break; }
-			// a stale selection would turn the next tap into a throw: cancel it first
-			if (f.selId() !== 0 && !(inp.t === 'item' || inp.t === 'skill' || inp.t === 'cancel')) {
-				this.apply({ t: 'cancel' }, led);
-			}
-			const { r, changed } = this.apply(inp, led);
-			policy.observe(f, inp, r.rej, changed);
-			if (r.rej || !changed) {
-				if (++stuck > LIMITS.stuck) {
-					// fall back: end the turn (always legal at the hero's input in combat)
-					if (h.C && this.ready()) { const s2 = this.apply({ t: 'wait' }, led); if (s2.changed) { stuck = 0; continue; } }
-					end = 'stuck';
-					break;
-				}
-			} else stuck = 0;
-		}
+		policy.begin(this.fight);
+		const end = this.playEncounter(policy, led, maxInputs);
 		const turns = policy.turns || 0;
 		led.dead = h.f.u_();
 		this.encounters++;
@@ -1201,6 +1437,55 @@ export class Run {
 		else if (end === 'stuck') this.status = 'stuck';
 		else this.status = h.C ? 'combat' : 'walk';
 		return res;
+	}
+
+	/** the fightWith loop: apply the policy's inputs (accounted in led) until the encounter ends; returns how it ended */
+	playEncounter(policy, led, maxInputs) {
+		const f = this.fight, h = f.h;
+		let stuck = 0;
+		for (let n = 0; n < maxInputs; n++) {
+			const end = this.encounterEnd(policy);
+			if (end) return end;
+			const inp = this.nextEncounterInput(policy);
+			if (inp == null) return h.C ? 'stuck' : 'won';
+			// a stale selection would turn the next tap into a throw: cancel it first
+			if (f.selId() !== 0 && !(inp.t === 'item' || inp.t === 'skill' || inp.t === 'cancel')) this.apply({ t: 'cancel' }, led);
+			const { r, changed } = this.apply(inp, led);
+			policy.observe(f, inp, r.rej, changed);
+			if (!r.rej && changed) { stuck = 0; continue; }
+			if (++stuck <= LIMITS.stuck) continue;
+			if (this.endTurn(led)) { stuck = 0; continue; }
+			return 'stuck';
+		}
+		return 'stuck';
+	}
+
+	/** why the encounter is over before the next input ('dead' | 'over' | 'error' | 'won'), or null to play on */
+	encounterEnd(policy) {
+		const f = this.fight, h = f.h;
+		if (h.f.u_()) return 'dead';
+		if (f.c.w) return 'over';
+		if (!this.ready()) return f.st === 'err' ? 'error' : 'over';
+		if (!h.C && !policy.wantsMore(f)) return 'won';
+		return null;
+	}
+
+	/**
+	 * The policy's next input. When it has none (a stand-off in combat, or done), the route walker moves on: walking
+	 * away ends a combat nobody can win.
+	 */
+	nextEncounterInput(policy) {
+		const inp = policy.next(this.fight);
+		if (inp != null) return inp;
+		const walk = this.walker.next();
+		if (walk != null) policy.walked = (policy.walked || 0) + 1;
+		return walk;
+	}
+
+	/** the stuck fallback: end the turn (always legal at the hero's input in combat); true if that moved the state */
+	endTurn(led) {
+		if (!this.fight.h.C || !this.ready()) return false;
+		return this.apply({ t: 'wait' }, led).changed;
 	}
 
 	/** the engaged foes right now (hw.D minus the hero and allies) as plain data */
@@ -1212,11 +1497,25 @@ export class Run {
 	}
 }
 
+/** the seal MP of the critter or object at (x, y) when MP can open it, else 0 */
+function sealAt(h, x, y) {
+	const occ = x >= 0 && y >= 0 && x < h.g && y < h.h ? h.k[y * h.g + x] : null;
+	if (!occ || occ === h.f || typeof occ.i_ !== 'function') return 0;
+	const seal = occ.i_(h.e);
+	return seal > 0 && seal < UNSEALABLE ? seal : 0;
+}
+
 /**
- * Encounter key: the stop being walked to, plus the ordinal of the encounter on that leg and the engaged species.
- * Stable across RNG samples as long as the route is (samples that meet other foes there get another key).
+ * Encounter key: the stop being walked to, plus the ordinal of the encounter on that leg (engaged: not part of the
+ * key). Stable across RNG samples as long as the route is.
  */
 export function encounterKey(stop, ordinal, engaged) {
-	const s = stop ? `${stop.kind}${stop.rec ? `:${stop.rec.id}@${stop.rec.x},${stop.rec.y}` : stop.at ? `@${stop.at.x},${stop.at.y}` : ''}` : 'start';
-	return `${s}#${ordinal}`;
+	return `${stopKey(stop)}#${ordinal}`;
+}
+
+function stopKey(stop) {
+	if (!stop) return 'start';
+	if (stop.rec) return `${stop.kind}:${stop.rec.id}@${stop.rec.x},${stop.rec.y}`;
+	if (stop.at) return `${stop.kind}@${stop.at.x},${stop.at.y}`;
+	return `${stop.kind}`;
 }
