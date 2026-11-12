@@ -255,7 +255,7 @@ Deficits are measured against **need levels**, which describe what the rest of t
 - **EP**: the same for EP, plus the route's EP.
 - **MP**: the route's remaining doors, traps, chests and objective seals.
 
-At the last encounter every need is 0, because leftovers are worth nothing in the game.
+At the last encounter every need is 0, because leftovers are worth nothing in the game. The scout only knows an encounter is the last when one of its runs went on to finish the dungeon. When every scout run that met an encounter died there, what follows is unknown. That encounter, and the rest rule after it, then get the largest need of any scouted encounter, the same as an encounter the scout never met.
 
 Tactics that leave engaged foes alive (rath, stand-offs) are charged for them. Their play-out is extended: walk on, and fight the next encounter with the continuation policy, until those foes are dead (`ext` = 1 encounter).
 
