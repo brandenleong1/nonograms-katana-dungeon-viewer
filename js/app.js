@@ -36,7 +36,6 @@ const MAP_BG = { light: '#ece9e2', sepia: '#e6dbc3', dark: '#0b0b0d', contrast: 
 const DEFAULT_LABEL = '3C-172582050';
 const SELECT_HINT = 'Click a tile, object or monster.';
 const HERO_ID = 180;
-const STUCK_DOOR_ID = 28;
 const EXIT_LOCK_LOOK = { color: KINDS.lockdoor.color, glyph: '⚿', label: 'Unlock the exit (mini-boss key)' };
 const PUZZLE_STOP_LOOK = { glyph: '▦', color: KINDS.puzzledoor.color };
 
@@ -415,7 +414,7 @@ function occupantHtml(cell) {
 	const parts = [`<div><span class="glyph" style="color:${look.color}">${look.glyph}</span><b>${look.label}</b> <span class="muted">#${rec.id}</span></div>`];
 	const def = isCritter ? critterDef(rec.id) : objectDef(rec.id);
 	if (def && def.v > 0) parts.push(`<div>Needs <b>${def.v}</b> mental power to open.</div>`);
-	if (rec.id === STUCK_DOOR_ID && state.level) parts.push(`<div>Breaking it costs energy.</div>`);
+	if (!isCritter && objectKindOf(rec) === 'stuckdoor' && state.level) parts.push(`<div>Breaking it costs ${breakCost(state.level.type)} energy.</div>`);
 	if (def && def.t) parts.push(`<div class="muted">Counts as an objective.</div>`);
 	const linked = isCritter ? [] : partners(state.level, rec);
 	if (linked.length) parts.push(`<div>Links to ${linked.map(partnerLinkHtml).join(', ')}.</div>`);
@@ -537,6 +536,11 @@ function stopLabel(stop) {
 }
 
 // ---- what things are ---------------------------------------------------------------------
+
+/** Energy to break a stuck door in a dungeon type: its pw.r, as the route planner counts it. */
+function breakCost(type) {
+	return zw.M[type] ? zw.M[type].r : 5;
+}
 
 /** The game's definition of an object (its rw record, zw.Q). */
 function objectDef(id) {

@@ -166,12 +166,12 @@ export class ProgressPanel {
 
 	previewHtml(V, type) {
 		const lines = explain(V, type).map((r) => this.reasonHtml(r)).filter(Boolean);
-		if (!explain(V, type).some((r) => r.kind === 'npc')) lines.unshift('No quest person.');
+		if (!explain(V, type).some((r) => r.kind === 'npc')) lines.unshift('No quest NPC.');
 		const label = this.opts.getLabel() || typeLabel(type);
 		return `<div class="pg-preview"><div class="solve-card-head">In ${esc(label)}</div><ul>${lines.map((l) => `<li>${l}</li>`).join('')}</ul></div>`;
 	}
 
-	/** One line of the preview: why the current dungeon has (or lacks) a quest person, boss, guardian or merchants. */
+	/** One line of the preview: why the current dungeon has (or lacks) a quest NPC, boss, guardian or merchants. */
 	reasonHtml(r) {
 		const quest = (id) => `<b>${esc(partTitle(id, this.names))}</b>`;
 		if (r.kind === 'npc') {
@@ -179,7 +179,7 @@ export class ProgressPanel {
 			const where = p && p.where === 'boss room' ? ' in the boss room' : p && p.where === 'entrance' ? ' at the entrance' : '';
 			const extra = p && p.refs.length ? ` with ${p.refs.length} more ${p.refs.length === 1 ? 'person' : 'people'}` : '';
 			const wagon = p && p.wagon ? ' and a wagon' : '';
-			return `Quest person${p && p.npc ? ` <span class="muted">#${p.npc}</span>` : ''}${where}${extra}${wagon}, because ${quest(r.quest)} ${r.active ? 'is in progress' : 'can start here'}.`;
+			return `Quest NPC${p && p.npc ? ` <span class="muted">#${p.npc}</span>` : ''}${where}${extra}${wagon}, because ${quest(r.quest)} ${r.active ? 'is in progress' : 'can start here'}.`;
 		}
 		if (r.kind === 'mini') return `A mini-boss, because ${quest(r.quest)} is in progress and this mini-boss is not beaten.`;
 		if (r.kind === 'boss2') return `A second boss <span class="muted">#${r.boss}</span>, because ${quest(r.quest)} is in progress.`;
@@ -265,9 +265,9 @@ export class ProgressPanel {
 		return `<div class="pg-steps">${bits.map((b) => this.checkHtml({ key: `q:${part.id}:${b}`, label: `step ${b + 1} done`, on: (k0 >> b) & 1 })).join('')}</div>`;
 	}
 
-	// ---- the other progress: quest people now, bosses, counts ----------------------------------------------------
+	// ---- the other progress: quest NPCs by dungeon, bosses, counts ----------------------------------------------------
 
-	/** Who each dungeon gets now (x30.O's pick), for the dungeons any quest person can be in. */
+	/** Each dungeon's quest NPC now (x30.O's pick), for the dungeons any quest NPC can be in. */
 	peopleHtml(V, type) {
 		const npcs = npcQuests(V);
 		const picks = [];
@@ -277,8 +277,8 @@ export class ProgressPanel {
 			const who = p ? `${esc(partTitle(p.q.a, this.names))} <span class="muted">${p.active ? 'in progress' : 'can start'}</span>` : '<span class="muted">nobody</span>';
 			picks.push(`<div class="pg-pick${t === type ? ' pg-cur' : ''}"${p ? ` title="quest ${p.q.a}"` : ''}><b>${typeLabel(t)}</b> <span>${who}</span></div>`);
 		}
-		return `<div class="pg-section"><div class="content-header-2">Quest people now</div>
-			<div class="pg-help">A dungeon gets the person of the first quest (in the game's order) that is in progress there or can start there.</div>
+		return `<div class="pg-section"><div class="content-header-2">Quest NPCs by dungeon</div>
+			<div class="pg-help">Each dungeon has at most one quest NPC. With this progress, this is who you'll meet in each: one who gives you a quest, or one a quest in progress sends you to. If several quests qualify, the game picks one by its own fixed order.</div>
 			<div class="pg-picks">${picks.join('')}</div>
 		</div>`;
 	}
@@ -307,12 +307,12 @@ export class ProgressPanel {
 		const levels = [...buildingsQuestsNeed(V)].sort((a, b) => a[0] - b[0]).map(([id, need]) =>
 			this.numHtml({ key: `bld:${id}`, label: `${building(id)} level`, value: V.o[id].B0, path: ['buildings', id, 'B0'], max: 99, note: `quests need ${need}` })).join('');
 		return `<div class="pg-section"><div class="content-header-2">Items, buildings and counts</div>
-			${this.numHtml({ key: 'item:114', label: item(114), value: V.L0_(114), path: ['items', 114], max: 99, note: `${partTitle(38, this.names)}: its person is in F1, one dungeon further per card (up to F4)` })}
+			${this.numHtml({ key: 'item:114', label: item(114), value: V.L0_(114), path: ['items', 114], max: 99, note: `${partTitle(38, this.names)}: its NPC is in F1, one dungeon further per card (up to F4)` })}
 			${this.checkHtml({ key: 'item:256', label: `Own a ${item(256)}`, on: V.L0_(256) > 0, path: ['items', 256], title: 'Changes only the 6C extra boss’s drop' })}
 			${this.numHtml({ key: 'item:305', label: item(305), value: V.L0_(305), path: ['items', 305], max: 99, note: '2 or more: the tomb guardian drops something else' })}
 			${levels}
 			${this.checkHtml({ key: 'bstep:4:1', label: `${building(4)}: step 2 done`, on: V.o[4].h0_(2), path: ['buildings', 4, 'C0', 1], title: 'More finds in F3 and F4' })}
-			${this.numHtml({ key: 'stat:b:115', label: `${item(115)}s found`, value: V.N.b.j_(115), path: ['stats', 'b', 115], max: 999, note: 'none (and 20 F4 dungeons cleared): a special person is likelier in F3 and F4' })}
+			${this.numHtml({ key: 'stat:b:115', label: `${item(115)}s found`, value: V.N.b.j_(115), path: ['stats', 'b', 115], max: 999, note: 'none (and 20 F4 dungeons cleared): a special NPC is likelier in F3 and F4' })}
 			${this.numHtml({ key: 'stat:f:18', label: 'F4 dungeons cleared', value: V.N.f_(18), path: ['stats', 'f', 18], max: 9999 })}
 			${this.numHtml({ key: 'stat:x', label: 'Trades with merchants', value: V.N.x | 0, path: ['stats', 'x'], max: 9999, note: '3 or more: one more dice roll in 3A–4B, F3, EB and EC' })}
 		</div>`;
