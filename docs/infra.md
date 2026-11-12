@@ -45,7 +45,7 @@ Everything stays in the browser. Nothing is sent anywhere.
 
 | Workflow | When | What |
 |---|---|---|
-| `precommit.yml` | every PR; on demand | `syntax` (`node --check` on every module), `test` (`npm test` on Node 18 and 22), `integration` (browser smoke test). The `precommit` job passes only if all of them did. |
+| `precommit.yml` | every PR; on demand | `syntax` (`node --check` on every module), `test` (`tools/run-tests.mjs`, every standalone suite, on Node 18 and 22), `integration` (browser smoke test). The `precommit` job passes only if all of them did. |
 | `pr-policy.yml` | PR opened, edited or pushed | `pr-policy`: the title, description and branch name follow [pr_guidelines.md](pr_guidelines.md) (`tools/check-pr.mjs`). |
 | `pr-bot.yml` | after Precommit / PR Policy / PR Reviewed; on merge; hourly; daily | `pr-bot` status on every open PR, resetting reviews made on older commits; deletes merged branches; prunes stale branches (below). |
 | `pr-reviewed.yml` | a review is submitted, edited or dismissed | nothing itself; it wakes the PR bot, which has the write token review events from forks lack |
@@ -74,9 +74,10 @@ before/after table and edits the same comment on later pushes. If nothing looks 
 the run failed, the comment links to it.
 
 - **Where the images live:** the `bot/screenshots` branch, under `auto/pr-<n>/<commit>/`. It isn't part of the site.
-  The bot rewrites the branch as a single commit each time, so old images don't pile up in its history. Images of
-  PRs closed 30+ days ago are deleted daily, so old PR pages show broken images by then. The PR bot never prunes this
-  branch.
+  Runs for several PRs can finish at once. Each adds a commit and moves the branch only if no other run moved it
+  first, and tries again otherwise, so no PR's images are lost. Daily, the bot deletes the images of PRs closed 30+
+  days ago, so old PR pages show broken images by then. It also squashes the branch to one commit, so old images don't
+  pile up in its history. The PR bot never prunes this branch.
 - **Safety:** the Screenshots run uses the PR's own code (it may be a fork), with a read-only token, and only uploads
   files. The comment workflow runs `tools/screenshot-comment.mjs` from `main` and treats those files as untrusted
   data. It parses and checks the manifest, accepts only regular PNG files of bounded size under strict names, and
@@ -103,8 +104,10 @@ Ready means the PR:
 - has **no outstanding review requests**: every requested reviewer, person or team, has responded (GitHub removes a
   request once that reviewer submits a review, and the bot re-requests everyone whose review it resets);
 - has an approval **of its head commit** from someone with write access, or from **two** people if it changes CI,
-  the rulesets or the PR tools (`.github/`, `tools/pr-bot.mjs`, `tools/check-pr.mjs`, `tools/github-setup.sh`,
-  `tools/merge-pr.sh`, `package.json`): a PR's own workflows run from its files, so it could weaken what checks it;
+  the rulesets or the PR tools (`.github/`, `tools/pr-bot.mjs`, `tools/check-pr.mjs`, `tools/run-tests.mjs`,
+  `tools/screenshot-comment.mjs`, `tools/github-setup.sh`, `tools/merge-pr.sh`): a PR's own workflows run from its
+  files, so it could weaken what checks it. Test files aren't on the list: adding or changing a test needs one
+  approval, and taking one out of CI shows in the diff;
 - has a title that passes `tools/check-pr.mjs`.
 
 Example pending reasons: "3 commit(s) behind main: update the branch", "Waiting for review from @alice", "Needs a
@@ -115,11 +118,15 @@ workflow token don't trigger `push` workflows, so after its own merge the bot de
 PRs, and dispatches `postcommit` itself. It runs after Precommit, PR Policy and PR Reviewed, on label and
 ready-for-review changes (`pull_request_target`, still running only code from `main`), and hourly.
 
-**No code merges unreviewed.** A review counts only for the commit it was given on. Whenever the head moves (new
-commits, a rebase or force-push, "Update branch"), the bot dismisses the older approvals and change requests, and
-asks those reviewers to review again. GitHub's own "dismiss stale approvals" can keep an approval when a push doesn't
-change the diff; the bot doesn't. The ruleset also requires the latest push to be approved by someone other than whoever
-pushed it.
+**No code merges unreviewed.** An approval holds only for the diff it was given on. When a push changes the PR's
+diff (new commits, or a rebase or update that resolves a conflict), GitHub dismisses the approvals ("dismiss stale
+approvals" in the ruleset). A push that leaves the diff as it was keeps them: "Update branch", or a clean rebase onto
+`main`. GitHub then moves each approval to the new head commit. The bot dismisses any approval or change request that
+still points at an older commit, and asks those reviewers to look again. The ruleset also requires the latest push to
+be approved by someone other than whoever pushed it.
+
+**Approving several PRs at once:** the bot merges one per pass, and the others fall behind `main`. Update each one;
+its approval stays, its checks run again, and the bot merges it.
 
 When any PR merges, `main` moves. Every other PR is then behind `main`, and the bot sets it back to pending. Its
 author updates the branch, the checks run against the new `main`, a reviewer approves the new head, and the bot
@@ -150,7 +157,7 @@ Two rulesets in `.github/rulesets/`.
 **`main.json`**, on `main`:
 
 - changes arrive through a pull request with **one approving human review** of the latest push, given by someone other
-  than whoever pushed it; approvals are dismissed when new commits are pushed (and by the PR bot on any head change);
+  than whoever pushed it; approvals are dismissed when a push changes the PR's diff (and by the PR bot if one still points at an older commit);
   all review threads are resolved;
 - **`precommit`**, **`pr-policy`** and **`pr-bot`** must pass, reported **by GitHub Actions** (a status posted with
   someone's own token doesn't count), on a branch **up to date with `main`**;

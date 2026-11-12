@@ -45,14 +45,14 @@ async function init({ tablesUrl: tu, namesUrl }) {
 }
 
 /** the pool, kept warm between solves of the same kind (an in-dungeon save needs the adapter worker) */
-async function getPool(size, saveMode, progress) {
-	const key = `${size}|${saveMode ? 'save' : 'std'}`;
+async function getPool({ size, forSave }, progress) {
+	const key = `${size}|${forSave ? 'save' : 'std'}`;
 	if (pool && poolKey === key) return { pool, startMs: 0 };
 	if (pool) { await pool.close(); pool = null; }
 	progress({ phase: 'workers', workers: size });
 	const t = now();
 	// js/ui/pool-worker.js: the browser entry for js/solve/worker.js (or the save adapter js/ui/solve-worker.js)
-	pool = await WorkerPool.create({ size, tables: { url: tablesUrl }, workerUrl: new URL(saveMode ? './pool-worker.js?save=1' : './pool-worker.js', import.meta.url) });
+	pool = await WorkerPool.create({ size, tables: { url: tablesUrl }, workerUrl: new URL(forSave ? './pool-worker.js?save=1' : './pool-worker.js', import.meta.url) });
 	poolKey = key;
 	return { pool, startMs: now() - t };
 }
@@ -88,61 +88,95 @@ async function solve(job, progress) {
 	const B = BUDGETS[job.mode][job.budget] || BUDGETS[job.mode].normal;
 	const prog = (p) => progress({ ...p, ms: now() - t0, budgetMs: B.budgetMs });
 	resetStatics(tablesJson);
-	const saveMode = job.mode === 'exact' && !!job.saveBytes;
-	const { pool: base, startMs } = await getPool(job.workers, saveMode, prog);
+	const { pool, startMs } = await getPool({ size: job.workers, forSave: isSaveJob(job) }, prog);
 	prog({ phase: 'setup' });
-	const cands = candidates(B.cands);
-	let res, problem, hero = job.hero || {};
-	const onProgress = (p) => prog(p);
-	// MP rule: puzzles refill MP, so by default the solver may not spend items on MP (js/solve: useItemsForMp)
-	const mpOpts = { useItemsForMp: !!job.useItemsForMp, runOpts: { useItemsForMp: !!job.useItemsForMp } };
+	const opts = { budget: B, cands: candidates(B.cands), onProgress: prog };
 	const tSolve = now();
-	if (job.mode === 'robust') {
-		problem = { hero, type: job.type, seed: job.seed };
-		const W = base.size;
-		res = await solveRobust(problem, { pool: base, N: B.N, nMin: B.nMin, n0: Math.max(12, 2 * W), budgetMs: B.budgetMs, cands, seed: job.sampleSeed ?? 1, onProgress, ...mpOpts });
-	} else {
-		resetStatics(tablesJson);
-		hero = await resolveProfile(hero);
-		if (saveMode) {
-			const imp = await freshSave(job.saveBytes);
-			problem = { save: imp, saveName: job.saveName || 'guild.dat', hero, type: imp.dungeon.b, seed: imp.dungeon.a, at: 'save' };
-			res = await solveExact(problem, { pool: new SavePool(base, job.saveBytes, job.saveName), budgetMs: B.budgetMs, cands, maxDecisions: B.maxDecisions, onProgress, ...mpOpts });
-		} else {
-			problem = { hero, type: job.type, seed: job.seed, xseed: job.xseed | 0, at: 'start' };
-			res = await solveExact(problem, { pool: base, budgetMs: B.budgetMs, cands, maxDecisions: B.maxDecisions, onProgress, ...mpOpts });
-		}
-	}
+	const { res, problem, hero } = job.mode === 'robust' ? await solveRobustJob(job, pool, opts) : await solveExactJob(job, pool, opts);
 	const solveMs = now() - tSolve;
 	if (res.error) throw new Error(res.error);
-	const label = saveMode || !job.label ? formatLabel(res.problem.type, res.problem.seed) : job.label;
-	let out = { timings: { startMs, solveMs } };
+	const out = { timings: { startMs, solveMs } };
 	let replay = null;
 	if (job.mode === 'exact') {
 		prog({ phase: 'replay' });
 		const tr = now();
-		// MP top-ups (res.topUps [{ at, amount }]: the player solves puzzles for `amount` MP before input `at`), replayed
-		// as tools/solve.mjs does; an older solver without them gives []
-		const ups = (res.topUps || []).map((u) => ({ at: u.at ?? u.atInput, amount: u.amount ?? u.mp })).filter((u) => Number.isInteger(u.at) && u.amount > 0);
-		const rp = await replayProblem(problem, job);
-		replay = replayScript(rp, res.inputs, ups);
-		replay.matches = !replay.error && replay.items === res.totals.items && replay.mp === res.totals.mp && replay.dead === res.totals.dead && replay.final.hp === res.totals.final.hp && replay.objectivesLeft === res.totals.objectivesLeft;
-		const hasSteps = res.inputs.some((inp) => TOPUP.test(String(inp.t)));
-		const rec = await framesFor(problem, job, res.inputs, hasSteps ? [] : ups);
-		out.frames = rec.frames;
-		out.acts = rec.acts;
-		// the frames must end where the solver's own replay does (else the player says so)
-		const last = rec.frames[rec.frames.length - 1].hero, fin = replay.final || res.totals.final;
-		out.framesMatch = !!fin && last.hp === fin.hp && last.mp === fin.mp && last.x === fin.x && last.y === fin.y;
+		const script = await checkScript(problem, job, res);
+		replay = script.replay;
+		out.frames = script.frames;
+		out.acts = script.acts;
+		out.framesMatch = script.framesMatch;
 		out.timings.replayMs = now() - tr;
 	}
-	const plan = buildPlan(res, { label, names: names.items || {}, heroSpec: heroSpecOut(hero), replay });
-	if (saveMode) plan.dungeon.at = 'save';
-	const errs = validatePlan(plan);
-	if (errs.length) plan.uiProblems = errs;
-	out.plan = plan;
+	out.plan = planFor(res, { job, hero, replay });
 	out.timings.totalMs = now() - t0;
 	return out;
+}
+
+/** exact mode from an in-dungeon save: its own dungeon and dice */
+function isSaveJob(job) {
+	return job.mode === 'exact' && !!job.saveBytes;
+}
+
+/** MP rule: puzzles refill MP, so by default the solver may not spend items on MP (js/solve: useItemsForMp) */
+function mpOptions(job) {
+	return { useItemsForMp: !!job.useItemsForMp, runOpts: { useItemsForMp: !!job.useItemsForMp } };
+}
+
+/** robust: Monte Carlo over the unknown dice, from the label and the hero spec */
+async function solveRobustJob(job, pool, { budget, cands, onProgress }) {
+	const hero = job.hero || {};
+	const problem = { hero, type: job.type, seed: job.seed };
+	const res = await solveRobust(problem, { pool, N: budget.N, nMin: budget.nMin, n0: Math.max(12, 2 * pool.size), budgetMs: budget.budgetMs, cands, seed: job.sampleSeed ?? 1, onProgress, ...mpOptions(job) });
+	return { res, problem, hero };
+}
+
+/** exact: known dice, from an in-dungeon save (its own dungeon) or from the label with an xseed */
+async function solveExactJob(job, pool, { budget, cands, onProgress }) {
+	resetStatics(tablesJson);
+	const hero = await resolveProfile(job.hero || {});
+	const opts = { budgetMs: budget.budgetMs, cands, maxDecisions: budget.maxDecisions, onProgress, ...mpOptions(job) };
+	if (!isSaveJob(job)) {
+		const problem = { hero, type: job.type, seed: job.seed, xseed: job.xseed | 0, at: 'start' };
+		return { res: await solveExact(problem, { pool, ...opts }), problem, hero };
+	}
+	const imp = await freshSave(job.saveBytes);
+	const problem = { save: imp, saveName: job.saveName || 'guild.dat', hero, type: imp.dungeon.b, seed: imp.dungeon.a, at: 'save' };
+	return { res: await solveExact(problem, { pool: new SavePool(pool, job.saveBytes, job.saveName), ...opts }), problem, hero };
+}
+
+/**
+ * Exact mode: replay the script in a fresh engine (it must end where the solver's run did) and record its frames for
+ * the script player. { replay, frames, acts, framesMatch }
+ */
+async function checkScript(problem, job, res) {
+	const ups = scriptTopUps(res);
+	const replay = replayScript(await replayProblem(problem, job), res.inputs, ups);
+	replay.matches = !replay.error && replay.items === res.totals.items && replay.mp === res.totals.mp && replay.dead === res.totals.dead && replay.final.hp === res.totals.final.hp && replay.objectivesLeft === res.totals.objectivesLeft;
+	// a script with top-up steps of its own carries its top-ups already
+	const hasSteps = res.inputs.some((inp) => TOPUP.test(String(inp.t)));
+	const rec = recordScript(await replayProblem(problem, job), res.inputs, hasSteps ? [] : ups);
+	// the frames must end where the solver's own replay does (else the player says so)
+	const last = rec.frames[rec.frames.length - 1].hero, fin = replay.final || res.totals.final;
+	const framesMatch = !!fin && last.hp === fin.hp && last.mp === fin.mp && last.x === fin.x && last.y === fin.y;
+	return { replay, frames: rec.frames, acts: rec.acts, framesMatch };
+}
+
+/**
+ * MP top-ups (res.topUps [{ at, amount }]: the player solves puzzles for `amount` MP before input `at`), replayed as
+ * tools/solve.mjs does; an older solver without them gives []
+ */
+function scriptTopUps(res) {
+	return (res.topUps || []).map((u) => ({ at: u.at ?? u.atInput, amount: u.amount ?? u.mp })).filter((u) => Number.isInteger(u.at) && u.amount > 0);
+}
+
+/** the plan for the page (js/solve/plan.js); a save's plan is labelled with the save's own dungeon */
+function planFor(res, { job, hero, replay }) {
+	const label = isSaveJob(job) || !job.label ? formatLabel(res.problem.type, res.problem.seed) : job.label;
+	const plan = buildPlan(res, { label, names: names.items || {}, heroSpec: heroSpecOut(hero), replay });
+	if (isSaveJob(job)) plan.dungeon.at = 'save';
+	const errs = validatePlan(plan);
+	if (errs.length) plan.uiProblems = errs;
+	return plan;
 }
 
 /** a problem the script can be replayed from (fresh statics; a save is re-imported, since a setup consumes it) */
@@ -152,9 +186,9 @@ async function replayProblem(problem, job) {
 	return problem;
 }
 
-async function framesFor(problem, job, inputs, topups = []) {
-	const rp = await replayProblem(problem, job);
-	const f = exactFight(rp);
+/** the script's frames, recorded on a fight set up from a replayable problem */
+function recordScript(replayable, inputs, topups) {
+	const f = exactFight(replayable);
 	if (!f || f.error) throw new Error(`replay: ${f ? f.error : 'no fight'}`);
 	return recordFrames(f, inputs, topups);
 }
@@ -239,63 +273,116 @@ function recordFrames(fight, inputs, topups = []) {
 	const acts = [];
 	const upAt = new Map(topups.map((u) => [u.at, u.amount]));
 	for (let i = 0; i < inputs.length; i++) {
-		const inp = inputs[i];
-		const me = h.f;
-		// a plan-level top-up before this input: puzzle MP straight to the hero (up to max)
-		const up = upAt.get(i);
-		let topupBefore = 0;
-		if (up > 0) { const m0 = me.E_(); me.G_(Math.min(m0 + up, h.e.n_())); topupBefore = me.E_() - m0; }
-		const from = { x: me.b.a, y: me.b.b };
-		const tx = inp.t === 'step' ? from.x + (inp.dx | 0) : inp.x;
-		const ty = inp.t === 'step' ? from.y + (inp.dy | 0) : inp.y;
-		const act = { i, inp, from, C: h.C ? 1 : 0, target: tx != null ? targetAt(h, tx, ty) : null, ap: me.n.v_() };
-		if (inp.t === 'skill') { const sk = zw.q.get(inp.id); act.skill = sk ? sk.o : null; }
-		if (topupBefore) act.topupBefore = topupBefore;
-		const path = (inp.t === 'tap' || inp.t === 'step') ? tapCells(h, tx, ty) : null;
-		const hp0 = me.j.v_(), ep0 = me.z.v_(), mp0 = me.E_();
-		const pack0 = packMap(h);
-		const foes0 = h.o.filter((m) => m !== h.f && isFoe(h, m));
-		if (fight.hook && fight.hook.msgs) fight.hook.msgs.length = 0;
-		const { r } = run.apply(inp);
-		act.rej = r.rej || null;
-		act.st = r.st;
-		if (!ENGINE_INPUTS.has(String(inp.t))) {
-			if (TOPUP.test(String(inp.t))) {
-				if (act.rej && me.E_() === mp0) { me.G_(Math.min(mp0 + topupAmount(inp), h.e.n_())); act.rej = null; }
-				act.topup = me.E_() - mp0;
-			}
-			act.solverStep = 1;
-		}
-		act.d = { hp: me.j.v_() - hp0, ep: me.z.v_() - ep0, mp: me.E_() - mp0 };
-		const pack1 = packMap(h);
-		const used = [];
-		const got = [];
-		for (const [id, n] of pack0) { const n1 = pack1.get(id) || 0; if (n1 < n) used.push([id, n - n1]); }
-		for (const [id, n1] of pack1) { const n = pack0.get(id) || 0; if (n1 > n) got.push([id, n1 - n]); }
-		if (used.length) act.used = used;
-		if (got.length) act.got = got;
-		const killed = foes0.filter((m) => m.u_()).map((m) => ({ id: m.a.a, x: m.b.a, y: m.b.b }));
-		if (killed.length) act.killed = killed;
-		act.to = { x: me.b.a, y: me.b.b };
-		act.C1 = h.C ? 1 : 0;
-		act.dead = me.u_() ? 1 : 0;
-		act.end = fight.c.w ? 1 : 0;
-		if (fight.hook && fight.hook.msgs && fight.hook.msgs.length) act.msg = fight.hook.msgs.slice(0, 4).map(String);
-		// the cells walked (a ladder / portal / hatch jumps: the end is not on the path)
-		if (path && (act.to.x !== from.x || act.to.y !== from.y)) {
-			const k = path.findIndex(([x, y]) => x === act.to.x && y === act.to.y);
-			act.path = k >= 0 ? path.slice(0, k + 1) : path;
-			if (k < 0) act.jump = 1;
-		} else if (act.to.x !== from.x || act.to.y !== from.y) act.jump = 1;
+		const act = recordInput(fight, run, { i, inp: inputs[i], topUp: upAt.get(i) });
 		acts.push(act);
 		frames.push(frameOf(h));
-		if (act.dead || act.end) {
-			// the rest of the script (if any) is not applied by the engine either
-			for (let j = i + 1; j < inputs.length; j++) { acts.push({ i: j, inp: inputs[j], from: act.to, to: act.to, rej: 'engine ' + fight.st, d: { hp: 0, ep: 0, mp: 0 } }); frames.push(frames[frames.length - 1]); }
-			break;
-		}
+		if (act.dead || act.end) break;
+	}
+	// after a death or the dungeon's end the engine doesn't apply the rest of the script either
+	const stopped = acts[acts.length - 1];
+	for (let j = acts.length; j < inputs.length; j++) {
+		acts.push({ i: j, inp: inputs[j], from: stopped.to, to: stopped.to, rej: 'engine ' + fight.st, d: { hp: 0, ep: 0, mp: 0 } });
+		frames.push(frames[frames.length - 1]);
 	}
 	return { frames, acts };
+}
+
+/** apply input i and describe it for the player: what was at its cell, what it changed, the cells walked */
+function recordInput(fight, run, { i, inp, topUp }) {
+	const h = fight.h;
+	// a plan-level top-up before this input: puzzle MP straight to the hero (up to max)
+	const topupBefore = topUp > 0 ? addPuzzleMp(h, topUp) : 0;
+	const act = actBefore(h, inp, i);
+	if (topupBefore) act.topupBefore = topupBefore;
+	const before = stateBefore(h, inp, act.from);
+	if (fight.hook && fight.hook.msgs) fight.hook.msgs.length = 0;
+	const { r } = run.apply(inp);
+	act.rej = r.rej || null;
+	act.st = r.st;
+	if (!ENGINE_INPUTS.has(String(inp.t))) applySolverStep(act, h, before.pools.mp);
+	describeOutcome(act, fight, before);
+	return act;
+}
+
+/** puzzle MP straight to the hero, up to its max; returns the MP it got */
+function addPuzzleMp(h, amount) {
+	const me = h.f;
+	const m0 = me.E_();
+	me.G_(Math.min(m0 + amount, h.e.n_()));
+	return me.E_() - m0;
+}
+
+/** the cell an input aims at: a step's neighbour, else the input's own x, y (none for most non-cell inputs) */
+function inputCell(inp, from) {
+	if (inp.t === 'step') return { x: from.x + (inp.dx | 0), y: from.y + (inp.dy | 0) };
+	return { x: inp.x, y: inp.y };
+}
+
+/** the act as the input finds the hero: { i, inp, from, C, target, ap, skill? } */
+function actBefore(h, inp, i) {
+	const me = h.f;
+	const from = { x: me.b.a, y: me.b.b };
+	const cell = inputCell(inp, from);
+	const act = { i, inp, from, C: h.C ? 1 : 0, target: cell.x != null ? targetAt(h, cell.x, cell.y) : null, ap: me.n.v_() };
+	if (inp.t === 'skill') { const sk = zw.q.get(inp.id); act.skill = sk ? sk.o : null; }
+	return act;
+}
+
+/** what describeOutcome compares against: the tap path, the hero's pools, the pack and the living foes */
+function stateBefore(h, inp, from) {
+	const me = h.f;
+	const cell = inputCell(inp, from);
+	const path = (inp.t === 'tap' || inp.t === 'step') ? tapCells(h, cell.x, cell.y) : null;
+	const pools = { hp: me.j.v_(), ep: me.z.v_(), mp: me.E_() };
+	const pack = packMap(h);
+	const foes = h.o.filter((m) => m !== h.f && isFoe(h, m));
+	return { path, pools, pack, foes };
+}
+
+/** a solver step the engine has no input for; a top-up step it rejects is applied here */
+function applySolverStep(act, h, mp0) {
+	const me = h.f;
+	if (TOPUP.test(String(act.inp.t))) {
+		if (act.rej && me.E_() === mp0) { me.G_(Math.min(mp0 + topupAmount(act.inp), h.e.n_())); act.rej = null; }
+		act.topup = me.E_() - mp0;
+	}
+	act.solverStep = 1;
+}
+
+/** the input's effects on act: pool deltas, items used and got, kills, where the hero ends, messages, cells walked */
+function describeOutcome(act, fight, before) {
+	const h = fight.h;
+	const me = h.f;
+	act.d = { hp: me.j.v_() - before.pools.hp, ep: me.z.v_() - before.pools.ep, mp: me.E_() - before.pools.mp };
+	Object.assign(act, packChange(before.pack, packMap(h)));
+	const killed = before.foes.filter((m) => m.u_()).map((m) => ({ id: m.a.a, x: m.b.a, y: m.b.b }));
+	if (killed.length) act.killed = killed;
+	act.to = { x: me.b.a, y: me.b.b };
+	act.C1 = h.C ? 1 : 0;
+	act.dead = me.u_() ? 1 : 0;
+	act.end = fight.c.w ? 1 : 0;
+	if (fight.hook && fight.hook.msgs && fight.hook.msgs.length) act.msg = fight.hook.msgs.slice(0, 4).map(String);
+	Object.assign(act, walked(before.path, act.from, act.to));
+}
+
+/** { used?, got? }: [id, n] items that left and came into the pack */
+function packChange(before, after) {
+	const used = [];
+	const got = [];
+	for (const [id, n] of before) { const n1 = after.get(id) || 0; if (n1 < n) used.push([id, n - n1]); }
+	for (const [id, n1] of after) { const n = before.get(id) || 0; if (n1 > n) got.push([id, n1 - n]); }
+	const change = {};
+	if (used.length) change.used = used;
+	if (got.length) change.got = got;
+	return change;
+}
+
+/** { path?, jump? }: the cells walked; a ladder / portal / hatch is a jump (the end is not on the path) */
+function walked(path, from, to) {
+	if (to.x === from.x && to.y === from.y) return {};
+	if (!path) return { jump: 1 };
+	const k = path.findIndex(([x, y]) => x === to.x && y === to.y);
+	return k >= 0 ? { path: path.slice(0, k + 1) } : { path, jump: 1 };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -308,7 +395,7 @@ async function replay({ problem: p, inputs, topUps = [], saveBytes, saveName }) 
 	if (saveBytes) problem.save = true;
 	const rp = await replayProblem(problem, job);
 	const check = replayScript(rp, inputs, topUps);
-	const rec = await framesFor(problem, job, inputs, topUps);
+	const rec = recordScript(await replayProblem(problem, job), inputs, topUps);
 	return { ...rec, replay: check };
 }
 

@@ -16,15 +16,11 @@
 //
 // Workers (pool.js) each hold the same trajectory (re-setup from the problem + the committed inputs, synced) and play
 // out (input, policy) jobs from it.
-import { Run, Walker, RestRule, trimTopUps, mpOk, heroSpecOut, heroOf, isFoe, critterInfo, foesOf, packHas, canSkill, free, SKILL, SPIDER, DIR4, bestItem, makeFight, structuredCloneLite } from './sim.js';
+import { Run, Walker, trimTopUps, mpOk, heroSpecOut, heroOf, isFoe, critterInfo, foesOf, packHas, canSkill, free, SKILL, SPIDER, DIR4, bestItem, makeFight, structuredCloneLite, manh, cheb } from './sim.js';
 import { makePolicy, labelOf, candidates as defaultCandidates, availOf, usable, BASELINE } from './policies.js';
-import { pricesFor, scoreOutcome, compareExact } from './cost.js';
-import { outcomeOf, entryOut, mpPlanOf, runOptsFor, stopIndexOf } from './robust.js';
-import { dist } from './cost.js';
-import { vj0 } from '../gen/statics.js';
+import { pricesFor, scoreOutcome, compareExact, dist } from './cost.js';
+import { outcomeOf, entryOut, mpPlanOf, runOptsFor, stopIndexOf, routeLegs, stopOut, stopCountKey, countVisit, realNeedOf, mpItemsOf, setRestNeed } from './robust.js';
 import { newFight } from '../combat/driver.js';
-
-const key = (inp) => JSON.stringify(inp);
 
 /**
  * problem.saveBytes (the raw guild.dat / export zip bytes) -> problem.save (js/save importSave result). An imported
@@ -98,21 +94,13 @@ export class ExactWorker {
 		const out = [];
 		for (const j of jobs) {
 			const run = this.resume();
-			if (run.walker.opts.rest) run.walker.opts.rest.need = ctx.restNeed || null;
+			setRestNeed(run, ctx.restNeed);
 			const led0 = run.led.clone();
-			let bad = false;
-			if (j.inp) {
-				const { r, changed } = run.apply(j.inp);
-				if (r.rej || !changed) bad = true;
-				if (!bad && run.fight.selId() !== 0 && !(j.inp.t === 'item' || j.inp.t === 'skill')) run.apply({ t: 'cancel' });
-			}
+			const bad = j.inp ? !tryInput(run, j.inp) : false;
 			let o = null;
 			if (!bad) {
 				o = outcomeOf(run, ctx.cands[j.c], { ext: ctx.ext ?? 1, look: ctx.look ?? 0, maxInputs: ctx.maxInputs });
-				// count from before the candidate input
-				const led = run.led.since(led0);
-				o.items = led.items(); o.byId = led.itemsById(); o.mpSpent = led.mp; o.hpLost = led.hp; o.epLost = led.ep; o.inputs = led.inputs;
-				o.dead = o.dead || led.dead;
+				countFromBefore(o, run.led.since(led0));
 			}
 			out.push({ j, bad, o, sc: o ? scoreOutcome(o, ctx.need, this.prices) : null });
 			this.dead = run.fight;
@@ -121,59 +109,119 @@ export class ExactWorker {
 	}
 }
 
+/** apply a searched input; false when the engine rejects it or it changes nothing */
+function tryInput(run, inp) {
+	const { r, changed } = run.apply(inp);
+	if (r.rej || !changed) return false;
+	clearStraySelection(run, inp);
+	return true;
+}
+
+/** an input that leaves something selected (other than an item or skill waiting for its target) is cancelled */
+function clearStraySelection(run, inp) {
+	if (run.fight.selId() !== 0 && !(inp.t === 'item' || inp.t === 'skill')) run.apply({ t: 'cancel' });
+}
+
+/** a play-out's costs counted from before the candidate input (led: the ledger since then) */
+function countFromBefore(o, led) {
+	o.items = led.items(); o.byId = led.itemsById(); o.mpSpent = led.mp; o.hpLost = led.hp; o.epLost = led.ep; o.inputs = led.inputs;
+	o.dead = o.dead || led.dead;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Candidate inputs at a hero turn
 
 /** primitive candidates + what the rollout policies would do now (deduplicated, legal-looking) */
 export function candidateInputs(fight, pols) {
 	const h = fight.h, me = h.f;
-	const out = new Map();
-	const add = (inp) => { if (inp) { const k = key(inp); if (!out.has(k)) out.set(k, inp); } };
+	const found = new InputSet();
 	for (const p of pols) {
 		const pol = makePolicy(p.name, p.params);
 		pol.begin(fight);
-		add(pol.next(fight));
+		found.add(pol.next(fight));
 	}
-	if (!h.C) return [...out.values()];
-	add({ t: 'wait' });
-	const foes = foesOf(h).filter((m) => Math.abs(m.b.a - me.b.a) + Math.abs(m.b.b - me.b.b) <= 12);
-	for (const [dx, dy] of DIR4) if (free(h, me.b.a + dx, me.b.b + dy)) add({ t: 'step', dx, dy });
-	for (const m of foes) {
-		const d = Math.abs(m.b.a - me.b.a) + Math.abs(m.b.b - me.b.b);
-		const seal = m.i_(h.e);
-		if (d === 1) {
-			if (seal > 0) { if (m.d && mpOk(h, seal)) add({ t: 'unseal', x: m.b.a, y: m.b.b }); continue; }
-			add({ t: 'tap', x: m.b.a, y: m.b.b });
-			if (canSkill(h, SKILL.SMASH)) add({ t: 'skill', id: SKILL.SMASH, x: m.b.a, y: m.b.b });
-		} else if (d <= 8 && seal <= 0) add({ t: 'tap', x: m.b.a, y: m.b.b });
-	}
-	if (foes.some((m) => Math.abs(m.b.a - me.b.a) + Math.abs(m.b.b - me.b.b) === 1) && canSkill(h, SKILL.KICK)) add({ t: 'skill', id: SKILL.KICK });
-	const hp = me.j.v_(), hpM = me.q_();
-	if (hp < hpM) { const id = bestItem(h, 'hp', hpM - hp, true); if (id) add({ t: 'potion', id }); }
-	if (me.z.v_() < me.D_() - 9 && canSkill(h, SKILL.CHARGE)) add({ t: 'skill', id: SKILL.CHARGE });
-	// skills: Demoralize with foes in its 4-box, Divine protection while the once-per-level flag is free
-	if (canSkill(h, SKILL.DEMORALIZE) && foes.some((m) => Math.max(Math.abs(m.b.a - me.b.a), Math.abs(m.b.b - me.b.b)) <= 4 && m.r <= 0)) add({ t: 'skill', id: SKILL.DEMORALIZE });
-	if (canSkill(h, SKILL.DIVINE) && !me.s_(32768) && !me.s_(8)) add({ t: 'skill', id: SKILL.DIVINE });
+	if (!h.C) return found.list();
+	found.add({ t: 'wait' });
+	const foes = foesOf(h).filter((m) => manh(m.b, me.b) <= 12);
+	for (const [dx, dy] of DIR4) if (free(h, me.b.a + dx, me.b.b + dy)) found.add({ t: 'step', dx, dy });
+	for (const m of foes) addFoeInputs(found, h, m);
+	addSkillAndPotionInputs(found, h, foes);
 	// items: the policies' own picks (area items at the best cluster, net, hook)
-	if (foes.length >= 2 || foes.some((m) => m.w > 0)) {
-		const probe = makePolicy('melee', {});
-		probe.begin(fight);
-		const ctx = probe.context(fight);
-		for (const id of [144, 206, 118, 294]) if (packHas(h, id)) add(probe.areaThrow(fight, ctx, id));
-		if (packHas(h, 174)) add(probe.netThrow(fight, ctx));
-		for (const id of [209, 303]) if (packHas(h, id)) add(probe.hookThrow(fight, ctx, id));
+	if (foes.length >= 2 || foes.some((m) => m.w > 0)) addThrowInputs(found, fight);
+	if (h.q == null && packHas(h, SPIDER)) addSpiderInputs(found, fight, foes);
+	return found.list();
+}
+
+/** inputs in the order found, without duplicates (the first of equal inputs is kept) */
+class InputSet {
+	constructor() { this.byKey = new Map(); }
+	add(inp) {
+		if (!inp) return;
+		const k = JSON.stringify(inp);
+		if (!this.byKey.has(k)) this.byKey.set(k, inp);
 	}
-	if (h.q == null && packHas(h, SPIDER)) {
-		let n = 0;
-		for (const m of foes) {
-			if (n >= 3 || m.i_(h.e) > 0) continue;
-			for (const [dx, dy] of DIR4) {
-				const x = m.b.a + dx, y = m.b.b + dy;
-				if (free(h, x, y) && Math.max(Math.abs(x - me.b.a), Math.abs(y - me.b.b)) <= h.e.h[3] + 3 && fight.c.j[y * h.g + x] > 0) { add({ t: 'item', id: SPIDER, x, y }); n++; break; }
-			}
-		}
+	list() { return [...this.byKey.values()]; }
+}
+
+/** a foe next to the hero: unseal it, or hit / smash it; one up to 8 away: walk at it (tap) */
+function addFoeInputs(found, h, m) {
+	const d = manh(m.b, h.f.b);
+	const seal = m.i_(h.e);
+	if (d === 1 && seal > 0) {
+		if (m.d && mpOk(h, seal)) found.add({ t: 'unseal', x: m.b.a, y: m.b.b });
+		return;
 	}
-	return [...out.values()];
+	if (d === 1) {
+		found.add({ t: 'tap', x: m.b.a, y: m.b.b });
+		if (canSkill(h, SKILL.SMASH)) found.add({ t: 'skill', id: SKILL.SMASH, x: m.b.a, y: m.b.b });
+		return;
+	}
+	if (d <= 8 && seal <= 0) found.add({ t: 'tap', x: m.b.a, y: m.b.b });
+}
+
+/** Round kick, a healing item, Charge, Demoralize and Divine protection, where they can help now */
+function addSkillAndPotionInputs(found, h, foes) {
+	const me = h.f;
+	if (foes.some((m) => manh(m.b, me.b) === 1) && canSkill(h, SKILL.KICK)) found.add({ t: 'skill', id: SKILL.KICK });
+	const hp = me.j.v_(), hpM = me.q_();
+	if (hp < hpM) { const id = bestItem(h, 'hp', hpM - hp, true); if (id) found.add({ t: 'potion', id }); }
+	if (me.z.v_() < me.D_() - 9 && canSkill(h, SKILL.CHARGE)) found.add({ t: 'skill', id: SKILL.CHARGE });
+	// Demoralize with foes in its 4-box, Divine protection while the once-per-level flag is free
+	if (canSkill(h, SKILL.DEMORALIZE) && foes.some((m) => cheb(m.b, me.b) <= 4 && m.r <= 0)) found.add({ t: 'skill', id: SKILL.DEMORALIZE });
+	if (canSkill(h, SKILL.DIVINE) && !me.s_(32768) && !me.s_(8)) found.add({ t: 'skill', id: SKILL.DIVINE });
+}
+
+/** the throws a melee policy would pick: area items, the net, the hooks */
+function addThrowInputs(found, fight) {
+	const h = fight.h;
+	const probe = makePolicy('melee', {});
+	probe.begin(fight);
+	const ctx = probe.context(fight);
+	for (const id of [144, 206, 118, 294]) if (packHas(h, id)) found.add(probe.areaThrow(fight, ctx, id));
+	if (packHas(h, 174)) found.add(probe.netThrow(fight, ctx));
+	for (const id of [209, 303]) if (packHas(h, id)) found.add(probe.hookThrow(fight, ctx, id));
+}
+
+/** the Mechanical spider next to up to 3 unsealed foes: the first free, visible cell in throwing range beside each */
+function addSpiderInputs(found, fight, foes) {
+	const h = fight.h;
+	let n = 0;
+	for (const m of foes) {
+		if (n >= 3 || m.i_(h.e) > 0) continue;
+		const cell = spiderCellBeside(fight, m);
+		if (!cell) continue;
+		found.add({ t: 'item', id: SPIDER, x: cell.x, y: cell.y });
+		n++;
+	}
+}
+
+function spiderCellBeside(fight, m) {
+	const h = fight.h, me = h.f;
+	for (const [dx, dy] of DIR4) {
+		const x = m.b.a + dx, y = m.b.b + dy;
+		if (free(h, x, y) && Math.max(Math.abs(x - me.b.a), Math.abs(y - me.b.b)) <= h.e.h[3] + 3 && fight.c.j[y * h.g + x] > 0) return { x, y };
+	}
+	return null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -209,173 +257,233 @@ export async function solveExact(problem, opts = {}) {
 	if (problem.save && !problem.saveBytes) return { error: 'exact mode from a save needs problem.saveBytes (the guild.dat / export zip bytes): every fight imports its own copy' };
 	problem = await resolveSave(problem, true);
 	const pool = opts.pool || new InlineExactPool(1);
-	const cands = (opts.cands || defaultCandidates('full')).map((c) => ({ name: c.name, params: { ...c.params }, needs: c.needs }));
-	const K = opts.rollouts ?? 5;
 	const budget = opts.budgetMs ?? Infinity;
-	const strict = !!opts.strictBudget && Number.isFinite(budget);
-	const runOpts = { ...(opts.runOpts || {}), ...(opts.useItemsForMp != null ? { useItemsForMp: !!opts.useItemsForMp } : {}) };
-	const cfg = { problem, runOpts };
-	const inits = await pool.setupExact({ ...cfg, problem: portableProblem(problem) });
+	const search = {
+		opts, t0, budget,
+		cands: (opts.cands || defaultCandidates('full')).map((c) => ({ name: c.name, params: { ...c.params }, needs: c.needs })),
+		K: opts.rollouts ?? 5,
+		strict: !!opts.strictBudget && Number.isFinite(budget),
+		runOpts: { ...(opts.runOpts || {}), ...(opts.useItemsForMp != null ? { useItemsForMp: !!opts.useItemsForMp } : {}) },
+		run: null, workers: new TrajectoryWorkers(pool), scoutNeeds: null, decisions: 0, jobs: 0,
+	};
+	const { runOpts } = search;
+	const inits = await pool.setupExact({ problem: portableProblem(problem), runOpts });
 	const bad = inits.find((r) => r && r.error);
 	if (bad) return { error: bad.error };
 	// the main trajectory (inline)
 	const f = exactFight(problem);
 	if (!f || f.error) return { error: f ? f.error : 'no fight' };
-	let run = new Run(f, runOptsOf(runOpts));
+	const start = new Run(f, runOptsOf(runOpts));
 	const prices = pricesFor(f.h, { useItemsForMp: !!runOpts.useItemsForMp });
 	const hero0 = heroOf(f.h);
-	const needs0 = run.walker.routeNeeds();
+	const needs0 = start.walker.routeNeeds();
 	// scout: the baseline from the start, for the need levels -- what the later fights cost in HP / EP (the shadow
 	// prices' need, and how far the rest rule's Doctor / Charge repair: MP only where it buys something)
-	const scoutNeeds = [];
-	{
-		const ck0 = run.checkpoint();
-		const sr = Run.resume(ck0);
-		for (let k = 0; k < 300; k++) {
-			const ev = sr.toEncounter();
-			if (ev.ev !== 'combat') break;
-			const o = outcomeOf(sr, BASELINE, { ext: 0, maxInputs: opts.maxInputs });
-			let healed = 0, fed = 0;
-			for (const [id, n] of Object.entries(o.byId)) { const it = vj0.Z1.get(+id); if (it) { healed += (it.X > 0 ? it.X : 0) * n; fed += (it.Y > 0 ? it.Y : 0) * n; } }
-			scoutNeeds.push({ hp: Math.min(o.hpM, Math.max(0, o.hpLost + healed)), ep: Math.max(0, o.epLost + fed) });
-			if (o.dead || o.end === 'stuck' || o.end === 'error' || sr.fight.c.w) break;
-			sr.walker.afterEncounter();
-		}
-		run = Run.resume(ck0);
-	}
-	/** need levels for the fights from encounter e on: 1.25 x the largest scouted HP (EP) need among them */
-	const needFrom = (e) => {
-		let hp = 0, ep = 0;
-		for (let k = e; k < scoutNeeds.length; k++) { hp = Math.max(hp, scoutNeeds[k].hp); ep = Math.max(ep, scoutNeeds[k].ep); }
-		return { hp: Math.ceil(1.25 * hp), ep: Math.ceil(1.25 * ep) };
-	};
-	const route = run.walker.legs.map((L) => ({ kind: L.kind, label: L.label, rec: L.rec ? { id: L.rec.id, x: L.rec.x, y: L.rec.y, critter: L.rec.k !== undefined } : null, at: L.at, steps: L.steps, doing: L.doing }));
-	let synced = 0;
-	const W = pool.size;
-	const sync = async (withWalker) => {
-		const inputs = run.log.slice(synced);
-		const tops = run.led.topUps.filter((t) => t.at >= synced && t.at < synced + inputs.length + (withWalker ? 1 : 0)).map((t) => ({ at: t.at, mp: t.pool + t.amount }));
-		synced = run.log.length;
-		const wk = withWalker ? run.walker.freeze() : null;
-		await Promise.all([...Array(W).keys()].map((w) => pool.call(w, 'sync', inputs, wk, tops)));
-	};
-	const playJobs = async (jobs, ctx) => {
-		const per = [...Array(W)].map(() => []);
-		jobs.forEach((j, i) => per[i % W].push(j));
-		const parts = await Promise.all(per.map((js, w) => (js.length ? pool.call(w, 'evaluate', js, ctx) : [])));
-		return parts.flat();
-	};
+	const ck0 = start.checkpoint();
+	search.scoutNeeds = scoutNeedsOf(Run.resume(ck0), opts.maxInputs);
+	const run = search.run = Run.resume(ck0);
+	const route = routeLegs(run.walker);
 	const encounters = [];
 	const stopCount = {};
-	let decisionsTotal = 0, jobsTotal = 0;
 	for (let e = 0; e < 300; e++) {
-		if (run.walker.opts.rest) run.walker.opts.rest.need = needFrom(e);
+		setRestNeed(run, needFrom(search.scoutNeeds, e));
 		const ev = run.toEncounter();
 		if (ev.ev !== 'combat') break;
-		await sync(true);
-		const h = run.fight.h;
-		const stop = ev.stop;
-		const sk = stop ? `${stop.kind}:${stop.rec ? stop.rec.id + '@' + stop.rec.x + ',' + stop.rec.y : ''}` : 'start';
-		const ord = stopCount[sk] || 0;
-		stopCount[sk] = ord + 1;
-		const needs = run.walker.routeNeeds();
-		const later = needFrom(e + 1);
-		const need = { hp: opts.hpNeed ?? Math.min(heroOf(h).hpM, later.hp), ep: needs.ep + later.ep, mp: needs.mp };
-		const enc = {
-			key: `${sk}#${ord}`, stop: stop ? { kind: stop.kind, label: stop.label, rec: stop.rec ? { id: stop.rec.id, x: stop.rec.x, y: stop.rec.y } : null, at: stop.at } : null,
-			enemies: h.D.filter((m) => isFoe(h, m)).map((m) => critterInfo(h, m)), hero: heroOf(h), from: run.log.length,
-		};
-		// skill / item tactics only where the hero has what they need
-		const av = availOf(h);
-		const ec = cands.filter((c) => usable(c, av));
-		const ctx = { cands: ec, need, restNeed: later, ext: opts.ext ?? 1, look: opts.look ?? 1, maxInputs: opts.maxInputs };
-		const led0 = run.led.clone();
-		// 1. every tactic from the encounter start
-		const base = await playJobs(ec.map((_, c) => ({ inp: null, c })), ctx);
-		jobsTotal += base.length;
-		base.sort((a, b) => cmp(a, b));
-		const ranked = base.filter((r) => r.o).map((r) => r.j.c);
-		const incumbent = ranked[0];
-		enc.tactics = base.map((r) => ({ label: labelOf(ec[r.j.c].name, ec[r.j.c].params), dead: r.o ? r.o.dead : true, end: r.o?.end, items: r.o?.items, mp: r.o?.mpSpent, hp: r.o?.hp, score: r.sc?.s }));
-		enc.tactic = { name: ec[incumbent].name, params: ec[incumbent].params, label: labelOf(ec[incumbent].name, ec[incumbent].params) };
-		const trivial = base.filter((r) => r.o).every((r) => r.o.items === base[0].o.items && r.o.mpSpent === base[0].o.mpSpent && r.o.hp === base[0].o.hp && r.o.dead === base[0].o.dead);
-		const behind = strict && now() - t0 > budget * 0.8;
-		const roll = ranked.slice(0, K).map((c) => ec[c]);
-		const rollIdx = ranked.slice(0, K);
-		// 2. receding-horizon search over the encounter's inputs; the play-outs and the trajectory use the same encounter
-		// loop (Run.fightWith), so a policy finishing the encounter does exactly what its play-out predicted
-		let decisions = 0, improved = 0;
-		let best = base[0];
-		const maxDec = behind || trivial ? 0 : (opts.maxDecisions ?? 100);
-		let finish = incumbent;
-		while (decisions < maxDec && (!strict || now() - t0 < budget)) {
-			const fh = run.fight.h;
-			if (!fh.C || fh.f.u_() || run.fight.c.w || !run.ready()) break;
-			const cs = candidateInputs(run.fight, roll);
-			if (cs.length <= 1) break;
-			const jobs = [];
-			for (const ci of cs) for (const c of rollIdx) jobs.push({ inp: ci, c });
-			const res = await playJobs(jobs, ctx);
-			jobsTotal += res.length;
-			decisions++;
-			const good = res.filter((r) => !r.bad && r.o);
-			good.sort((a, b) => cmp(a, b));
-			if (!good.length) break;
-			if (cmp(good[0], best) < 0) improved++;
-			best = good[0];
-			finish = good[0].j.c;
-			run.apply(good[0].j.inp);
-			if (run.fight.selId() !== 0 && !(good[0].j.inp.t === 'item' || good[0].j.inp.t === 'skill')) run.apply({ t: 'cancel' });
-			await sync(false);
-		}
-		// the rest of the encounter: the policy whose play-out won last
-		if (run.fight.h.C && !run.fight.h.f.u_() && !run.fight.c.w && run.ready()) {
-			enc.finish = labelOf(ec[finish].name, ec[finish].params);
-			run.fightWith(makePolicy(ec[finish].name, ec[finish].params), opts.maxInputs);
-		}
-		decisionsTotal += decisions;
-		await sync(false);
-		// encounter totals (from the trajectory's ledger over this encounter's inputs)
-		enc.to = run.log.length;
-		enc.inputs = run.log.slice(enc.from, enc.to);
-		enc.searched = decisions;
-		enc.improved = improved;
-		enc.predicted = best.o ? { items: best.o.items, mp: best.o.mpSpent, hp: best.o.hp, dead: best.o.dead } : null;
-		enc.after = heroOf(run.fight.h);
-		const lc = run.led.since(led0);
-		enc.cost = { items: lc.items(), byId: lc.itemsById(), mp: lc.mp, hpLost: lc.hp, epLost: lc.ep, dead: run.fight.h.f.u_() };
+		await search.workers.sync(run, { walker: true });
+		const key = `${stopCountKey(ev.stop)}#${countVisit(stopCount, ev.stop)}`;
+		const enc = await solveEncounter(search, { e, key, stop: ev.stop });
 		encounters.push(enc);
-		if (opts.onProgress) opts.onProgress({ phase: 'encounter', k: encounters.length, key: enc.key, tactic: enc.tactic.label, searched: decisions, ms: now() - t0 });
+		if (opts.onProgress) opts.onProgress({ phase: 'encounter', k: encounters.length, key: enc.key, tactic: enc.tactic.label, searched: enc.searched, ms: now() - t0 });
 		if (run.fight.h.f.u_() || run.fight.c.w) break;
 		run.walker.afterEncounter();
 	}
 	// finish the walk (the exit; no fight ahead: no Doctor / Charge)
-	if (run.walker.opts.rest) run.walker.opts.rest.need = needFrom(encounters.length);
+	setRestNeed(run, needFrom(search.scoutNeeds, encounters.length));
 	if (!run.fight.h.f.u_() && !run.fight.c.w) run.toEncounter();
 	const h = run.fight.h;
 	const led = run.led;
-	const tr = trimTopUps(led.topUps);
-	// the encounter a top-up comes before: the first one whose inputs start at or after it (a top-up at a fight's
-	// first hero input belongs to that fight)
-	// (a mid-fight top-up belongs to the encounter it happens in)
-	const encAt = (at) => { const k = encounters.findIndex((e) => e.from >= at || (e.to != null && at < e.to)); return k >= 0 ? k : null; };
-	const tops = led.topUps.map((t, i) => ({ at: t.at, stop: t.stop, stopIndex: stopIndexOf(route, t.stop), beforeEncounter: encAt(t.at), fight: !!t.fight, amount: tr[i], filled: t.amount, pool: t.pool })).filter((t) => t.amount > 0);
+	const tops = topUpsOf(led, route, encounters);
 	return {
 		mode: 'exact', problem: { type: problem.type, seed: problem.seed, xseed: problem.xseed, at: problem.at || 'start', hero: heroSpecOut(problem.hero) }, hero: hero0, prices, route, needs: needs0, entry: entryOut(f),
 		inputs: run.log.slice(), encounters,
 		// MP top-ups (no engine input: the player solves puzzles; at = the script position before which to have it)
 		topUps: tops,
 		totals: { items: led.items(), byId: led.itemsById(), mp: led.mp, hpLost: led.hp, dead: h.f.u_(), end: run.fight.c.w, objectivesLeft: h.i_(), inputs: run.log.length, final: heroOf(h) },
-		search: { decisions: decisionsTotal, jobs: jobsTotal, rollouts: K },
-		mpPlan: mpPlanOf(hero0, needs0, { mp: dist([led.mp]), mpPeak: dist([led.mpPeak]), mpBy: led.mpBy, toSolve: dist([tops.reduce((a, t) => a + t.amount, 0)]), mpItems: Object.entries(led.itemsById()).reduce((a, [id, n]) => a + ((vj0.Z1.get(+id) || {}).Z > 0 ? n : 0), 0) }, encounters.map((e) => ({ mpBefore: dist([e.hero.mp]) })), [], { route, tot: [{ topUps: tops }], useItemsForMp: !!runOpts.useItemsForMp }),
-		ms: now() - t0, workers: W,
+		search: { decisions: search.decisions, jobs: search.jobs, rollouts: search.K },
+		mpPlan: exactMpPlan({ hero: hero0, needs: needs0, led, encounters, topUps: tops, route, useItemsForMp: !!runOpts.useItemsForMp }),
+		ms: now() - t0, workers: pool.size,
 	};
+}
 
-	function cmp(a, b) {
-		if (!a.o) return 1;
-		if (!b.o) return -1;
-		return compareExact(a.sc, b.sc) || (a.o.inputs - b.o.inputs);
+/** the baseline played from the start, encounter by encounter: the HP / EP each fight really needs */
+function scoutNeedsOf(run, maxInputs) {
+	const needs = [];
+	for (let k = 0; k < 300; k++) {
+		const ev = run.toEncounter();
+		if (ev.ev !== 'combat') break;
+		const o = outcomeOf(run, BASELINE, { ext: 0, maxInputs });
+		needs.push(realNeedOf(o));
+		if (o.dead || o.end === 'stuck' || o.end === 'error' || run.fight.c.w) break;
+		run.walker.afterEncounter();
 	}
+	return needs;
+}
+
+/** need levels for the fights from encounter e on: 1.25 x the largest scouted HP (EP) need among them */
+function needFrom(scoutNeeds, e) {
+	let hp = 0, ep = 0;
+	for (let k = e; k < scoutNeeds.length; k++) { hp = Math.max(hp, scoutNeeds[k].hp); ep = Math.max(ep, scoutNeeds[k].ep); }
+	return { hp: Math.ceil(1.25 * hp), ep: Math.ceil(1.25 * ep) };
+}
+
+/**
+ * The workers' copies of the trajectory: sync them to the main one (inputs, MP top-ups and, at an encounter, the
+ * walker), and play out jobs from them.
+ */
+class TrajectoryWorkers {
+	constructor(pool) {
+		this.pool = pool;
+		this.synced = 0;   // inputs of the main trajectory the workers have
+	}
+
+	/** walker: also send the main's frozen walker (and a top-up just after the last input) */
+	async sync(run, { walker = false } = {}) {
+		const inputs = run.log.slice(this.synced);
+		const tops = run.led.topUps.filter((t) => t.at >= this.synced && t.at < this.synced + inputs.length + (walker ? 1 : 0)).map((t) => ({ at: t.at, mp: t.pool + t.amount }));
+		this.synced = run.log.length;
+		const wk = walker ? run.walker.freeze() : null;
+		await Promise.all([...Array(this.pool.size).keys()].map((w) => this.pool.call(w, 'sync', inputs, wk, tops)));
+	}
+
+	/** jobs dealt round-robin to the workers; results in worker order */
+	async play(jobs, ctx) {
+		const W = this.pool.size;
+		const per = [...Array(W)].map(() => []);
+		jobs.forEach((j, i) => per[i % W].push(j));
+		const parts = await Promise.all(per.map((js, w) => (js.length ? this.pool.call(w, 'evaluate', js, ctx) : [])));
+		return parts.flat();
+	}
+}
+
+/**
+ * One encounter on the main trajectory, which stands at its start: rank every tactic, search the inputs, finish with
+ * the policy that won last, and commit all of it. Returns the encounter record.
+ */
+async function solveEncounter(search, { e, key, stop }) {
+	const { run, opts, workers } = search;
+	const h = run.fight.h;
+	const needs = run.walker.routeNeeds();
+	const later = needFrom(search.scoutNeeds, e + 1);
+	const need = { hp: opts.hpNeed ?? Math.min(heroOf(h).hpM, later.hp), ep: needs.ep + later.ep, mp: needs.mp };
+	const enc = { key, stop: stopOut(stop), enemies: h.D.filter((m) => isFoe(h, m)).map((m) => critterInfo(h, m)), hero: heroOf(h), from: run.log.length };
+	// skill / item tactics only where the hero has what they need
+	const av = availOf(h);
+	const ec = search.cands.filter((c) => usable(c, av));
+	const ctx = { cands: ec, need, restNeed: later, ext: opts.ext ?? 1, look: opts.look ?? 1, maxInputs: opts.maxInputs };
+	const led0 = run.led.clone();
+	// 1. every tactic from the encounter start
+	const base = await workers.play(ec.map((_, c) => ({ inp: null, c })), ctx);
+	search.jobs += base.length;
+	base.sort(compareJobs);
+	const ranked = base.filter((r) => r.o).map((r) => r.j.c);
+	enc.tactics = base.map((r) => ({ label: labelOf(ec[r.j.c].name, ec[r.j.c].params), dead: r.o ? r.o.dead : true, end: r.o?.end, items: r.o?.items, mp: r.o?.mpSpent, hp: r.o?.hp, score: r.sc?.s }));
+	const incumbent = ec[ranked[0]];
+	enc.tactic = { name: incumbent.name, params: incumbent.params, label: labelOf(incumbent.name, incumbent.params) };
+	const behind = search.strict && now() - search.t0 > search.budget * 0.8;
+	const maxDecisions = behind || allAlike(base) ? 0 : (opts.maxDecisions ?? 100);
+	// 2. receding-horizon search over the encounter's inputs
+	const found = await searchInputs(search, { ctx, base, ranked, maxDecisions });
+	// the rest of the encounter: the policy whose play-out won last
+	if (fightGoesOn(run)) {
+		const finish = ec[found.finish];
+		enc.finish = labelOf(finish.name, finish.params);
+		run.fightWith(makePolicy(finish.name, finish.params), opts.maxInputs);
+	}
+	search.decisions += found.decisions;
+	await workers.sync(run);
+	recordEncounterEnd(enc, run, led0, found);
+	return enc;
+}
+
+/** every tactic played out the same (items, MP, HP left, death): nothing to search */
+function allAlike(base) {
+	const first = base[0].o;
+	return base.filter((r) => r.o).every((r) => r.o.items === first.items && r.o.mpSpent === first.mpSpent && r.o.hp === first.hp && r.o.dead === first.dead);
+}
+
+/**
+ * The rollout search: at each hero input of the encounter, the candidate inputs are each applied and played out to
+ * the end of the encounter by every rollout policy (the best few tactics); the input whose best play-out is best is
+ * committed. The play-outs and the trajectory use the same encounter loop (Run.fightWith), so a policy finishing the
+ * encounter does exactly what its play-out predicted. Returns { decisions, improved, best: the winning play-out,
+ * finish: the index of the policy whose play-out won last }.
+ */
+async function searchInputs(search, { ctx, base, ranked, maxDecisions }) {
+	const { run, workers } = search;
+	const rollIdx = ranked.slice(0, search.K);
+	const roll = rollIdx.map((c) => ctx.cands[c]);
+	let decisions = 0, improved = 0;
+	let best = base[0], finish = ranked[0];
+	while (decisions < maxDecisions && (!search.strict || now() - search.t0 < search.budget)) {
+		if (!fightGoesOn(run)) break;
+		const cs = candidateInputs(run.fight, roll);
+		if (cs.length <= 1) break;
+		const jobs = [];
+		for (const ci of cs) for (const c of rollIdx) jobs.push({ inp: ci, c });
+		const res = await workers.play(jobs, ctx);
+		search.jobs += res.length;
+		decisions++;
+		const good = res.filter((r) => !r.bad && r.o).sort(compareJobs);
+		if (!good.length) break;
+		if (compareJobs(good[0], best) < 0) improved++;
+		best = good[0];
+		finish = best.j.c;
+		run.apply(best.j.inp);
+		clearStraySelection(run, best.j.inp);
+		await workers.sync(run);
+	}
+	return { decisions, improved, best, finish };
+}
+
+/** the hero is in a fight that is not over, and the engine takes input */
+function fightGoesOn(run) {
+	const h = run.fight.h;
+	return h.C && !h.f.u_() && !run.fight.c.w && run.ready();
+}
+
+/** the encounter's script slice, what the search predicted, and what it cost on the trajectory */
+function recordEncounterEnd(enc, run, led0, found) {
+	const { best } = found;
+	enc.to = run.log.length;
+	enc.inputs = run.log.slice(enc.from, enc.to);
+	enc.searched = found.decisions;
+	enc.improved = found.improved;
+	enc.predicted = best.o ? { items: best.o.items, mp: best.o.mpSpent, hp: best.o.hp, dead: best.o.dead } : null;
+	enc.after = heroOf(run.fight.h);
+	const lc = run.led.since(led0);
+	enc.cost = { items: lc.items(), byId: lc.itemsById(), mp: lc.mp, hpLost: lc.hp, epLost: lc.ep, dead: run.fight.h.f.u_() };
+}
+
+/** play-outs by the exact objective (no outcome last), then fewer inputs */
+function compareJobs(a, b) {
+	if (!a.o) return 1;
+	if (!b.o) return -1;
+	return compareExact(a.sc, b.sc) || (a.o.inputs - b.o.inputs);
+}
+
+/** the trajectory's MP top-ups, trimmed to what the player has to solve for, each with its stop and encounter */
+function topUpsOf(led, route, encounters) {
+	const tr = trimTopUps(led.topUps);
+	// the encounter a top-up comes before: the first one whose inputs start at or after it (a top-up at a fight's
+	// first hero input belongs to that fight); a mid-fight top-up belongs to the encounter it happens in
+	const encAt = (at) => { const k = encounters.findIndex((e) => e.from >= at || (e.to != null && at < e.to)); return k >= 0 ? k : null; };
+	return led.topUps.map((t, i) => ({ at: t.at, stop: t.stop, stopIndex: stopIndexOf(route, t.stop), beforeEncounter: encAt(t.at), fight: !!t.fight, amount: tr[i], filled: t.amount, pool: t.pool })).filter((t) => t.amount > 0);
+}
+
+/** mpPlanOf for the one trajectory: its spending, peak and top-ups as one-sample distributions */
+function exactMpPlan({ hero, needs, led, encounters, topUps, route, useItemsForMp }) {
+	const totals = { mp: dist([led.mp]), mpPeak: dist([led.mpPeak]), mpBy: led.mpBy, toSolve: dist([topUps.reduce((a, t) => a + t.amount, 0)]), mpItems: mpItemsOf(led.itemsById()) };
+	return mpPlanOf(hero, needs, totals, encounters.map((e) => ({ mpBefore: dist([e.hero.mp]) })), [], { route, tot: [{ topUps }], useItemsForMp });
 }
 
 /**

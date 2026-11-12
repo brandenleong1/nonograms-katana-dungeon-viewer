@@ -90,7 +90,7 @@ Rules and file ownership are in [js/combat/PORTING.md](../js/combat/PORTING.md);
 | `js/plan/planner.js` | Route planner: weighted shortest paths over the game's movement rules, gates, levers and keys, teleports, then the visiting order (exact up to 16 stops). |
 | `js/solve/` | Solver ([README](../js/solve/README.md)): `robust.js` (Monte Carlo over unknown dice), `exact.js` (search with known dice), `sim.js` (dungeon walk on the engine), `policies.js` and `kite.js` (tactics), `cost.js` (objective), `plan.js` (output for the UI), `worker.js` / `pool.js` (workers). |
 | `js/view/` | Map: `iso.js` (renderer, palettes, solver overlay), `sprites.js` (procedural sprites), `catalog.js` (what each id is), `links.js` (ladder ↔ hatch and similar pairs). |
-| `js/ui/` | Solver column and progress editor: `solve-panel.js`, `solve-client.js` → `solve-host.js` (worker) → `solve-host-main.js`, pool worker adapters, `budgets.js` (presets), `words.js` (plain-language text), `progress-panel.js`. |
+| `js/ui/` | Solver column and progress editor: `solve-panel.js`, `solve-client.js` → `solve-host.js` (worker) → `solve-host-main.js`, pool worker adapters, `budgets.js` (presets), `words.js` (plain-language text), `progress-panel.js` (the Your progress editor) and `questlines.js` (its questline sliders: quests grouped by name, and what each part changes). |
 
 ## `test/` and `tools/`
 
@@ -105,6 +105,7 @@ Rules and file ownership are in [js/combat/PORTING.md](../js/combat/PORTING.md);
 | `tools/bench.mjs`, `tools/coverage.mjs` | Engine and clone benchmarks; V8 coverage summary for the ports. |
 | `tools/check-pr.mjs`, `tools/pr-bot.mjs` | PR policy check (title, description, branch, commit message); the PR bot (ready-to-merge status, branch cleanup). |
 | `tools/screenshots.mjs`, `tools/screenshot-comment.mjs` | The screenshot bot: shoot the main views of two checkouts and keep what changed; post them on the PR (trusted, from `main`). |
+| `tools/run-tests.mjs` | Runs every standalone suite in `test/` (the files with a `// Standalone suite:` line): `npm test`, precommit and postcommit. |
 | `tools/static-server.mjs`, `tools/chromium.mjs` | A loopback static server and headless Chromium, for the smoke test and the screenshots. |
 | `tools/merge-pr.sh`, `tools/github-setup.sh` | Squash-merge a PR with the right commit message; apply the repository's GitHub settings and rulesets. |
 | `tools/sprite-gallery.html` | Every sprite on a tile, per theme: `/tools/sprite-gallery.html?theme=dark`. |
