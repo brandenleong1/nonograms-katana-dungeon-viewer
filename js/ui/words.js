@@ -28,6 +28,9 @@ const PARAMS = {
 	waitTurns: (v) => `bait after ${v} idle turns`,
 };
 
+// solver steps in a script that aren't engine inputs: the player solves puzzles for MP
+const TOPUP_STEP = /^(mp|topup|topUp|mpTopUp|puzzle|puzzles)$/;
+
 const humanize = (s) => String(s).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
 
 /** 'firstStrike(smash=always,minAp=3)' -> { name: 'firstStrike', params: { smash: 'always', minAp: '3' } } */
@@ -67,49 +70,18 @@ const at = (x, y) => `(${x},${y})`;
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /**
- * The player's instruction for one recorded input (js/ui/solve-host.js recordFrames act):
+ * The player's instruction for one recorded input (js/ui/solve-host-main.js recordFrames act):
  * { text, verb, cell: { x, y } | null }. ctx: { item(id), skill(index), critter(target) -> "Monster 206", object(id) }
  */
 export function instruction(act, ctx) {
 	const inp = act.inp || {};
-	const tg = act.target;
-	const who = (t) => (t && t.kind === 'critter' ? ctx.critter(t) : t && t.kind === 'object' ? `the ${ctx.object(t.id)}` : null);
-	const from = act.from || { x: 0, y: 0 };
 	switch (inp.t) {
-		case 'tap': {
-			const cell = { x: inp.x, y: inp.y };
-			const d = Math.abs(inp.x - from.x) + Math.abs(inp.y - from.y);
-			if (tg && tg.kind === 'critter' && tg.foe) return { verb: 'attack', cell, text: d <= 1 ? `Attack ${who(tg)} at ${at(inp.x, inp.y)}` : `Tap ${who(tg)} at ${at(inp.x, inp.y)}` };
-			if (tg) return { verb: 'use', cell, text: `Tap ${who(tg)} at ${at(inp.x, inp.y)}` };
-			return { verb: 'walk', cell, text: `Tap tile ${at(inp.x, inp.y)}${d > 1 ? ` (${plural(d, 'tile')} away)` : ''}` };
-		}
-		case 'step': {
-			const x = from.x + (inp.dx | 0), y = from.y + (inp.dy | 0);
-			const cell = { x, y };
-			if (tg && tg.kind === 'critter' && tg.foe) return { verb: 'attack', cell, text: `Attack ${who(tg)} at ${at(x, y)}` };
-			if (tg) return { verb: 'use', cell, text: `Tap ${who(tg)} at ${at(x, y)}` };
-			const dw = dirWord(inp.dx | 0, inp.dy | 0);
-			return { verb: 'step', cell, text: `Step ${dw ? dw + ' ' : ''}to tile ${at(x, y)}` };
-		}
+		case 'tap': return tapInstruction(act, ctx);
+		case 'step': return stepInstruction(act, ctx);
 		case 'unseal':
-			return { verb: 'unseal', cell: { x: inp.x, y: inp.y }, text: `Unseal ${who(tg) || 'the creature'} at ${at(inp.x, inp.y)}${tg && tg.seal ? ` (${tg.seal} mental power)` : ''}` };
-		case 'skill': {
-			const name = act.skill === -1 ? 'Wait' : ctx.skill(act.skill, inp.id);
-			if (inp.x != null) {
-				const cell = { x: inp.x, y: inp.y };
-				return { verb: 'skill', cell, text: tg && tg.kind === 'critter' ? `Use ${name} on ${who(tg)} at ${at(inp.x, inp.y)}` : `Use ${name} on tile ${at(inp.x, inp.y)}` };
-			}
-			return { verb: 'skill', cell: null, text: `Use ${name}` };
-		}
-		case 'item': {
-			const name = ctx.item(inp.id);
-			if (inp.x != null) {
-				const cell = { x: inp.x, y: inp.y };
-				if (tg && tg.kind === 'critter') return { verb: 'throw', cell, text: `Throw ${name} at ${who(tg)} at ${at(inp.x, inp.y)}` };
-				return { verb: 'place', cell, text: `${inp.id === 168 ? 'Place' : 'Use'} ${name} on tile ${at(inp.x, inp.y)}` };
-			}
-			return { verb: 'item', cell: null, text: `Use ${name}` };
-		}
+			return { verb: 'unseal', cell: { x: inp.x, y: inp.y }, text: `Unseal ${targetName(act.target, ctx) || 'the creature'} at ${at(inp.x, inp.y)}${act.target && act.target.seal ? ` (${act.target.seal} mental power)` : ''}` };
+		case 'skill': return skillInstruction(act, ctx);
+		case 'item': return itemInstruction(act, ctx);
 		case 'potion':
 			return { verb: 'item', cell: null, text: `Use ${ctx.item(inp.id)}` };
 		case 'wait':
@@ -117,26 +89,91 @@ export function instruction(act, ctx) {
 		case 'cancel':
 			return { verb: 'cancel', cell: null, text: 'Cancel the selection' };
 		default:
-			if (act.topup != null || /^(mp|topup|topUp|mpTopUp|puzzle|puzzles)$/.test(String(inp.t))) {
-				const n = act.topup ?? Number(inp.mp ?? inp.amount ?? inp.n ?? 0);
-				return { verb: 'topup', cell: null, text: `Top up mental power now: solve puzzles for ${n} MP` };
-			}
-			return { verb: inp.t || '?', cell: null, text: JSON.stringify(inp) };
+			return solverStepInstruction(act);
 	}
+}
+
+/** a tap: attacks a foe (walking up to it first when it isn't adjacent), uses an object, or walks to a tile */
+function tapInstruction(act, ctx) {
+	const inp = act.inp;
+	const tg = act.target;
+	const from = act.from || { x: 0, y: 0 };
+	const cell = { x: inp.x, y: inp.y };
+	const d = Math.abs(inp.x - from.x) + Math.abs(inp.y - from.y);
+	if (isFoeTarget(tg)) return { verb: 'attack', cell, text: d <= 1 ? `Attack ${targetName(tg, ctx)} at ${at(inp.x, inp.y)}` : `Tap ${targetName(tg, ctx)} at ${at(inp.x, inp.y)}` };
+	if (tg) return { verb: 'use', cell, text: `Tap ${targetName(tg, ctx)} at ${at(inp.x, inp.y)}` };
+	return { verb: 'walk', cell, text: `Tap tile ${at(inp.x, inp.y)}${d > 1 ? ` (${plural(d, 'tile')} away)` : ''}` };
+}
+
+function stepInstruction(act, ctx) {
+	const inp = act.inp;
+	const tg = act.target;
+	const from = act.from || { x: 0, y: 0 };
+	const x = from.x + (inp.dx | 0), y = from.y + (inp.dy | 0);
+	const cell = { x, y };
+	if (isFoeTarget(tg)) return { verb: 'attack', cell, text: `Attack ${targetName(tg, ctx)} at ${at(x, y)}` };
+	if (tg) return { verb: 'use', cell, text: `Tap ${targetName(tg, ctx)} at ${at(x, y)}` };
+	const dw = dirWord(inp.dx | 0, inp.dy | 0);
+	return { verb: 'step', cell, text: `Step ${dw ? dw + ' ' : ''}to tile ${at(x, y)}` };
+}
+
+function skillInstruction(act, ctx) {
+	const inp = act.inp;
+	const name = act.skill === -1 ? 'Wait' : ctx.skill(act.skill, inp.id);
+	if (inp.x == null) return { verb: 'skill', cell: null, text: `Use ${name}` };
+	const tg = act.target;
+	const cell = { x: inp.x, y: inp.y };
+	return { verb: 'skill', cell, text: tg && tg.kind === 'critter' ? `Use ${name} on ${targetName(tg, ctx)} at ${at(inp.x, inp.y)}` : `Use ${name} on tile ${at(inp.x, inp.y)}` };
+}
+
+/** an item: drunk or eaten, thrown at a creature, or placed on a tile (the Mechanical spider, 168) */
+function itemInstruction(act, ctx) {
+	const inp = act.inp;
+	const name = ctx.item(inp.id);
+	if (inp.x == null) return { verb: 'item', cell: null, text: `Use ${name}` };
+	const tg = act.target;
+	const cell = { x: inp.x, y: inp.y };
+	if (tg && tg.kind === 'critter') return { verb: 'throw', cell, text: `Throw ${name} at ${targetName(tg, ctx)} at ${at(inp.x, inp.y)}` };
+	return { verb: 'place', cell, text: `${inp.id === 168 ? 'Place' : 'Use'} ${name} on tile ${at(inp.x, inp.y)}` };
+}
+
+/** an input the engine doesn't have: the solver's MP top-up step, else the raw input */
+function solverStepInstruction(act) {
+	const inp = act.inp || {};
+	if (act.topup != null || TOPUP_STEP.test(String(inp.t))) {
+		const n = act.topup ?? Number(inp.mp ?? inp.amount ?? inp.n ?? 0);
+		return { verb: 'topup', cell: null, text: `Top up mental power now: solve puzzles for ${n} MP` };
+	}
+	return { verb: inp.t || '?', cell: null, text: JSON.stringify(inp) };
+}
+
+function isFoeTarget(t) {
+	return t && t.kind === 'critter' && t.foe;
+}
+
+/** "Monster 206", "the treasure chest", or null for an empty cell */
+function targetName(t, ctx) {
+	if (t && t.kind === 'critter') return ctx.critter(t);
+	if (t && t.kind === 'object') return `the ${ctx.object(t.id)}`;
+	return null;
 }
 
 /** a plan MP top-up in words: "Before fight 6 (stop 4): solve puzzles for 25 MP" */
 export function topUpText(u, plan) {
 	const amount = u.amount ?? u.mp ?? 0;
+	const often = u.p != null && u.p < 0.95 ? ` (needed in ${Math.round(u.p * 100)}% of runs${u.max != null && u.max > amount ? `, up to ${u.max}` : ''})` : '';
+	return `${topUpWhere(u, plan)}: solve puzzles for ${amount} MP${often}`;
+}
+
+function topUpWhere(u, plan) {
 	const stop = u.stopIndex != null ? u.stopIndex : u.stop;
 	const nEnc = plan && plan.encounters ? plan.encounters.length : Infinity;
-	const start = (u.atInput === 0) || ((stop ?? 0) === 0 && (u.beforeEncounter ?? 0) === 0 && u.atInput == null);
-	const where = start ? 'Before you start'
-		: u.fight && u.beforeEncounter != null && u.beforeEncounter < nEnc ? `During fight ${u.beforeEncounter + 1} (pause and refill)`
-		: u.beforeEncounter != null && u.beforeEncounter < nEnc ? `Before fight ${u.beforeEncounter + 1}${stop != null ? ` (stop ${stop + 1})` : ''}`
-			: stop != null ? `On the way to stop ${stop + 1}` : 'Along the way';
-	const often = u.p != null && u.p < 0.95 ? ` (needed in ${Math.round(u.p * 100)}% of runs${u.max != null && u.max > amount ? `, up to ${u.max}` : ''})` : '';
-	return `${where}: solve puzzles for ${amount} MP${often}`;
+	const atStart = (u.atInput === 0) || ((stop ?? 0) === 0 && (u.beforeEncounter ?? 0) === 0 && u.atInput == null);
+	const beforeFight = u.beforeEncounter != null && u.beforeEncounter < nEnc;
+	if (atStart) return 'Before you start';
+	if (u.fight && beforeFight) return `During fight ${u.beforeEncounter + 1} (pause and refill)`;
+	if (beforeFight) return `Before fight ${u.beforeEncounter + 1}${stop != null ? ` (stop ${stop + 1})` : ''}`;
+	return stop != null ? `On the way to stop ${stop + 1}` : 'Along the way';
 }
 
 const signed = (n) => (n > 0 ? `+${n}` : `−${-n}`);
