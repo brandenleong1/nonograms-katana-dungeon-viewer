@@ -64,6 +64,18 @@ const t0 = performance.now();
 	check('cost: death above 1% loses to anything feasible', compareAgg(b, c) < 0);
 }
 
+// ---- walker: a fountain re-plan doesn't count toward maxReplans ----
+{
+	resetStatics(tables);
+	const run = S.Run.start({ level: 21, gear: 4, kit2: true }, { type: 15, seed: 1492658333, xseed: 777 }, { walker: { rest: new S.RestRule({ mpReserve: 'route' }) } });
+	const w = run.walker;
+	const limit = w.opts.maxReplans ?? 60;
+	w.replans = limit;                          // every failure re-plan used up
+	w.unplannedFountainWanted = () => true;     // a fountain just became worth a detour
+	w.afterEncounter();
+	check('walker: a fountain re-plan at the re-plan limit keeps walking', !w.finished && w.replans === limit, `finished ${w.finished}, replans ${w.replans}`);
+}
+
 // ---- walker checkpoint: freeze / thaw continues identically ----
 {
 	resetStatics(tables);

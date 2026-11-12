@@ -649,9 +649,7 @@ export class Walker {
 	afterEncounter() {
 		if (this.opts.recovery === false || this.finished) return;
 		if (!this.unplannedFountainWanted()) return;
-		const replans = this.replans;
-		this.replan();
-		this.replans = replans;
+		this.planAgain();
 	}
 
 	/** an unused fountain is worth visiting now, and the rest of the route does not bump it */
@@ -734,8 +732,14 @@ export class Walker {
 		this.replan();
 	}
 
+	/** re-plan from here after a failure; past maxReplans the walk ends */
 	replan() {
 		if (++this.replans > (this.opts.maxReplans ?? 60)) { this.finished = true; return; }
+		this.planAgain();
+	}
+
+	/** plan the rest of the route from here, without counting it as a re-plan */
+	planAgain() {
 		this.tries = {};
 		this.stall = 0;
 		this.jumpFrom = null;
