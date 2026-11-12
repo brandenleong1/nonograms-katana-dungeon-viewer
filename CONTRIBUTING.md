@@ -45,7 +45,8 @@ Use the "Dungeon mismatch" issue template. Include:
 
 - Keep each PR to one change, with a short description of what and why.
 - PRs with no activity for 30 days are closed, and their branches deleted.
-- For UI changes, add before/after screenshots in Light and one dark theme, and check a narrow window.
+- For UI changes, check all four themes and a narrow window. The Screenshots bot comments on every PR with before
+  and after of the main views; add images of anything else to the description.
 - For solver changes, include `node tools/solve-eval.mjs --set=tiers` totals before and after, if you can run it.
 - Title and description follow [docs/pr_guidelines.md](docs/pr_guidelines.md): `[Area] Qualifier: Title Case
   Summary`, then Context / Changes / Testing.

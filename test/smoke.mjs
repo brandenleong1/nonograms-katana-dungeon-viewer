@@ -8,9 +8,10 @@
 // Elsewhere, point NK_PLAYWRIGHT at a playwright(-core) module and NK_CHROMIUM at a Chromium binary.
 // Needs the lib/utils submodule (`git submodule update --init`).
 import fs from 'node:fs';
-import http from 'node:http';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
+import { serveStatic } from '../tools/static-server.mjs';
+import { launchChromium } from '../tools/chromium.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LABELS = ['3C-172582050', 'F1-1026320547', '6A-123456789', 'EB-1325623421'];
@@ -18,12 +19,11 @@ const THEMES = ['Light', 'Dark', 'Dark High Contrast', 'Sepia'];
 const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/game-version.json'), 'utf8'));
 const verbose = process.argv.includes('-v');
 
-const chromium = await loadChromium();
 if (!fs.existsSync(path.join(ROOT, 'lib/utils/themes'))) fail('lib/utils is empty: run `git submodule update --init`.');
 
-const server = await serve(ROOT);
+const browser = await launchChromium();
+const server = await serveStatic(ROOT);
 const base = `http://127.0.0.1:${server.address().port}`;
-const browser = await chromium.launch(process.env.NK_CHROMIUM ? { executablePath: process.env.NK_CHROMIUM } : {});
 let failures = 0;
 try {
 	for (const [themeId, theme] of THEMES.entries()) {
@@ -67,34 +67,6 @@ async function checkPage(browser, base, label, themeId, theme) {
 	if (!errors.length) return 0;
 	console.log(`FAIL ${theme} ${label}:\n  ${[...new Set(errors)].join('\n  ')}`);
 	return 1;
-}
-
-/** A static file server on a free loopback port. */
-function serve(root) {
-	const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.ttf': 'font/ttf', '.svg': 'image/svg+xml', '.png': 'image/png' };
-	const server = http.createServer((req, res) => {
-		const rel = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-		const file = path.join(root, rel);
-		if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
-			res.writeHead(404).end();
-			return;
-		}
-		res.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream' });
-		fs.createReadStream(file).pipe(res);
-	});
-	return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
-}
-
-async function loadChromium() {
-	const candidates = [process.env.NK_PLAYWRIGHT && pathToFileURL(process.env.NK_PLAYWRIGHT).href, 'playwright', 'playwright-core'].filter(Boolean);
-	for (const spec of candidates) {
-		try {
-			return (await import(spec)).chromium;
-		} catch {
-			// try the next one
-		}
-	}
-	fail('Playwright not found: `npm i --no-save playwright && npx playwright install chromium` (or set NK_PLAYWRIGHT).');
 }
 
 function fail(message) {

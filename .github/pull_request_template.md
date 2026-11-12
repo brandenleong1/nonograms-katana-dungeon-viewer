@@ -19,7 +19,8 @@ and personal paths out.
 
 ## Screenshots
 
-<!-- UI and map changes: before and after, in Light and one dark theme. Delete otherwise. -->
+<!-- The Screenshots bot comments with before/after of the fixed views. Add images of anything else here (drag them
+in), or write "See the Screenshots comment". Delete for changes with nothing to see. -->
 
 ## Issue
 

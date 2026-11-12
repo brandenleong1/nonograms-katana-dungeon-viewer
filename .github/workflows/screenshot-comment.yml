@@ -1,0 +1,64 @@
+# Posts a Screenshots run's images on its pull request: tools/screenshot-comment.mjs stores them on the
+# `bot/screenshots` branch and keeps one comment per PR up to date. It runs from main, never the PR's code, and treats
+# the images as untrusted files (checked, then stored; nothing in them runs). A failed run gets a comment saying so.
+# Daily, it deletes the images of PRs closed 30+ days ago.
+name: Screenshot Comment
+on:
+  workflow_run:
+    workflows: [Screenshots]
+    types: [completed]
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: screenshot-comment
+  cancel-in-progress: false
+
+jobs:
+  comment:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.conclusion != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download the images (untrusted)
+        if: github.event.workflow_run.conclusion == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/shots
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Post them on the PR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SHOTS: ${{ runner.temp }}/shots
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: node tools/screenshot-comment.mjs post "$SHOTS" "$HEAD_SHA" "$CONCLUSION" "$RUN_URL"
+
+  prune:
+    if: github.event_name != 'workflow_run'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Delete the images of PRs closed 30+ days ago
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tools/screenshot-comment.mjs prune
