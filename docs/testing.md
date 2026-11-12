@@ -17,6 +17,7 @@ npm test        # = node tools/run-tests.mjs: every standalone suite in test/
 |---|---|---|
 | `test/run.mjs` | The generator against the 10 sample dungeons in `test/fixtures/`: every cell, object, creature, room and the final random-number states. | ~2 s |
 | `test/version.mjs` | `data/game-version.json` and the README's Game version table agree. | instant |
+| `test/questlines.mjs` | The Your progress questlines: every quest the generator reads is on a slider, every position round-trips through a profile, and part 3 of Once Upon a Forest brings 3C's mini-boss. | ~1 s |
 | `test/solve.mjs` | Solver: resource ledger, route walker, the wiki's first-strike rule, robust and exact solves on small budgets, MP top-ups (including mid-fight), the plan schema, the worker pool. Use `--quick` to skip the slow cases and `--no-workers` to skip the pool. | ~1 min |
 
 `npm test` must pass before a pull request is merged.
