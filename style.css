@@ -59,7 +59,8 @@ body {
 
 #map-section {
 	flex: 1 1 auto;
-	min-width: 380px;
+	/* at least 2/3 as wide as the map is tall (#map's height); on narrow windows the page scrolls sideways instead */
+	min-width: max(380px, calc((100vh - 100px) * 2 / 3));
 	width: calc(100vw - 1212px);
 	justify-content: flex-start;
 	row-gap: 6px;
@@ -80,6 +81,12 @@ body {
 
 #info-section {
 	width: 320px;
+	min-width: 0;   /* not max-content (lib/utils): the boxes wrap to the column instead of widening it */
+}
+
+#info-section .info-box {
+	width: 100%;
+	box-sizing: border-box;
 }
 
 .info-box {
@@ -143,12 +150,15 @@ body {
 }
 
 .effort-row {
+	align-self: stretch;
 	column-gap: 8px;
 	align-items: center;
 	font-size: 85%;
 }
 
 #effort-select {
+	flex: 1 1 auto;
+	min-width: 0;
 	padding: 4px 6px;
 	background-color: rgba(0, 0, 0, 0);
 	border: none;
