@@ -74,9 +74,10 @@ before/after table and edits the same comment on later pushes. If nothing looks 
 the run failed, the comment links to it.
 
 - **Where the images live:** the `bot/screenshots` branch, under `auto/pr-<n>/<commit>/`. It isn't part of the site.
-  The bot rewrites the branch as a single commit each time, so old images don't pile up in its history. Images of
-  PRs closed 30+ days ago are deleted daily, so old PR pages show broken images by then. The PR bot never prunes this
-  branch.
+  Runs for several PRs can finish at once. Each adds a commit and moves the branch only if no other run moved it
+  first, and tries again otherwise, so no PR's images are lost. Daily, the bot deletes the images of PRs closed 30+
+  days ago, so old PR pages show broken images by then. It also squashes the branch to one commit, so old images don't
+  pile up in its history. The PR bot never prunes this branch.
 - **Safety:** the Screenshots run uses the PR's own code (it may be a fork), with a read-only token, and only uploads
   files. The comment workflow runs `tools/screenshot-comment.mjs` from `main` and treats those files as untrusted
   data. It parses and checks the manifest, accepts only regular PNG files of bounded size under strict names, and
