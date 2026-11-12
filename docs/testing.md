@@ -10,7 +10,7 @@ All tests are plain Node scripts (Node 18+, no dependencies). They fall into thr
 ## Standalone
 
 ```sh
-npm test        # = node test/run.mjs && node test/version.mjs && node test/solve.mjs
+npm test        # = node tools/run-tests.mjs: every standalone suite in test/
 ```
 
 | Suite | Checks | Time |
@@ -20,6 +20,17 @@ npm test        # = node test/run.mjs && node test/version.mjs && node test/solv
 | `test/solve.mjs` | Solver: resource ledger, route walker, the wiki's first-strike rule, robust and exact solves on small budgets, MP top-ups (including mid-fight), the plan schema, the worker pool. Use `--quick` to skip the slow cases and `--no-workers` to skip the pool. | ~1 min |
 
 `npm test` must pass before a pull request is merged.
+
+**Adding a suite:** most changes should come with a test. A new standalone suite is a file in `test/` that runs with
+plain `node`, exits non-zero on failure, and has this line in its header comment:
+
+```js
+// Standalone suite: `npm test` and CI run it (tools/run-tests.mjs).
+```
+
+`tools/run-tests.mjs` (what `npm test`, precommit and postcommit run) picks it up, so adding a test touches no CI
+files and needs only the usual one approval. Removing that line takes a suite out of CI, which shows in the diff.
+Suites that need oracle data or a browser don't get the line.
 
 ## Integration
 
@@ -42,11 +53,11 @@ It needs the `lib/utils` submodule. With a Playwright install elsewhere, point `
 
 | Stage | Runs | Gate |
 |---|---|---|
-| Precommit (`precommit.yml`) | syntax, `npm test` on Node 18 and 22, the smoke test | required to merge (`precommit` check), on a branch up to date with `main` |
+| Precommit (`precommit.yml`) | syntax, the standalone suites (`tools/run-tests.mjs`) on Node 18 and 22, the smoke test | required to merge (`precommit` check), on a branch up to date with `main` |
 | PR policy (`pr-policy.yml`) | title, description, branch name (`tools/check-pr.mjs`) | required (`pr-policy`) |
 | PR bot (`pr-bot.yml`) | ready to merge: the above green, up to date, no conflicts or changes requested | required (`pr-bot`), plus one human approval |
 | Screenshots (`screenshots.yml`, `screenshot-comment.yml`) | screenshots of the main views on `main` and the PR; the ones that look different are posted on the PR | reports only ([infra.md](infra.md#screenshots)) |
-| Postcommit (`postcommit.yml`) | commit message format, `npm test` and the smoke test on `main`, plus weekly | reports only; a failure on `main` should be fixed or reverted first |
+| Postcommit (`postcommit.yml`) | commit message format, the standalone suites and the smoke test on `main`, plus weekly | reports only; a failure on `main` should be fixed or reverted first |
 
 The oracle suites don't run in CI ([infra.md](infra.md#the-oracle-maintainers-only)).
 

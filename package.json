@@ -4,7 +4,7 @@
 	"type": "module",
 	"description": "Isometric dungeon viewer, route planner and combat solver for Nonograms Katana",
 	"scripts": {
-		"test": "node test/run.mjs && node test/version.mjs && node test/solve.mjs",
+		"test": "node tools/run-tests.mjs",
 		"test:oracle": "node test/run.mjs ~/.cache/nk-oracle/fx7 && node test/save.mjs && node test/entry.mjs && node test/combat.mjs && node test/clone.mjs",
 		"test:gen": "node test/run.mjs",
 		"test:version": "node test/version.mjs",

@@ -105,6 +105,7 @@ Rules and file ownership are in [js/combat/PORTING.md](../js/combat/PORTING.md);
 | `tools/bench.mjs`, `tools/coverage.mjs` | Engine and clone benchmarks; V8 coverage summary for the ports. |
 | `tools/check-pr.mjs`, `tools/pr-bot.mjs` | PR policy check (title, description, branch, commit message); the PR bot (ready-to-merge status, branch cleanup). |
 | `tools/screenshots.mjs`, `tools/screenshot-comment.mjs` | The screenshot bot: shoot the main views of two checkouts and keep what changed; post them on the PR (trusted, from `main`). |
+| `tools/run-tests.mjs` | Runs every standalone suite in `test/` (the files with a `// Standalone suite:` line): `npm test`, precommit and postcommit. |
 | `tools/static-server.mjs`, `tools/chromium.mjs` | A loopback static server and headless Chromium, for the smoke test and the screenshots. |
 | `tools/merge-pr.sh`, `tools/github-setup.sh` | Squash-merge a PR with the right commit message; apply the repository's GitHub settings and rulesets. |
 | `tools/sprite-gallery.html` | Every sprite on a tile, per theme: `/tools/sprite-gallery.html?theme=dark`. |

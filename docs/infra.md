@@ -45,7 +45,7 @@ Everything stays in the browser. Nothing is sent anywhere.
 
 | Workflow | When | What |
 |---|---|---|
-| `precommit.yml` | every PR; on demand | `syntax` (`node --check` on every module), `test` (`npm test` on Node 18 and 22), `integration` (browser smoke test). The `precommit` job passes only if all of them did. |
+| `precommit.yml` | every PR; on demand | `syntax` (`node --check` on every module), `test` (`tools/run-tests.mjs`, every standalone suite, on Node 18 and 22), `integration` (browser smoke test). The `precommit` job passes only if all of them did. |
 | `pr-policy.yml` | PR opened, edited or pushed | `pr-policy`: the title, description and branch name follow [pr_guidelines.md](pr_guidelines.md) (`tools/check-pr.mjs`). |
 | `pr-bot.yml` | after Precommit / PR Policy / PR Reviewed; on merge; hourly; daily | `pr-bot` status on every open PR, resetting reviews made on older commits; deletes merged branches; prunes stale branches (below). |
 | `pr-reviewed.yml` | a review is submitted, edited or dismissed | nothing itself; it wakes the PR bot, which has the write token review events from forks lack |
@@ -104,8 +104,10 @@ Ready means the PR:
 - has **no outstanding review requests**: every requested reviewer, person or team, has responded (GitHub removes a
   request once that reviewer submits a review, and the bot re-requests everyone whose review it resets);
 - has an approval **of its head commit** from someone with write access, or from **two** people if it changes CI,
-  the rulesets or the PR tools (`.github/`, `tools/pr-bot.mjs`, `tools/check-pr.mjs`, `tools/github-setup.sh`,
-  `tools/merge-pr.sh`, `package.json`): a PR's own workflows run from its files, so it could weaken what checks it;
+  the rulesets or the PR tools (`.github/`, `tools/pr-bot.mjs`, `tools/check-pr.mjs`, `tools/run-tests.mjs`,
+  `tools/screenshot-comment.mjs`, `tools/github-setup.sh`, `tools/merge-pr.sh`): a PR's own workflows run from its
+  files, so it could weaken what checks it. Test files aren't on the list: adding or changing a test needs one
+  approval, and taking one out of CI shows in the diff;
 - has a title that passes `tools/check-pr.mjs`.
 
 Example pending reasons: "3 commit(s) behind main: update the branch", "Waiting for review from @alice", "Needs a

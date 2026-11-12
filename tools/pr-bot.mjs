@@ -34,7 +34,7 @@ const KEEP_BRANCHES = new Set(['bot/screenshots']);   // not a PR branch: the sc
 const BOT = 'github-actions[bot]';
 const CAN_APPROVE = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);   // review author_association with write access
 // PRs touching these need two approvals: a PR's own workflows run from its files, so it could weaken what checks it
-const CI_PATHS = [/^\.github\//, /^tools\/(pr-bot|check-pr|screenshot-comment)\.mjs$/, /^tools\/(github-setup|merge-pr)\.sh$/, /^package\.json$/];
+const CI_PATHS = [/^\.github\//, /^tools\/(pr-bot|check-pr|screenshot-comment|run-tests)\.mjs$/, /^tools\/(github-setup|merge-pr)\.sh$/];
 const API = 'https://api.github.com';
 const REPO = process.env.GITHUB_REPOSITORY;
 const DRY_RUN = process.argv.includes('--dry-run');
