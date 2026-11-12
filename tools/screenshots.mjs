@@ -76,8 +76,10 @@ async function shoot(browser, base, view) {
 	await context.addCookies([{ name: 'themeID', value: String(view.theme), url: base }]);
 	const page = await context.newPage();
 	try {
-		await page.goto(`${base}/index.html#${view.label}`);
+		await page.goto(`${base}/index.html#${view.label}`, { waitUntil: 'networkidle' });
 		await page.waitForFunction(() => window.nkd && window.nkd.state.level, null, { timeout: 60000 });
+		// the themes fade colours over 0.5 s (lib/utils transition.css); a shot mid-fade differs from run to run
+		await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; caret-color: transparent !important; }' });
 		if (view.open) await openPopup(page, view.open);
 		await settle(page);
 		return await page.screenshot();
@@ -94,7 +96,7 @@ async function openPopup(page, which) {
 	}, which);
 }
 
-/** Fonts loaded, two frames drawn, popup transitions over. */
+/** Fonts loaded, two frames drawn, the popup's fade-in (lib/utils Animate) over. */
 async function settle(page) {
 	await page.evaluate(() => document.fonts.ready);
 	await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
