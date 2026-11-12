@@ -73,6 +73,7 @@ These need `~/.cache/nk-oracle/`. Without it, each script prints where it looked
 | `npm run test:entry` | Dungeon entry from a profile: pack, MP taken in, familiars, hero stats. | `fights/pf-*` |
 | `npm run test:combat` | The combat engine against 628 recorded fights (~108k inputs): every ability, boss mechanic, item and skill, and whole-dungeon runs. | `fights/` |
 | `npm run test:clone` | Snapshot / restore against uninterrupted replays. | `fights/` |
+| `npm run test:save-solve` | Exact solves from mid-dungeon saves, the way the page runs them (import, Exact, solve) in headless Chromium. Needs Playwright too. | `save/synth/hw-*.dat` |
 | `npm run test:progress` | The generator under 382 player-progress states (38,080 dungeons), plus check that the progress spec is complete for each save. | `prog/` dumps |
 | `node test/snaptest.mjs DIR`, `node test/combatsnap.mjs DIR`, `node test/model.mjs snap DIR` | Method-level snapshots, used while porting a phase. | snapshot dirs |
 
