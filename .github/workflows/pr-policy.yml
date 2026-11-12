@@ -12,13 +12,13 @@ jobs:
   pr-policy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.sha }}   # the checker as on main, not as edited by the PR
       - name: Bootstrap only - main has no checker yet, so use the PR's
         if: hashFiles('tools/check-pr.mjs') == ''
-        uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+        uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Check the title and description
