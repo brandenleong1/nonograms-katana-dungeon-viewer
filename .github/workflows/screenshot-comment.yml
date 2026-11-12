@@ -1,7 +1,7 @@
 # Posts a Screenshots run's images on its pull request: tools/screenshot-comment.mjs stores them on the
 # `bot/screenshots` branch and keeps one comment per PR up to date. It runs from main, never the PR's code, and treats
 # the images as untrusted files (checked, then stored; nothing in them runs). A failed run gets a comment saying so.
-# Daily, it deletes the images of PRs closed 30+ days ago.
+# Daily, it deletes the images of PRs closed 30+ days ago and squashes the branch's history.
 name: Screenshot Comment
 on:
   workflow_run:
@@ -16,8 +16,10 @@ permissions:
   pull-requests: write
   actions: read
 
+# One run per Screenshots run: a shared group would drop pending runs (GitHub keeps one waiting per group), and with
+# it those PRs' screenshots. tools/screenshot-comment.mjs handles runs that store images at the same time.
 concurrency:
-  group: screenshot-comment
+  group: screenshot-comment-${{ github.event.workflow_run.id || github.run_id }}
   cancel-in-progress: false
 
 jobs:

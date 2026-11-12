@@ -65,9 +65,10 @@ The bot merges a PR as soon as all of this is true:
 2. **It's up to date with `main`.** If GitHub says the branch is out of date, press "Update branch", or merge or
    rebase `main` yourself.
 3. **A person with write access approved the latest commit**: two people if the PR changes CI or the PR tools
-   (`.github/`, `tools/pr-bot.mjs`, `tools/check-pr.mjs`, the setup and merge scripts, `package.json`). Any push (new
-   code, a rebase, "Update branch") resets every review; the bot dismisses the old ones and asks those reviewers to
-   look again. Nothing merges unreviewed.
+   (`.github/`, `tools/pr-bot.mjs`, `tools/check-pr.mjs`, the setup and merge scripts, `package.json`). A push that
+   changes the PR's diff (new code, or a rebase or update that resolves a conflict) dismisses every approval, and the
+   reviewers have to look again. Bringing the branch up to date ("Update branch", or a clean rebase onto `main`) keeps
+   approvals, because the PR's own changes are the same. Nothing merges unreviewed.
 4. **Every requested reviewer has approved.** If you (or anyone) request a review from someone, the bot waits for them,
    even if someone else already approved. To go ahead without them, remove the request.
 5. **Nobody requests changes**, there are no merge conflicts, and the PR isn't a draft.

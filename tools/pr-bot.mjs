@@ -5,9 +5,9 @@
 // could press Merge and type their own message. Drafts and PRs labelled `hold` are left alone. The bot never submits
 // reviews, so it can't stand in for the human approval the ruleset requires.
 //
-// No code merges unreviewed: a review counts only for the commit it was given on. Whenever the head moves (new commits,
-// a rebase, "Update branch"), the bot dismisses the older approvals and change requests, and asks those reviewers to
-// review again.
+// No code merges unreviewed: an approval holds for the diff it was given on. GitHub dismisses approvals when a push
+// changes the PR's diff, and moves them to the new head when it doesn't ("Update branch", a clean rebase). The bot
+// dismisses any verdict still pointing at an older commit, and asks those reviewers to review again.
 //
 //   node tools/pr-bot.mjs review              set `pr-bot` on every open PR, and merge the first one that is ready
 //   node tools/pr-bot.mjs after-merge SHA     main moved to SHA (an admin merged by hand): delete the merged PR's branch,
@@ -67,7 +67,7 @@ async function reviewAll({ merge = true } = {}) {
 		}
 		const mergedSha = await mergeNow(pr);
 		if (!mergedSha) continue;
-		await afterBotMerge(mergedSha);
+		await afterBotMerge(pr);
 		return;
 	}
 }
@@ -79,8 +79,9 @@ async function afterMerge(sha) {
 }
 
 /** The bot's own merge doesn't trigger push workflows (GitHub's rule for its token), so do their work here. */
-async function afterBotMerge(sha) {
-	await deleteMergedBranches(sha);
+async function afterBotMerge(pr) {
+	// by the PR itself: right after a merge, GitHub may not list it for the merge commit yet (commits/{sha}/pulls)
+	if (pr.head.repo?.full_name === REPO) await act(`#${pr.number}: delete branch ${pr.head.ref}`, () => deleteBranch(pr.head.ref));
 	await act(`run ${POSTCOMMIT} on main`, () => github(`/repos/${REPO}/actions/workflows/${POSTCOMMIT}/dispatches`, 'POST', { ref: 'main' }));
 	await reviewAll({ merge: false });
 }
@@ -232,10 +233,21 @@ async function branchReport() {
 		// 404: no history in common with main (a hand-made orphan branch); judged by age alone
 		const compare = (await github(`/repos/${REPO}/compare/main...${branch.commit.sha}`, 'GET', null, [404])) || { ahead_by: -1, behind_by: -1 };
 		const pr = prByBranch.get(branch.name) || null;
-		const action = pr ? 'keep' : compare.ahead_by === 0 ? 'merged' : ageDays >= STALE_DAYS ? 'stale' : 'keep';
+		const merged = !pr && (compare.ahead_by === 0 || (await mergedAsIs(branch)));
+		const action = pr ? 'keep' : merged ? 'merged' : ageDays >= STALE_DAYS ? 'stale' : 'keep';
 		rows.push({ name: branch.name, ageDays, pr, ahead: compare.ahead_by, behind: compare.behind_by, action });
 	}
 	return rows;
+}
+
+/**
+ * Whether a PR merged this branch exactly as it is now (a squash merge leaves the branch "ahead" of main). A branch
+ * with commits pushed after its PR merged isn't counted: that's new work.
+ */
+async function mergedAsIs(branch) {
+	const owner = REPO.split('/')[0];
+	const pulls = await github(`/repos/${REPO}/pulls?state=closed&head=${encodeURIComponent(`${owner}:${branch.name}`)}&per_page=10`);
+	return pulls.some((p) => p.merged_at && p.head.sha === branch.commit.sha);
 }
 
 /** The PRs merged as `sha` (normally one): delete their head branch if it lives in this repository. */
