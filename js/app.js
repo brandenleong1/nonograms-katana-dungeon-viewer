@@ -25,17 +25,156 @@ const LAYERS = [
 	{ id: 'endexit', label: 'Route ends at the stairs', color: '#ffd84a', on: false, option: true },
 ];
 
-const state = { level: null, type: 8, seed: 0, generator: null, fresh: null, hero: null };
-
 // how many steps one point of energy / mental power is worth when choosing a path
 const EFFORT = {
 	steps: { epCost: 0.2, mpCost: 0.2 },
 	balanced: { epCost: 3, mpCost: 3 },
 	save: { epCost: 12, mpCost: 12 },
 };
+
+const MAP_BG = { light: '#ece9e2', sepia: '#e6dbc3', dark: '#0b0b0d', contrast: '#000000' };
+const DEFAULT_LABEL = '3C-172582050';
+const SELECT_HINT = 'Click a tile, object or monster.';
+const HERO_ID = 180;
+const STUCK_DOOR_ID = 28;
+const EXIT_LOCK_LOOK = { color: KINDS.lockdoor.color, glyph: '⚿', label: 'Unlock the exit (mini-boss key)' };
+const PUZZLE_STOP_LOOK = { glyph: '▦', color: KINDS.puzzledoor.color };
+
+/**
+ * The page's state, shared with the solver panel and exposed as `window.nkd.state`: the dungeon shown (level, type,
+ * seed) and its route (plan), the generator (null: only the sample fixtures), the new-game profile (fresh), and the
+ * Your hero and solver panels.
+ */
+const state = { level: null, type: 8, seed: 0, generator: null, fresh: null, hero: null, plan: null, solve: null };
+
+/** The map (IsoView). main() makes it before anything else runs. */
 let view;
 
-// ---- level source ------------------------------------------------------------------------
+async function main() {
+	view = createMapView();
+	const layersOn = savedLayers();
+	renderLayerList(layersOn);
+	view.setLayers(layersOn);
+	window.nkd = { view, state, show };   // console/debug handle
+	followPageTheme();
+
+	await loadGameData();
+	showGameVersion($('#game-version'));
+
+	// Your hero: the imported save (kept in this tab's sessionStorage) and whether maps use it
+	state.hero = createHeroPanel();
+	state.hero.bind();
+	if (state.generator) await state.hero.restore();
+
+	// Solver column (js/ui/solve-panel.js): solves run in a module worker with its own pool
+	const names = await loadNames();
+	state.solve = new SolvePanel({ view, state, names, root: $('#solve-section'), show: (label) => show(label) });
+	state.solve.bind();
+	window.nkd.solve = state.solve;
+	bindSolverToggle();
+
+	bindLabelControls();
+	bindMapButtons();
+	bindEffortSelect();
+	window.addEventListener('hashchange', () => show(labelInHash()));
+
+	show(location.hash.length > 1 ? labelInHash() : DEFAULT_LABEL);
+}
+
+// ---- page setup --------------------------------------------------------------------------
+
+/** The map, with a tooltip that follows the mouse and names what is under it. */
+function createMapView() {
+	const tooltip = $('#tooltip');
+	const mapView = new IsoView($('#map'), {
+		onHover: (cell) => showTooltip(tooltip, cell),
+		onSelect: showSelection,
+	});
+	$('#map').addEventListener('mousemove', (e) => {
+		tooltip.style.left = `${e.clientX + 14}px`;
+		tooltip.style.top = `${e.clientY + 14}px`;
+	});
+	return mapView;
+}
+
+function showTooltip(tooltip, cell) {
+	if (!cell) {
+		tooltip.style.display = 'none';
+		return;
+	}
+	const occupied = cell.critter || cell.object;
+	tooltip.textContent = occupied ? `${KINDS[cellKind(cell)].label} · ${cell.x},${cell.y}` : `${tileName(cell.a, cell.b)} · ${cell.x},${cell.y}`;
+	tooltip.style.display = 'block';
+}
+
+/** The ids of the map layers that are on: the player's last choice (localStorage), else the defaults. */
+function savedLayers() {
+	const saved = JSON.parse(localStorage.getItem('nkd-layers') || 'null');
+	return new Set(saved || LAYERS.filter((l) => l.on).map((l) => l.id));
+}
+
+/** The Show on map checkboxes; clicking one edits `layersOn` in place. */
+function renderLayerList(layersOn) {
+	const box = $('#layer-list');
+	for (const layer of LAYERS) box.append(layerRow(layer, layersOn));
+}
+
+function layerRow(layer, layersOn) {
+	const row = document.createElement('div');
+	row.className = 'layer-row';
+	const checkbox = document.createElement('div');
+	checkbox.className = 'checkbox' + (layersOn.has(layer.id) ? ' selected' : '');
+	row.append(checkbox);
+	const label = document.createElement('span');
+	label.innerHTML = `<span class="swatch" style="background:${layer.color}"></span> ${layer.label}${layer.spoiler ? ' <span class="spoiler">(spoiler)</span>' : ''}`;
+	row.append(label);
+	row.onclick = () => {
+		if (checkbox.classList.toggle('selected')) layersOn.add(layer.id);
+		else layersOn.delete(layer.id);
+		layersChanged(layer, layersOn);
+	};
+	return row;
+}
+
+function layersChanged(layer, layersOn) {
+	localStorage.setItem('nkd-layers', JSON.stringify([...layersOn]));
+	view.setLayers(layersOn);
+	view.setLinks(baseLinks(), view.highlights);
+	if (layer.id === 'endexit' && state.level) renderRoute(state.level);
+}
+
+/** Follow the page theme (lib/utils swaps the #theme-css stylesheet): light/sepia vs dark palettes. */
+function followPageTheme() {
+	applyPageTheme();
+	new MutationObserver(applyPageTheme).observe(document.head, { subtree: true, childList: true, attributes: true, attributeFilter: ['href'] });
+}
+
+function applyPageTheme() {
+	const theme = pageTheme();
+	$('#map').style.setProperty('--map_bg', MAP_BG[theme]);
+	const mapTheme = theme === 'light' || theme === 'sepia' ? 'light' : 'dark';
+	const changed = mapTheme !== view.theme;
+	view.setTheme(mapTheme);
+	if (changed && state.solve) state.solve.onTheme();
+}
+
+/** 'light' | 'sepia' | 'contrast' | 'dark', from the theme stylesheet's file name. */
+function pageTheme() {
+	const href = document.querySelector('#theme-css')?.getAttribute('href') || '';
+	return /sepia/.test(href) ? 'sepia' : /light/.test(href) ? 'light' : /high_contrast/.test(href) ? 'contrast' : 'dark';
+}
+
+/** The game tables, the generator (if it loads) and the new-game profile. */
+async function loadGameData() {
+	const [tablesJson, generator] = await Promise.all([
+		fetch('data/tables.json').then((r) => r.json()),
+		loadGenerator(),
+	]);
+	initTables(tablesJson);
+	state.generator = generator;
+	state.fresh = V.i2;   // the new-game profile
+}
+
 async function loadGenerator() {
 	try {
 		return await import('./gen/generate.js');
@@ -45,77 +184,216 @@ async function loadGenerator() {
 	}
 }
 
-async function makeLevel(type, seed) {
+/** Display names for items, skills and quests (data/names.json); empty if it can't be read. */
+function loadNames() {
+	return fetch('data/names.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+}
+
+function createHeroPanel() {
+	return new HeroPanel({
+		getType: () => state.type,
+		getLabel: () => formatLabel(state.type, state.seed),
+		onChange: rebuildMap,
+	});
+}
+
+/** The progress the map is built with changed: build the dungeon shown again. */
+function rebuildMap() {
+	if (state.level || state.seed) show(formatLabel(state.type, state.seed));
+}
+
+/** The button that shows and hides the solver column (remembered in localStorage). */
+function bindSolverToggle() {
+	const button = $('#solver-btn');
+	setSolverShown(localStorage.getItem('nkd-solver') !== '0');
+	button.onclick = () => setSolverShown(document.body.classList.contains('solver-hidden'));
+	button.onkeydown = (e) => {
+		if (e.key !== 'Enter' && e.key !== ' ') return;
+		e.preventDefault();
+		button.onclick();
+	};
+}
+
+function setSolverShown(on) {
+	const button = $('#solver-btn');
+	document.body.classList.toggle('solver-hidden', !on);
+	button.classList.toggle('off', !on);
+	button.setAttribute('aria-pressed', String(on));
+	localStorage.setItem('nkd-solver', on ? '1' : '0');
+}
+
+function bindLabelControls() {
+	$('#show-btn').onclick = () => show($('#label-input').value);
+	$('#label-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') show(e.target.value); });
+	$('#random-btn').onclick = showRandomLabel;
+}
+
+async function showRandomLabel() {
+	if (state.generator?.randomLabel) {
+		show(state.generator.randomLabel(state.type));
+		return;
+	}
+	const response = await fetch('test/fixtures/index.json');
+	const labels = response.ok ? await response.json() : [];
+	if (labels.length) show(labels[Math.floor(Math.random() * labels.length)]);
+}
+
+function bindMapButtons() {
+	$('#zoom-in-btn').onclick = () => view.zoomAt(1.4, view.cssW / 2, view.cssH / 2);
+	$('#zoom-out-btn').onclick = () => view.zoomAt(1 / 1.4, view.cssW / 2, view.cssH / 2);
+	$('#fit-btn').onclick = () => view.fit();
+	$('#hero-btn').onclick = centerOnHero;
+	$('#walls-btn').onclick = toggleWallHeight;
+}
+
+/** Zoom in to at least 1:1 and centre on the hero. */
+function centerOnHero() {
+	const hero = state.level?.critters.find((c) => c.id === HERO_ID);
+	if (!hero) return;
+	view.zoomAt(Math.max(1, view.scale) / view.scale, view.cssW / 2, view.cssH / 2);
+	view.centerOn(hero.x, hero.y);
+}
+
+function toggleWallHeight() {
+	view.wallHeight = view.wallHeight > 20 ? 14 : 34;
+	view.redraw();
+}
+
+/** The Energy & mental power choice for the route (remembered in localStorage). */
+function bindEffortSelect() {
+	const select = $('#effort-select');
+	select.value = localStorage.getItem('nkd-effort') || 'balanced';
+	select.onchange = () => {
+		localStorage.setItem('nkd-effort', select.value);
+		if (state.level) renderRoute(state.level);
+	};
+}
+
+function labelInHash() {
+	return decodeURIComponent(location.hash.slice(1));
+}
+
+// ---- showing a dungeon -------------------------------------------------------------------
+
+/** Show the dungeon a label names (typed, or from the URL or a panel). Problems go to the status line. */
+async function show(text) {
+	const status = $('#label-status');
+	status.classList.remove('error');
+	let label;
+	try {
+		label = parseLabel(text);
+	} catch (e) {
+		showStatusError(status, e);
+		return;
+	}
+	status.textContent = 'Building…';
+	try {
+		const level = await makeLevel(label);
+		setCurrentLevel(level, label);
+		drawLevel(level, label.type);
+		status.innerHTML = levelStatusHtml(level, label.type);
+		refreshPanelsForLevel();
+	} catch (e) {
+		console.error(e);
+		showStatusError(status, e);
+	}
+}
+
+function showStatusError(status, error) {
+	status.textContent = error.message;
+	status.classList.add('error');
+}
+
+/**
+ * The level a label builds with the map's progress, or its sample fixture when there is no generator.
+ * @param {{ type: number, seed: number }} label
+ */
+async function makeLevel(label) {
 	// the player state the generator queries (vj0.i2): the imported profile while "use my progress" is on, plus the
 	// edits in Your progress (js/hero.js effectiveProfile)
-	const eff = state.hero ? state.hero.effectiveProfile() : null;
-	const custom = !!eff && eff.basis !== 'new';
-	V.i2 = eff ? eff.vj0 : state.fresh;
-	if (state.generator) {
-		try {
-			return state.generator.generate(type, seed);
-		} catch (e) {
-			if (custom) {
-				throw new Error(eff.basis === 'custom'
-					? 'This label does not build with the progress set in Your progress (the game would not have shown it). Reset or change it to see the dungeon.'
-					: 'This label does not build with your progress (the game would not have shown it to you). Turn off "Use my progress" in Your hero to see it as a new game.');
-			}
-			console.warn('generator failed, trying sample fixtures:', e);
-		}
+	const mapProfile = state.hero ? state.hero.effectiveProfile() : null;
+	V.i2 = mapProfile ? mapProfile.vj0 : state.fresh;
+	if (!state.generator) return fixtureLevel(label);
+	try {
+		return state.generator.generate(label.type, label.seed);
+	} catch (e) {
+		if (mapProfile && mapProfile.basis !== 'new') throw new Error(unbuildableText(mapProfile.basis));
+		console.warn('generator failed, trying sample fixtures:', e);
 	}
-	const res = await fetch(`test/fixtures/${type}-${seed}.json`);
-	if (!res.ok) throw new Error('This build can only show the sample dungeons in test/fixtures/ for now.');
-	const level = await res.json();
+	return fixtureLevel(label);
+}
+
+function unbuildableText(basis) {
+	return basis === 'custom'
+		? 'This label does not build with the progress set in Your progress (the game would not have shown it). Reset or change it to see the dungeon.'
+		: 'This label does not build with your progress (the game would not have shown it to you). Turn off "Use my progress" in Your hero to see it as a new game.';
+}
+
+/** @param {{ type: number, seed: number }} label */
+async function fixtureLevel({ type, seed }) {
+	const response = await fetch(`test/fixtures/${type}-${seed}.json`);
+	if (!response.ok) throw new Error('This build can only show the sample dungeons in test/fixtures/ for now.');
+	const level = await response.json();
 	if (level.error) throw new Error(`The game could not build this dungeon (${level.error}).`);
 	return level;
 }
 
-// ---- info helpers ------------------------------------------------------------------------
-const rwOf = (id) => zw.Q?.get(id);
-const bwOf = (id) => zw.R?.get(id);
-
-function kindOf(rec, isCritter) {
-	return isCritter ? critterKind(rec, bwOf(rec.id)) : objectKind(rec, rwOf(rec.id));
+/** Make `level` the page's dungeon: the state, the label box and the URL. */
+function setCurrentLevel(level, label) {
+	state.level = level;
+	state.type = label.type;
+	state.seed = label.seed;
+	const labelText = formatLabel(label.type, label.seed);
+	$('#label-input').value = labelText;
+	history.replaceState(null, '', `#${labelText}`);
 }
 
-function objectives(level) {
-	// the game's own rule (hw.i), shared with the planner
-	return gameObjectives(level, { rw: rwOf, bw: bwOf, pw: zw.M[level.type] }).map((o) =>
-		o.kind === 'exitlock' ? { rec: { id: -1, x: o.at.x, y: o.at.y, exitlock: true }, critter: false } : { rec: o.rec, critter: o.kind === 'critter' });
+function drawLevel(level, type) {
+	view.setLevel(level, { family: family(type), rw: objectDef, bw: critterDef });
+	view.setPuzzle(floorNonogram(level, zw.O));
+	view.setLinks(baseLinks(), []);
+	renderObjectives(level);
+	renderRoute(level);
+	$('#selected-info').textContent = SELECT_HINT;
 }
 
-function describeHtml(d) {
-	const parts = [];
-	const rec = d.critter || d.object;
-	if (rec) {
-		const isC = !!d.critter;
-		const kind = kindOf(rec, isC);
-		const k = KINDS[kind];
-		parts.push(`<div><span class="glyph" style="color:${k.color}">${k.glyph}</span><b>${k.label}</b> <span class="muted">#${rec.id}</span></div>`);
-		const def = isC ? bwOf(rec.id) : rwOf(rec.id);
-		if (def && def.v > 0) parts.push(`<div>Needs <b>${def.v}</b> mental power to open.</div>`);
-		if (rec.id === 28 && state.level) parts.push(`<div>Breaking it costs energy.</div>`);
-		if (def && def.t) parts.push(`<div class="muted">Counts as an objective.</div>`);
-		const ps = isC ? [] : partners(state.level, rec);
-		if (ps.length) {
-			parts.push(`<div>Links to ${ps.map((p) => `<a data-x="${p.x}" data-y="${p.y}">${KINDS[kindOf(p, false)].label.toLowerCase()} at ${p.x},${p.y}</a>`).join(', ')}.</div>`);
-		}
-	}
-	parts.push(`<div class="muted">${tileName(d.a, d.b)} · ${d.x},${d.y}</div>`);
-	return parts.join('');
+/** The status line under the label: size, counts, and a badge for the progress the map is built with. */
+function levelStatusHtml(level, type) {
+	const mapProfile = state.hero ? state.hero.effectiveProfile() : null;
+	const basis = mapProfile ? mapProfile.basis : 'new';
+	return `${typeLabel(type)} · ${level.w}×${level.h} · ${level.objects.length} objects · ${level.critters.length} creatures ` +
+		`<span class="profile-badge status-badge${basis === 'save' ? ' on' : basis === 'custom' ? ' custom' : ''}" title="The progress this map is built with (Your hero, Progress)">${mapProfile ? mapProfile.text.toLowerCase() : 'new game'}</span>`;
 }
 
-function showSelection(d) {
+/** The Your hero popups and the solver follow the dungeon shown. */
+function refreshPanelsForLevel() {
+	if (state.hero && state.hero.profile) state.hero.render();
+	if (state.hero) state.hero.renderProgress();
+	if (state.solve) state.solve.onLevel();
+}
+
+// ---- selection ---------------------------------------------------------------------------
+
+/** The Selected panel and the link highlights for a clicked cell (null: nothing selected). */
+function showSelection(cell) {
 	const box = $('#selected-info');
-	if (!d) { box.textContent = 'Click a tile, object or monster.'; view.setLinks(baseLinks(), []); return; }
-	box.innerHTML = describeHtml(d);
+	if (!cell) {
+		box.textContent = SELECT_HINT;
+		view.setLinks(baseLinks(), []);
+		return;
+	}
+	box.innerHTML = cellHtml(cell);
 	for (const a of box.querySelectorAll('a[data-x]')) a.onclick = () => view.centerOn(+a.dataset.x, +a.dataset.y);
-	const rec = d.object;
-	const ps = rec ? partners(state.level, rec) : [];
-	const color = rec ? LINK_COLORS[linkGroup(rec)] : null;
+	highlightPartners(cell.object);
+}
+
+/** Lines from an object to the ones it links to (a ladder to its hatch, ...), on top of the linked-pairs layer. */
+function highlightPartners(object) {
+	const linked = object ? partners(state.level, object) : [];
+	const color = object ? LINK_COLORS[linkGroup(object)] : null;
 	view.setLinks(
-		[...baseLinks(), ...ps.map((p) => [rec, p, color])],
-		ps.map((p) => ({ x: p.x, y: p.y, color })),
+		[...baseLinks(), ...linked.map((p) => [object, p, color])],
+		linked.map((p) => ({ x: p.x, y: p.y, color })),
 	);
 }
 
@@ -123,34 +401,76 @@ function baseLinks() {
 	return state.level && view.layers.has('alllinks') ? allLinks(state.level) : [];
 }
 
+function cellHtml(cell) {
+	const occupied = cell.critter || cell.object;
+	const occupantPart = occupied ? occupantHtml(cell) : '';
+	return `${occupantPart}<div class="muted">${tileName(cell.a, cell.b)} · ${cell.x},${cell.y}</div>`;
+}
+
+/** A cell's creature or object: what it is, the mental power it takes to open, and what it links to. */
+function occupantHtml(cell) {
+	const isCritter = !!cell.critter;
+	const rec = cell.critter || cell.object;
+	const look = KINDS[cellKind(cell)];
+	const parts = [`<div><span class="glyph" style="color:${look.color}">${look.glyph}</span><b>${look.label}</b> <span class="muted">#${rec.id}</span></div>`];
+	const def = isCritter ? critterDef(rec.id) : objectDef(rec.id);
+	if (def && def.v > 0) parts.push(`<div>Needs <b>${def.v}</b> mental power to open.</div>`);
+	if (rec.id === STUCK_DOOR_ID && state.level) parts.push(`<div>Breaking it costs energy.</div>`);
+	if (def && def.t) parts.push(`<div class="muted">Counts as an objective.</div>`);
+	const linked = isCritter ? [] : partners(state.level, rec);
+	if (linked.length) parts.push(`<div>Links to ${linked.map(partnerLinkHtml).join(', ')}.</div>`);
+	return parts.join('');
+}
+
+function partnerLinkHtml(p) {
+	return `<a data-x="${p.x}" data-y="${p.y}">${KINDS[objectKindOf(p)].label.toLowerCase()} at ${p.x},${p.y}</a>`;
+}
+
+// ---- objectives --------------------------------------------------------------------------
+
 function renderObjectives(level) {
 	const list = objectives(level);
 	$('#objective-count').textContent = `(${list.length})`;
 	const box = $('#objective-list');
 	box.innerHTML = '';
-	for (const { rec, critter } of list) {
-		const k = rec.exitlock ? { color: KINDS.lockdoor.color, glyph: '⚿', label: 'Unlock the exit (mini-boss key)' } : KINDS[kindOf(rec, critter)];
-		const row = document.createElement('div');
-		row.className = 'row';
-		row.innerHTML = `<span><span class="glyph" style="color:${k.color}">${k.glyph}</span>${k.label}</span><span class="muted">${rec.x},${rec.y}</span>`;
-		row.onclick = () => { view.centerOn(rec.x, rec.y); view.selected = rec; showSelection(view.describe(rec.x, rec.y)); };
-		box.append(row);
-	}
+	for (const objective of list) box.append(objectiveRow(objective));
 	if (!list.length) box.textContent = 'None found.';
 }
 
-function stopLabel(stop) {
-	if (stop.label) return stop.label;
-	const k = KINDS[kindOf(stop.rec, stop.rec.k !== undefined)];
-	return `${k.label}`;
+/** The dungeon's objectives by the game's own rule (hw.i, shared with the planner), each with how it is drawn. */
+function objectives(level) {
+	return gameObjectives(level, { rw: objectDef, bw: critterDef, pw: zw.M[level.type] }).map(objectiveEntry);
 }
 
+function objectiveEntry(objective) {
+	if (objective.kind === 'exitlock') {
+		const { x, y } = objective.at;
+		return { rec: { id: -1, x, y, exitlock: true }, look: EXIT_LOCK_LOOK };
+	}
+	const kind = objective.kind === 'critter' ? critterKindOf(objective.rec) : objectKindOf(objective.rec);
+	return { rec: objective.rec, look: KINDS[kind] };
+}
+
+function objectiveRow({ rec, look }) {
+	const row = document.createElement('div');
+	row.className = 'row';
+	row.innerHTML = `<span><span class="glyph" style="color:${look.color}">${look.glyph}</span>${look.label}</span><span class="muted">${rec.x},${rec.y}</span>`;
+	row.onclick = () => {
+		view.centerOn(rec.x, rec.y);
+		view.selected = rec;
+		showSelection(view.describe(rec.x, rec.y));
+	};
+	return row;
+}
+
+// ---- route -------------------------------------------------------------------------------
+
+/** Plan the route through every objective; draw it and list its stops in the Route panel. */
 function renderRoute(level) {
 	const box = $('#route-info');
 	let plan;
 	try {
-		const effort = EFFORT[$('#effort-select').value] || EFFORT.balanced;
-		plan = planRoute(level, { rw: rwOf, bw: bwOf, pwOf: (t) => zw.M[t], patterns: zw.O, tiles: zw.u, endAtExit: view.layers.has('endexit'), ...effort });
+		plan = planRoute(level, routeOptions());
 	} catch (e) {
 		console.error(e);
 		box.textContent = `Could not plan a route: ${e.message}`;
@@ -160,191 +480,90 @@ function renderRoute(level) {
 	state.plan = plan;
 	view.setRoute(plan.route);
 	box.innerHTML = '';
+	box.append(routeSummary(plan));
+	renderLegs(box, plan);
+}
+
+function routeOptions() {
+	const effort = EFFORT[$('#effort-select').value] || EFFORT.balanced;
+	return { rw: objectDef, bw: critterDef, pwOf: (t) => zw.M[t], patterns: zw.O, tiles: zw.u, endAtExit: view.layers.has('endexit'), ...effort };
+}
+
+function routeSummary(plan) {
 	const head = document.createElement('div');
 	head.innerHTML = `<b>${plan.legs.length}</b> stops · <b>${plan.steps}</b> steps` +
 		`<div class="muted">About ${plan.mp} mental power and ${plan.ep} energy for seals and stuck doors${plan.exact ? '' : ' · order found by search (not proven shortest)'}.</div>` +
 		(plan.unreachable.length ? `<div style="color:var(--color_red)">${plan.unreachable.length} objective(s) could not be reached.</div>` : '') +
 		(plan.unknownGates.length ? `<div class="muted">${plan.unknownGates.length} door(s) with an unknown opener were left shut.</div>` : '');
-	box.append(head);
+	return head;
+}
+
+/** One row per stop; clicking one shows that leg of the route on the map. */
+function renderLegs(box, plan) {
 	plan.legs.forEach((leg, n) => {
-		const row = document.createElement('div');
-		row.className = 'row';
-		const k = leg.stop.rec ? KINDS[kindOf(leg.stop.rec, leg.stop.rec.k !== undefined)] : { glyph: '▦', color: KINDS.puzzledoor.color };
-		row.innerHTML = `<span><span class="muted">${n + 1}.</span> <span class="glyph" style="color:${k.color}">${k.glyph}</span>${stopLabel(leg.stop)}</span><span class="muted">+${leg.steps}</span>`;
-		if (leg.doing.length) {
-			const sub = leg.doing.map((d) => `${d.text}${d.ep ? ` (${d.ep} energy)` : ''}${d.mp ? ` (${d.mp} mental power)` : ''} at ${d.at.x},${d.at.y}`);
-			row.title = sub.join('\n');
-			row.innerHTML += `<div class="muted sub">${sub.map((t) => `↳ ${t}`).join('<br>')}</div>`;
-		}
+		const row = legRow(leg, n);
 		row.onclick = () => {
 			view.setRoute(plan.route, leg);
 			view.centerOn(leg.at.x, leg.at.y);
-			for (const r of box.querySelectorAll('.row')) r.style.outline = '';
-			row.style.outline = '1px solid var(--color_btn)';
+			outlineOnly(box, row);
 		};
 		box.append(row);
 	});
 }
 
-// ---- actions -----------------------------------------------------------------------------
-async function show(text) {
-	const status = $('#label-status');
-	status.classList.remove('error');
-	let parsed;
-	try {
-		parsed = parseLabel(text);
-	} catch (e) {
-		status.textContent = e.message;
-		status.classList.add('error');
-		return;
-	}
-	status.textContent = 'Building…';
-	try {
-		const level = await makeLevel(parsed.type, parsed.seed);
-		state.level = level;
-		state.type = parsed.type;
-		state.seed = parsed.seed;
-		const label = formatLabel(parsed.type, parsed.seed);
-		$('#label-input').value = label;
-		history.replaceState(null, '', `#${label}`);
-		view.setLevel(level, { family: family(parsed.type), rw: rwOf, bw: bwOf });
-		view.setPuzzle(floorNonogram(level, zw.O));
-		view.setLinks(baseLinks(), []);
-		renderObjectives(level);
-		renderRoute(level);
-		$('#selected-info').textContent = 'Click a tile, object or monster.';
-		const eff = state.hero ? state.hero.effectiveProfile() : null;
-		const basis = eff ? eff.basis : 'new';
-		status.innerHTML = `${typeLabel(parsed.type)} · ${level.w}×${level.h} · ${level.objects.length} objects · ${level.critters.length} creatures ` +
-			`<span class="profile-badge status-badge${basis === 'save' ? ' on' : basis === 'custom' ? ' custom' : ''}" title="The progress this map is built with (Your hero, Progress)">${eff ? eff.text.toLowerCase() : 'new game'}</span>`;
-		if (state.hero && state.hero.profile) state.hero.render();
-		if (state.hero) state.hero.renderProgress();
-		if (state.solve) state.solve.onLevel();
-	} catch (e) {
-		console.error(e);
-		status.textContent = e.message;
-		status.classList.add('error');
-	}
+function legRow(leg, n) {
+	const row = document.createElement('div');
+	row.className = 'row';
+	const look = leg.stop.rec ? KINDS[stopKind(leg.stop.rec)] : PUZZLE_STOP_LOOK;
+	const tasks = leg.doing.map(taskText);
+	const tasksHtml = tasks.length ? `<div class="muted sub">${tasks.map((t) => `↳ ${t}`).join('<br>')}</div>` : '';
+	row.innerHTML = `<span><span class="muted">${n + 1}.</span> <span class="glyph" style="color:${look.color}">${look.glyph}</span>${stopLabel(leg.stop)}</span><span class="muted">+${leg.steps}</span>${tasksHtml}`;
+	if (tasks.length) row.title = tasks.join('\n');
+	return row;
 }
 
-function buildLayerList() {
-	const saved = JSON.parse(localStorage.getItem('nkd-layers') || 'null');
-	const on = new Set(saved || LAYERS.filter((l) => l.on).map((l) => l.id));
-	const box = $('#layer-list');
-	for (const l of LAYERS) {
-		const row = document.createElement('div');
-		row.className = 'layer-row';
-		const cb = document.createElement('div');
-		cb.className = 'checkbox' + (on.has(l.id) ? ' selected' : '');
-		row.append(cb);
-		const label = document.createElement('span');
-		label.innerHTML = `<span class="swatch" style="background:${l.color}"></span> ${l.label}${l.spoiler ? ' <span class="spoiler">(spoiler)</span>' : ''}`;
-		row.append(label);
-		row.onclick = () => {
-			cb.classList.toggle('selected');
-			if (cb.classList.contains('selected')) on.add(l.id); else on.delete(l.id);
-			localStorage.setItem('nkd-layers', JSON.stringify([...on]));
-			view.setLayers(on);
-			view.setLinks(baseLinks(), view.highlights);
-			if (l.id === 'endexit' && state.level) renderRoute(state.level);
-		};
-		box.append(row);
-	}
-	return on;
+/** Something to do on the way to a stop, e.g. "Break stuck door (9 energy) at 12,53". */
+function taskText(task) {
+	return `${task.text}${task.ep ? ` (${task.ep} energy)` : ''}${task.mp ? ` (${task.mp} mental power)` : ''} at ${task.at.x},${task.at.y}`;
 }
 
-async function main() {
-	const tooltip = $('#tooltip');
-	view = new IsoView($('#map'), {
-		onHover: (d) => {
-			if (!d) { tooltip.style.display = 'none'; return; }
-			const rec = d.critter || d.object;
-			tooltip.textContent = rec ? `${KINDS[kindOf(rec, !!d.critter)].label} · ${d.x},${d.y}` : `${tileName(d.a, d.b)} · ${d.x},${d.y}`;
-			tooltip.style.display = 'block';
-		},
-		onSelect: showSelection,
-	});
-	$('#map').addEventListener('mousemove', (e) => {
-		tooltip.style.left = `${e.clientX + 14}px`;
-		tooltip.style.top = `${e.clientY + 14}px`;
-	});
-	view.setLayers(buildLayerList());
-	window.nkd = { view, state, show };   // console/debug handle
+function outlineOnly(box, row) {
+	for (const r of box.querySelectorAll('.row')) r.style.outline = '';
+	row.style.outline = '1px solid var(--color_btn)';
+}
 
-	// Follow the page theme (lib/utils swaps the #theme-css stylesheet): light/sepia vs dark palettes.
-	const MAP_BG = { light: '#ece9e2', sepia: '#e6dbc3', dark: '#0b0b0d', contrast: '#000000' };
-	const applyTheme = () => {
-		const href = document.querySelector('#theme-css')?.getAttribute('href') || '';
-		const name = /sepia/.test(href) ? 'sepia' : /light/.test(href) ? 'light' : /high_contrast/.test(href) ? 'contrast' : 'dark';
-		$('#map').style.setProperty('--map_bg', MAP_BG[name]);
-		const t = name === 'light' || name === 'sepia' ? 'light' : 'dark';
-		const changed = t !== view.theme;
-		view.setTheme(t);
-		if (changed && state.solve) state.solve.onTheme();
-	};
-	applyTheme();
-	new MutationObserver(applyTheme).observe(document.head, { subtree: true, childList: true, attributes: true, attributeFilter: ['href'] });
+function stopLabel(stop) {
+	return stop.label || KINDS[stopKind(stop.rec)].label;
+}
 
-	const [tablesJson, generator] = await Promise.all([
-		fetch('data/tables.json').then((r) => r.json()),
-		loadGenerator(),
-	]);
-	initTables(tablesJson);
-	state.generator = generator;
-	showGameVersion($('#game-version'));
-	state.fresh = V.i2;   // the new-game profile
+// ---- what things are ---------------------------------------------------------------------
 
-	// Your hero: the imported save (kept in this tab's sessionStorage) and whether maps use it
-	state.hero = new HeroPanel({
-		getType: () => state.type,
-		getLabel: () => formatLabel(state.type, state.seed),
-		onChange: () => { if (state.level || state.seed) show(formatLabel(state.type, state.seed)); },
-	});
-	state.hero.bind();
-	if (generator) await state.hero.restore();
+/** The game's definition of an object (its rw record, zw.Q). */
+function objectDef(id) {
+	return zw.Q?.get(id);
+}
 
-	// Solver column (js/ui/solve-panel.js): solves run in a module worker with its own pool
-	const names = await fetch('data/names.json').then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
-	state.solve = new SolvePanel({ view, state, names, root: $('#solve-section'), show: (label) => show(label) });
-	state.solve.bind();
-	window.nkd.solve = state.solve;
-	const solverBtn = $('#solver-btn');
-	const setSolverShown = (on) => {
-		document.body.classList.toggle('solver-hidden', !on);
-		solverBtn.classList.toggle('off', !on);
-		solverBtn.setAttribute('aria-pressed', String(on));
-		localStorage.setItem('nkd-solver', on ? '1' : '0');
-	};
-	setSolverShown(localStorage.getItem('nkd-solver') !== '0');
-	solverBtn.onclick = () => setSolverShown(document.body.classList.contains('solver-hidden'));
-	solverBtn.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); solverBtn.onclick(); } };
+/** The game's definition of a creature (its bw record, zw.R). */
+function critterDef(id) {
+	return zw.R?.get(id);
+}
 
-	$('#show-btn').onclick = () => show($('#label-input').value);
-	$('#label-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') show(e.target.value); });
-	$('#random-btn').onclick = async () => {
-		if (state.generator?.randomLabel) show(state.generator.randomLabel(state.type));
-		else {
-			const res = await fetch('test/fixtures/index.json');
-			const list = res.ok ? await res.json() : [];
-			if (list.length) show(list[Math.floor(Math.random() * list.length)]);
-		}
-	};
-	$('#zoom-in-btn').onclick = () => view.zoomAt(1.4, view.cssW / 2, view.cssH / 2);
-	$('#zoom-out-btn').onclick = () => view.zoomAt(1 / 1.4, view.cssW / 2, view.cssH / 2);
-	$('#fit-btn').onclick = () => view.fit();
-	$('#hero-btn').onclick = () => {
-		const hero = state.level?.critters.find((c) => c.id === 180);
-		if (hero) { view.zoomAt(Math.max(1, view.scale) / view.scale, view.cssW / 2, view.cssH / 2); view.centerOn(hero.x, hero.y); }
-	};
-	$('#walls-btn').onclick = () => { view.wallHeight = view.wallHeight > 20 ? 14 : 34; view.redraw(); };
-	$('#effort-select').value = localStorage.getItem('nkd-effort') || 'balanced';
-	$('#effort-select').onchange = () => {
-		localStorage.setItem('nkd-effort', $('#effort-select').value);
-		if (state.level) renderRoute(state.level);
-	};
-	window.addEventListener('hashchange', () => show(decodeURIComponent(location.hash.slice(1))));
+function objectKindOf(rec) {
+	return objectKind(rec, objectDef(rec.id));
+}
 
-	show(location.hash.length > 1 ? decodeURIComponent(location.hash.slice(1)) : '3C-172582050');
+function critterKindOf(rec) {
+	return critterKind(rec, critterDef(rec.id));
+}
+
+/** The kind of what stands on a map cell: its creature, else its object. */
+function cellKind(cell) {
+	return cell.critter ? critterKindOf(cell.critter) : objectKindOf(cell.object);
+}
+
+/** Planner stops hold either a creature (it has a `k`) or an object. */
+function stopKind(rec) {
+	return rec.k !== undefined ? critterKindOf(rec) : objectKindOf(rec);
 }
 
 main();

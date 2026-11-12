@@ -15,21 +15,30 @@ const CACHE_MAX = 600;
  * opts: { selected, theme: 'dark'|'light', dpr, variant: string (door axis 'x'/'y', species, …) }
  */
 export function drawSprite(ctx, kind, cx, cy, hw, { selected = false, theme = 'dark', dpr = 1, variant = '' } = {}) {
-	const want = hw * dpr;
-	const bucket = Math.min(256, Math.max(8, Math.round(2 ** (Math.round(Math.log2(want) * 4) / 4))));
-	const key = `${kind}|${variant}|${bucket}|${theme}`;
-	let spr = cache.get(key);
-	if (!spr) {
-		spr = render(kind, variant, bucket, theme);
-		if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
-		cache.set(key, spr);
-	}
-	const k = hw / bucket;   // device-px sprite -> CSS px
+	const px = sizeBucket(hw * dpr);
+	const spr = cachedSprite({ kind, variant, px, theme });
+	const k = hw / px;   // device-px sprite -> CSS px
 	if (selected) ring(ctx, cx, cy, hw, theme);
 	ctx.drawImage(spr.canvas, cx - spr.ax * k, cy - spr.ay * k, spr.canvas.width * k, spr.canvas.height * k);
 }
 
 export const hasSprite = (kind) => kind in PAINTERS;
+
+/** sprites are drawn at quarter-octave sizes from 8 to 256 device px, so zooming reuses cached renders */
+function sizeBucket(devicePx) {
+	return Math.min(256, Math.max(8, Math.round(2 ** (Math.round(Math.log2(devicePx) * 4) / 4))));
+}
+
+/** the rendered sprite for { kind, variant, px, theme }; the oldest render is dropped once the cache is full */
+function cachedSprite(spec) {
+	const key = `${spec.kind}|${spec.variant}|${spec.px}|${spec.theme}`;
+	let spr = cache.get(key);
+	if (spr) return spr;
+	spr = paintSprite(spec);
+	if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
+	cache.set(key, spr);
+	return spr;
+}
 
 function ring(ctx, cx, cy, hw, theme) {
 	ctx.save();
@@ -44,7 +53,8 @@ function ring(ctx, cx, cy, hw, theme) {
 	ctx.restore();
 }
 
-function render(kind, variant, px, theme) {
+/** paint a sprite at `px` device px per half tile width onto its own canvas; ax, ay: the tile centre in it */
+function paintSprite({ kind, variant, px, theme }) {
 	const u = px / 32;
 	const w = Math.ceil(px * 2.3), h = Math.ceil(px * 2.9);
 	const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
@@ -126,16 +136,17 @@ function shadow(g, e, rx = 15, ry = 7.5, dy = 1) {
 }
 
 /**
- * Isometric box centred at (X0, Y0) tiles, half-extents ex, ey (tiles), height hgt (u), base elevation z0 (u).
+ * Isometric box centred at (x, y) tiles, half-extents ex, ey (tiles), height (u), base elevation z0 (u).
  * Faces: left (−X side) lit, right (+Y side) shaded, top brightest; slight darkening toward the base.
+ * Optional: top (top face colour), ink (outline colour), line: false (no outlines).
  */
-function box(g, e, X0, Y0, ex, ey, hgt, color, z0 = 0, opt = {}) {
+function box(g, e, { x = 0, y = 0, ex, ey, height, color, z0 = 0, ...opt }) {
 	const { u, lw } = e;
-	const b = (X, Y, z) => P(u, X0 + X, Y0 + Y, z0 + z);
+	const b = (X, Y, z) => P(u, x + X, y + Y, z0 + z);
 	const top = opt.top || shade(color, 0.22);
-	const L = [b(-ex, -ey, 0), b(-ex, ey, 0), b(-ex, ey, hgt), b(-ex, -ey, hgt)];
-	const R = [b(-ex, ey, 0), b(ex, ey, 0), b(ex, ey, hgt), b(-ex, ey, hgt)];
-	const T = [b(-ex, -ey, hgt), b(-ex, ey, hgt), b(ex, ey, hgt), b(ex, -ey, hgt)];
+	const L = [b(-ex, -ey, 0), b(-ex, ey, 0), b(-ex, ey, height), b(-ex, -ey, height)];
+	const R = [b(-ex, ey, 0), b(ex, ey, 0), b(ex, ey, height), b(-ex, ey, height)];
+	const T = [b(-ex, -ey, height), b(-ex, ey, height), b(ex, ey, height), b(ex, -ey, height)];
 	const yTop = Math.min(...T.map((p) => p[1])), yBot = Math.max(...L.concat(R).map((p) => p[1]));
 	path(g, L); g.fillStyle = vgrad(g, yTop, yBot, shade(color, 0.04), shade(color, -0.12)); g.fill();
 	path(g, R); g.fillStyle = vgrad(g, yTop, yBot, shade(color, -0.22), shade(color, -0.36)); g.fill();
@@ -152,11 +163,11 @@ function box(g, e, X0, Y0, ex, ey, hgt, color, z0 = 0, opt = {}) {
 }
 
 /**
- * Run `fn` with the context mapped onto a vertical face: local s in [-1, 1] along `axis` ('x' or 'y') spanning
- * `half` tiles, t up in u. Origin at the face centre bottom (ox, oy) in px. Paths are built in face space; stroke
- * after restore so line widths stay isotropic.
+ * Run `fn` with the context mapped onto a vertical face { axis, half, ox, oy }: local s in [-1, 1] along `axis`
+ * ('x' or 'y') spanning `half` tiles, t up in u. Origin at the face centre bottom (ox, oy) in px. Paths are built in
+ * face space; stroke after restore so line widths stay isotropic.
  */
-function onFace(g, e, axis, half, ox, oy, fn) {
+function onFace(g, e, { axis, half, ox, oy }, fn) {
 	const { u } = e;
 	const a = 32 * u * half, b = (axis === 'x' ? -16 : 16) * u * half;
 	g.save();
@@ -179,7 +190,7 @@ function gloss(g, x, y, rx, ry, a = 0.55) {
 	g.beginPath(); g.ellipse(x, y, rx, ry, -0.5, 0, Math.PI * 2); g.fill();
 }
 
-function eye(g, e, x, y, r, iris = '#2a1f1a', sclera = '#fbf7f0') {
+function eye(g, e, { x, y, r, iris, sclera }) {
 	const { u, lw } = e;
 	g.fillStyle = sclera; g.beginPath(); g.ellipse(x, y, r * u, r * 1.15 * u, 0, 0, Math.PI * 2); g.fill();
 	g.strokeStyle = 'rgba(40,25,20,0.55)'; g.lineWidth = lw * 0.6; g.stroke();
@@ -193,31 +204,37 @@ const WOOD = '#8a5a32', WOOD_D = '#6b4325', STONE = '#8e8a94', IRON = '#5d6470';
 /** Door in a doorway. axis = wall direction ('x' or 'y'). Returns face mapping for details. */
 function doorBase(g, e, axis, leaf, { arch = STONE, height = 30 } = {}) {
 	const { u } = e;
-	const ex = axis === 'x' ? 0.47 : 0.09, ey = axis === 'x' ? 0.09 : 0.47;
+	const doorway = { axis, arch, height };
 	shadow(g, e, 18, 8);
-	// posts and lintel
-	const post = (s) => (axis === 'x' ? box(g, e, s * 0.42, 0, 0.07, 0.11, height, arch) : box(g, e, 0, s * 0.42, 0.11, 0.07, height, arch));
-	const [far, near] = axis === 'x' ? [1, -1] : [-1, 1];   // +X is up-right (far); +Y is down-right (near)
-	post(far);
+	const far = farSide(axis);
+	doorPost(g, e, doorway, far);
 	// leaf (slightly inset)
 	const lex = axis === 'x' ? 0.36 : 0.045, ley = axis === 'x' ? 0.045 : 0.36;
-	box(g, e, 0, 0, lex, ley, height - 4, leaf);
-	post(near);
-	if (axis === 'x') box(g, e, 0, 0, 0.49, 0.12, 5, arch, height);
-	else box(g, e, 0, 0, 0.12, 0.49, 5, arch, height);
+	box(g, e, { ex: lex, ey: ley, height: height - 4, color: leaf });
+	doorPost(g, e, doorway, -far);
+	lintel(g, e, doorway);
 	// visible broad face of the leaf
 	const [ox, oy] = axis === 'x' ? P(u, 0, ley) : P(u, -lex, 0);
 	return { axis, half: 0.36, ox, oy, h: height - 4 };
 }
 
-function faceStroke(g, e, f, color, width, draw) {
-	onFace(g, e, f.axis, f.half, f.ox, f.oy, () => { g.beginPath(); draw(); });
-	g.strokeStyle = color; g.lineWidth = width; g.stroke();
+/** which end of a doorway along `axis` is drawn first: +X is up-right (far); +Y is down-right (near) */
+const farSide = (axis) => (axis === 'x' ? 1 : -1);
+
+/** one post of a doorway { axis, arch, height }, at end `side` (1 or -1) */
+function doorPost(g, e, { axis, arch, height }, side) {
+	if (axis === 'x') box(g, e, { x: side * 0.42, ex: 0.07, ey: 0.11, height, color: arch });
+	else box(g, e, { y: side * 0.42, ex: 0.11, ey: 0.07, height, color: arch });
 }
 
-function faceFill(g, e, f, color, draw) {
-	onFace(g, e, f.axis, f.half, f.ox, f.oy, () => { g.beginPath(); draw(); });
-	g.fillStyle = color; g.fill();
+function lintel(g, e, { axis, arch, height }) {
+	if (axis === 'x') box(g, e, { ex: 0.49, ey: 0.12, height: 5, color: arch, z0: height });
+	else box(g, e, { ex: 0.12, ey: 0.49, height: 5, color: arch, z0: height });
+}
+
+function faceStroke(g, e, f, color, width, draw) {
+	onFace(g, e, f, () => { g.beginPath(); draw(); });
+	g.strokeStyle = color; g.lineWidth = width; g.stroke();
 }
 
 function planks(g, e, f, color) {
@@ -226,14 +243,50 @@ function planks(g, e, f, color) {
 	});
 }
 
+// ---- page helpers -----------------------------------------------------------------------------------
+const lerp = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+
+/** pedestal, post and the slanted book rest (top tilted toward the viewer); returns the rest's corners */
+function lectern(g, e) {
+	const { u, lw } = e;
+	box(g, e, { ex: 0.16, ey: 0.16, height: 3, color: '#6f6a76' });
+	box(g, e, { ex: 0.07, ey: 0.07, height: 13, color: '#7a5236', z0: 3 });
+	const rest = { tl: P(u, -0.26, -0.18, 22), tr: P(u, 0.26, -0.18, 22), br: P(u, 0.26, 0.2, 16), bl: P(u, -0.26, 0.2, 16) };
+	path(g, [rest.tl, rest.tr, rest.br, rest.bl]); g.fillStyle = '#6b4427'; g.fill(); g.strokeStyle = ink('#6b4427'); g.lineWidth = lw; g.stroke();
+	return rest;
+}
+
+/** the open book on the rest: returns its two pages (corner quads) and the spine (top, bottom) */
+function openBook(g, e, { tl, tr, br, bl }) {
+	const { u, lw } = e;
+	const m0 = lerp(tl, tr, 0.5), m1 = lerp(bl, br, 0.5);
+	const left = [lerp(tl, m0, 0.08), m0, m1, lerp(bl, m1, 0.08)], right = [m0, lerp(tr, m0, 0.08), lerp(br, m1, 0.08), m1];
+	const lift = (pts, d) => pts.map(([x, y], i) => [x, y - (i === 1 || i === 2 ? 0 : d) * u]);   // corners 0 and 3 up by d
+	path(g, lift(left, 1.2)); g.fillStyle = vgrad(g, tl[1], bl[1], '#fbf3dc', '#e6d8b5'); g.fill(); g.strokeStyle = '#b39d74'; g.lineWidth = lw * 0.7; g.stroke();
+	path(g, lift(right, 1.2)); g.fillStyle = vgrad(g, tr[1], br[1], '#f2e7cb', '#d9c9a2'); g.fill(); g.stroke();
+	return { left, right, spine: [m0, m1] };
+}
+
+/** lines of writing across both pages */
+function bookLines(g, e, { left, right }) {
+	const { u, lw } = e;
+	g.strokeStyle = 'rgba(110,90,60,0.55)'; g.lineWidth = lw * 0.6;
+	for (const t of [0.3, 0.45, 0.6, 0.75]) {
+		for (const [p, q, r, s] of [[left[0], left[1], left[3], left[2]], [right[0], right[1], right[3], right[2]]]) {
+			const a = lerp(lerp(p, r, t), lerp(q, s, t), 0.15), b = lerp(lerp(p, r, t), lerp(q, s, t), 0.85);
+			g.beginPath(); g.moveTo(a[0], a[1] - 0.6 * u); g.lineTo(b[0], b[1] - 0.6 * u); g.stroke();
+		}
+	}
+}
+
 // ---- painters ---------------------------------------------------------------------------------------
 const PAINTERS = {
 	chest(g, e) {
 		const { u, lw } = e;
 		shadow(g, e, 17, 8.5);
-		box(g, e, 0, 0, 0.3, 0.2, 10, WOOD);
+		box(g, e, { ex: 0.3, ey: 0.2, height: 10, color: WOOD });
 		// rounded lid: a lighter box plus a curved highlight
-		const { T } = box(g, e, 0, 0, 0.31, 0.21, 5, '#9b6a3c', 10);
+		const { T } = box(g, e, { ex: 0.31, ey: 0.21, height: 5, color: '#9b6a3c', z0: 10 });
 		g.strokeStyle = 'rgba(255,230,190,0.45)'; g.lineWidth = lw;
 		g.beginPath(); g.moveTo(...T[0]); g.lineTo(...T[3]); g.stroke();
 		// metal bands on the front (+Y) face and the side (−X) face
@@ -256,41 +309,21 @@ const PAINTERS = {
 	page(g, e) {
 		const { u, lw } = e;
 		shadow(g, e, 13, 6.5);
-		// pedestal
-		box(g, e, 0, 0, 0.16, 0.16, 3, '#6f6a76');
-		box(g, e, 0, 0, 0.07, 0.07, 13, '#7a5236', 3);
-		// slanted book rest (top tilted toward the viewer)
-		const tl = P(u, -0.26, -0.18, 22), tr = P(u, 0.26, -0.18, 22), br = P(u, 0.26, 0.2, 16), bl = P(u, -0.26, 0.2, 16);
-		path(g, [tl, tr, br, bl]); g.fillStyle = '#6b4427'; g.fill(); g.strokeStyle = ink('#6b4427'); g.lineWidth = lw; g.stroke();
-		// open book
-		const lerp = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
-		const m0 = lerp(tl, tr, 0.5), m1 = lerp(bl, br, 0.5);
-		const inset = (p, q, t) => lerp(p, q, t);
-		const L = [inset(tl, m0, 0.08), m0, m1, inset(bl, m1, 0.08)], R = [m0, inset(tr, m0, 0.08), inset(br, m1, 0.08), m1];
-		const lift = (pts, d) => pts.map(([x, y], i) => [x, y - (i === 1 || i === 2 ? 0 : d) * u]);
-		path(g, lift(L, 1.2)); g.fillStyle = vgrad(g, tl[1], bl[1], '#fbf3dc', '#e6d8b5'); g.fill(); g.strokeStyle = '#b39d74'; g.lineWidth = lw * 0.7; g.stroke();
-		path(g, lift(R, 1.2)); g.fillStyle = vgrad(g, tr[1], br[1], '#f2e7cb', '#d9c9a2'); g.fill(); g.stroke();
-		g.strokeStyle = 'rgba(110,90,60,0.55)'; g.lineWidth = lw * 0.6;
-		for (const t of [0.3, 0.45, 0.6, 0.75]) {
-			for (const [p, q, r, s] of [[L[0], L[1], L[3], L[2]], [R[0], R[1], R[3], R[2]]]) {
-				const a = lerp(lerp(p, r, t), lerp(q, s, t), 0.15), b = lerp(lerp(p, r, t), lerp(q, s, t), 0.85);
-				g.beginPath(); g.moveTo(a[0], a[1] - 0.6 * u); g.lineTo(b[0], b[1] - 0.6 * u); g.stroke();
-			}
-		}
+		const rest = lectern(g, e);
+		const book = openBook(g, e, rest);
+		bookLines(g, e, book);
+		const [top, bottom] = book.spine;
 		// ribbon
 		g.strokeStyle = '#c0392b'; g.lineWidth = lw * 1.3;
-		g.beginPath(); g.moveTo(...m1); g.lineTo(m1[0] + 1 * u, m1[1] + 5 * u); g.stroke();
+		g.beginPath(); g.moveTo(...bottom); g.lineTo(bottom[0] + 1 * u, bottom[1] + 5 * u); g.stroke();
 		// faint golden aura (an objective)
-		const gr = g.createRadialGradient(m0[0], m0[1], 0, m0[0], m0[1], 16 * u);
-		gr.addColorStop(0, 'rgba(255,220,120,0.35)'); gr.addColorStop(1, 'rgba(255,220,120,0)');
-		g.globalCompositeOperation = 'lighter'; g.fillStyle = gr; g.beginPath(); g.arc(m0[0], m0[1], 16 * u, 0, Math.PI * 2); g.fill();
-		g.globalCompositeOperation = 'source-over';
+		glowDisc(g, { x: top[0], y: top[1], r: 16 * u, inner: 'rgba(255,220,120,0.35)', outer: 'rgba(255,220,120,0)' });
 	},
 	container(g, e) {
 		const { u, lw } = e;
 		shadow(g, e, 13, 6.5);
 		const c = '#a57a48';
-		box(g, e, 0, 0, 0.2, 0.2, 13, c);
+		box(g, e, { ex: 0.2, ey: 0.2, height: 13, color: c });
 		// cross braces on both visible faces
 		g.strokeStyle = shade(c, -0.4); g.lineWidth = lw * 1.5;
 		const fx = (s, z) => P(u, s, 0.2, z), fy = (s, z) => P(u, -0.2, s, z);
@@ -358,17 +391,20 @@ const PAINTERS = {
 	},
 	gate(g, e) {
 		const { u, lw } = e;
-		const axis = e.variant || 'x';
+		const doorway = { axis: e.variant || 'x', arch: STONE, height: 30 };
 		shadow(g, e, 18, 8);
-		const post = (s) => (axis === 'x' ? box(g, e, s * 0.42, 0, 0.07, 0.11, 30, STONE) : box(g, e, 0, s * 0.42, 0.11, 0.07, 30, STONE));
-		const [far, near] = axis === 'x' ? [1, -1] : [-1, 1];
-		post(far);
+		const far = farSide(doorway.axis);
+		doorPost(g, e, doorway, far);
 		const [ox, oy] = P(u, 0, 0);
-		const f = { axis, half: 0.36, ox, oy, h: 26 };
-		faceStroke(g, e, f, shade(IRON, -0.45), lw * 3.2, () => { for (const s of [-0.75, -0.25, 0.25, 0.75]) { g.moveTo(s, 0); g.lineTo(s, 26); } g.moveTo(-1, 9); g.lineTo(1, 9); g.moveTo(-1, 20); g.lineTo(1, 20); });
-		faceStroke(g, e, f, '#aab3c2', lw * 1.6, () => { for (const s of [-0.75, -0.25, 0.25, 0.75]) { g.moveTo(s, 0); g.lineTo(s, 26); } g.moveTo(-1, 9); g.lineTo(1, 9); g.moveTo(-1, 20); g.lineTo(1, 20); });
-		post(near);
-		if (axis === 'x') box(g, e, 0, 0, 0.49, 0.12, 5, STONE, 30); else box(g, e, 0, 0, 0.12, 0.49, 5, STONE, 30);
+		const f = { axis: doorway.axis, half: 0.36, ox, oy, h: 26 };
+		const bars = () => {
+			for (const s of [-0.75, -0.25, 0.25, 0.75]) { g.moveTo(s, 0); g.lineTo(s, 26); }
+			g.moveTo(-1, 9); g.lineTo(1, 9); g.moveTo(-1, 20); g.lineTo(1, 20);
+		};
+		faceStroke(g, e, f, shade(IRON, -0.45), lw * 3.2, bars);
+		faceStroke(g, e, f, '#aab3c2', lw * 1.6, bars);
+		doorPost(g, e, doorway, -far);
+		lintel(g, e, doorway);
 	},
 	puzzledoor(g, e) {
 		const f = doorBase(g, e, e.variant || 'x', '#5d3c80');
@@ -431,15 +467,9 @@ const PAINTERS = {
 	portal(g, e) {
 		const { u, lw } = e;
 		shadow(g, e, 14, 6);
-		box(g, e, 0, 0, 0.2, 0.2, 3, '#5e5970');
+		box(g, e, { ex: 0.2, ey: 0.2, height: 3, color: '#5e5970' });
 		const cy = -17 * u;
-		g.globalCompositeOperation = 'lighter';
-		for (const [r, a] of [[16, 0.12], [12, 0.18]]) {
-			const gr = g.createRadialGradient(0, cy, 0, 0, cy, r * u);
-			gr.addColorStop(0, `rgba(190,140,255,${a * 2})`); gr.addColorStop(1, 'rgba(130,70,255,0)');
-			g.fillStyle = gr; g.beginPath(); g.arc(0, cy, r * u, 0, Math.PI * 2); g.fill();
-		}
-		g.globalCompositeOperation = 'source-over';
+		for (const [r, a] of [[16, 0.12], [12, 0.18]]) glowDisc(g, { x: 0, y: cy, r: r * u, inner: `rgba(190,140,255,${a * 2})`, outer: 'rgba(130,70,255,0)' });
 		const disc = g.createRadialGradient(-2 * u, cy - 3 * u, 1 * u, 0, cy, 11 * u);
 		disc.addColorStop(0, '#f2e8ff'); disc.addColorStop(0.35, '#a878ff'); disc.addColorStop(1, '#3d1f8f');
 		g.fillStyle = disc; g.beginPath(); g.ellipse(0, cy, 8 * u, 12 * u, 0, 0, Math.PI * 2); g.fill();
@@ -510,7 +540,7 @@ const PAINTERS = {
 		wg.addColorStop(0, shade(water, 0.6)); wg.addColorStop(0.5, water); wg.addColorStop(1, shade(water, -0.35));
 		g.fillStyle = wg; g.beginPath(); g.ellipse(0, -H, rx * 0.82, ry * 0.78, 0, 0, Math.PI * 2); g.fill();
 		// centre spout and jets
-		box(g, e, 0, 0, 0.06, 0.06, 10, stone, 7);
+		box(g, e, { ex: 0.06, ey: 0.06, height: 10, color: stone, z0: 7 });
 		g.strokeStyle = shade(water, 0.55, 0.9); g.lineWidth = lw * 1.3;
 		for (const s of [-1, 1]) { g.beginPath(); g.moveTo(0, -19 * u); g.quadraticCurveTo(s * 6 * u, -25 * u, s * 9 * u, -H - 1 * u); g.stroke(); }
 		g.fillStyle = 'rgba(255,255,255,0.8)';
@@ -519,12 +549,10 @@ const PAINTERS = {
 	special(g, e) {
 		const { u, lw } = e;
 		shadow(g, e, 14, 7);
-		box(g, e, 0, 0, 0.24, 0.24, 4, '#7d7888');
-		box(g, e, 0, 0, 0.16, 0.16, 12, '#948fa1', 4);
+		box(g, e, { ex: 0.24, ey: 0.24, height: 4, color: '#7d7888' });
+		box(g, e, { ex: 0.16, ey: 0.16, height: 12, color: '#948fa1', z0: 4 });
 		const cy = -23 * u;
-		const gr = g.createRadialGradient(0, cy, 0, 0, cy, 12 * u);
-		gr.addColorStop(0, 'rgba(255,170,240,0.55)'); gr.addColorStop(1, 'rgba(255,120,220,0)');
-		g.globalCompositeOperation = 'lighter'; g.fillStyle = gr; g.beginPath(); g.arc(0, cy, 12 * u, 0, Math.PI * 2); g.fill(); g.globalCompositeOperation = 'source-over';
+		glowDisc(g, { x: 0, y: cy, r: 12 * u, inner: 'rgba(255,170,240,0.55)', outer: 'rgba(255,120,220,0)' });
 		path(g, [[0, cy - 6 * u], [4 * u, cy], [0, cy + 5 * u], [-4 * u, cy]]);
 		g.fillStyle = hgrad(g, -4 * u, 4 * u, [[0, '#ffd6f6'], [0.5, '#e078d0'], [1, '#8f3a86']]); g.fill();
 		g.strokeStyle = '#6e2a68'; g.lineWidth = lw * 0.8; g.stroke();
@@ -557,7 +585,7 @@ const PAINTERS = {
 		const { u, lw } = e;
 		shadow(g, e, 11, 5.5);
 		const c = '#8b7356';
-		box(g, e, 0, 0, 0.17, 0.12, 9, c);
+		box(g, e, { ex: 0.17, ey: 0.12, height: 9, color: c });
 		g.strokeStyle = shade(c, -0.4); g.lineWidth = lw * 0.8;
 		const a = P(u, -0.17, -0.12, 4.5), b = P(u, -0.17, 0.12, 4.5), d = P(u, 0.17, 0.12, 4.5);
 		g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.lineTo(...d); g.stroke();
@@ -610,11 +638,11 @@ const PAINTERS = {
 		g.fillStyle = '#9fe3ff'; g.beginPath(); g.arc(9 * u, -31 * u, 2 * u, 0, Math.PI * 2); g.fill();
 		gloss(g, 8.4 * u, -31.6 * u, 0.6 * u, 0.6 * u, 0.9);
 	},
-	monster(g, e) { creature(g, e, speciesColor(e.variant), 10, {}); },
-	goldmonster(g, e) { creature(g, e, '#e6b422', 10.5, { key: true, aura: 'rgba(255,215,90,0.28)' }); },
-	miniboss(g, e) { creature(g, e, '#e07a2c', 12.5, { horns: true, teeth: true }); },
-	boss(g, e) { creature(g, e, '#9e2430', 15, { horns: true, teeth: true, aura: 'rgba(255,60,40,0.35)', eyes: '#ffd23f' }); },
-	unique(g, e) { creature(g, e, '#d4a21c', 12.5, { crown: true, aura: 'rgba(255,220,80,0.3)' }); },
+	monster(g, e) { creature(g, e, { color: speciesColor(e.variant), r: 10 }); },
+	goldmonster(g, e) { creature(g, e, { color: '#e6b422', r: 10.5, key: true, aura: 'rgba(255,215,90,0.28)' }); },
+	miniboss(g, e) { creature(g, e, { color: '#e07a2c', r: 12.5, horns: true, teeth: true }); },
+	boss(g, e) { creature(g, e, { color: '#9e2430', r: 15, horns: true, teeth: true, aura: 'rgba(255,60,40,0.35)', eyes: '#ffd23f' }); },
+	unique(g, e) { creature(g, e, { color: '#d4a21c', r: 12.5, crown: true, aura: 'rgba(255,220,80,0.3)' }); },
 	spider(g, e) {
 		const { u, lw } = e;
 		shadow(g, e, 12, 6);
@@ -630,19 +658,22 @@ const PAINTERS = {
 		g.fillStyle = bg; g.beginPath(); g.ellipse(0, -8 * u, 7 * u, 5.5 * u, 0, 0, Math.PI * 2); g.fill();
 		g.strokeStyle = ink(metal); g.lineWidth = lw; g.stroke();
 		g.strokeStyle = '#c9a24a'; g.lineWidth = lw * 1.2; g.beginPath(); g.ellipse(0, -8 * u, 7 * u, 2 * u, 0, 0, Math.PI); g.stroke();
-		const eg = g.createRadialGradient(0, -9 * u, 0, 0, -9 * u, 5 * u);
-		eg.addColorStop(0, 'rgba(120,255,255,0.9)'); eg.addColorStop(1, 'rgba(71,243,255,0)');
-		g.globalCompositeOperation = 'lighter'; g.fillStyle = eg; g.beginPath(); g.arc(0, -9 * u, 5 * u, 0, Math.PI * 2); g.fill(); g.globalCompositeOperation = 'source-over';
+		glowDisc(g, { x: 0, y: -9 * u, r: 5 * u, inner: 'rgba(120,255,255,0.9)', outer: 'rgba(71,243,255,0)' });
 		g.fillStyle = '#c9ffff'; g.beginPath(); g.arc(0, -9 * u, 1.7 * u, 0, Math.PI * 2); g.fill();
 	},
 };
 
+/** a glow over the middle of door face f */
 function glow(g, e, f, color) {
 	const { u } = e;
-	const cx = f.ox, cy = f.oy - f.h * 0.5 * u;
-	const gr = g.createRadialGradient(cx, cy, 0, cx, cy, 16 * u);
-	gr.addColorStop(0, color); gr.addColorStop(1, 'rgba(0,0,0,0)');
-	g.globalCompositeOperation = 'lighter'; g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, 16 * u, 0, Math.PI * 2); g.fill();
+	glowDisc(g, { x: f.ox, y: f.oy - f.h * 0.5 * u, r: 16 * u, inner: color, outer: 'rgba(0,0,0,0)' });
+}
+
+/** a disc of light added onto what is below it, fading from `inner` at (x, y) to `outer` at radius r */
+function glowDisc(g, { x, y, r, inner, outer }) {
+	const gr = g.createRadialGradient(x, y, 0, x, y, r);
+	gr.addColorStop(0, inner); gr.addColorStop(1, outer);
+	g.globalCompositeOperation = 'lighter'; g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
 	g.globalCompositeOperation = 'source-over';
 }
 
@@ -653,27 +684,35 @@ function speciesColor(variant) {
 	return hslHex(hue, 55, 52);
 }
 
-/** Round creature with a glossy body, big eyes, optional horns / crown / teeth / aura. */
-function creature(g, e, color, r, { horns = false, crown = false, teeth = false, aura = null, eyes = null, key = false } = {}) {
-	const { u, lw } = e;
-	shadow(g, e, r * 1.1, r * 0.5);
-	const R = r * u;
-	if (aura) {
-		const ag = g.createRadialGradient(0, -R * 0.8, 0, 0, -R * 0.8, R * 2);
-		ag.addColorStop(0, aura); ag.addColorStop(1, 'rgba(0,0,0,0)');
-		g.globalCompositeOperation = 'lighter'; g.fillStyle = ag; g.beginPath(); g.arc(0, -R * 0.8, R * 2, 0, Math.PI * 2); g.fill();
-		g.globalCompositeOperation = 'source-over';
+/**
+ * Round creature with a glossy body and big eyes. look: { color, r (size in u), horns, crown, teeth, key (carries a
+ * key), aura (colour), eyes (iris colour: glowing eyes on dark sclera) }.
+ */
+function creature(g, e, look) {
+	shadow(g, e, look.r * 1.1, look.r * 0.5);
+	const body = { ...look, R: look.r * e.u };
+	if (body.aura) glowDisc(g, { x: 0, y: -body.R * 0.8, r: body.R * 2, inner: body.aura, outer: 'rgba(0,0,0,0)' });
+	if (body.horns) creatureHorns(g, e, body);
+	creatureBody(g, e, body);
+	creatureFace(g, e, body);
+	if (body.teeth) creatureTeeth(g, body);
+	if (body.key) carriedKey(g, e, body);
+	if (body.crown) creatureCrown(g, e, body);
+}
+
+function creatureHorns(g, e, { R }) {
+	for (const s of [-1, 1]) {
+		g.beginPath();
+		g.moveTo(s * R * 0.35, -R * 1.45); g.quadraticCurveTo(s * R * 1.0, -R * 1.75, s * R * 1.05, -R * 2.3);
+		g.quadraticCurveTo(s * R * 0.75, -R * 1.85, s * R * 0.62, -R * 1.25); g.closePath();
+		g.fillStyle = hgrad(g, -R, R, [[0, '#fff6df'], [1, '#bfae8a']]); g.fill();
+		g.strokeStyle = '#7a6a4a'; g.lineWidth = e.lw * 0.8; g.stroke();
 	}
-	if (horns) {
-		for (const s of [-1, 1]) {
-			g.beginPath();
-			g.moveTo(s * R * 0.35, -R * 1.45); g.quadraticCurveTo(s * R * 1.0, -R * 1.75, s * R * 1.05, -R * 2.3);
-			g.quadraticCurveTo(s * R * 0.75, -R * 1.85, s * R * 0.62, -R * 1.25); g.closePath();
-			g.fillStyle = hgrad(g, -R, R, [[0, '#fff6df'], [1, '#bfae8a']]); g.fill();
-			g.strokeStyle = '#7a6a4a'; g.lineWidth = lw * 0.8; g.stroke();
-		}
-	}
-	// body: soft dome with a slightly squashed base
+}
+
+/** a soft dome with a slightly squashed base, rim-lit on the shaded side */
+function creatureBody(g, e, { R, color }) {
+	const { lw } = e;
 	g.beginPath();
 	g.moveTo(-R, -R * 0.1);
 	g.bezierCurveTo(-R * 1.05, -R * 1.25, -R * 0.55, -R * 1.75, 0, -R * 1.75);
@@ -685,32 +724,48 @@ function creature(g, e, color, r, { horns = false, crown = false, teeth = false,
 	bg.addColorStop(0, shade(color, 0.45)); bg.addColorStop(0.45, color); bg.addColorStop(1, shade(color, -0.45));
 	g.fillStyle = bg; g.fill();
 	g.strokeStyle = ink(color); g.lineWidth = lw * 1.1; g.stroke();
-	// rim light on the shaded side
 	g.strokeStyle = shade(color, 0.3, 0.45); g.lineWidth = lw;
 	g.beginPath(); g.arc(0, -R * 0.75, R * 0.92, -0.2, 0.9); g.stroke();
 	gloss(g, -R * 0.45, -R * 1.3, R * 0.22, R * 0.12, 0.7);
-	// face
+}
+
+function creatureFace(g, e, { R, r, color, eyes }) {
 	const ey = -R * 0.95;
-	eye(g, e, -R * 0.33, ey, r * 0.24, eyes || '#2a1f1a', eyes ? '#2a1010' : '#fbf7f0');
-	eye(g, e, R * 0.33, ey, r * 0.24, eyes || '#2a1f1a', eyes ? '#2a1010' : '#fbf7f0');
-	g.strokeStyle = ink(color); g.lineWidth = lw;
+	const iris = eyes || '#2a1f1a', sclera = eyes ? '#2a1010' : '#fbf7f0';
+	eye(g, e, { x: -R * 0.33, y: ey, r: r * 0.24, iris, sclera });
+	eye(g, e, { x: R * 0.33, y: ey, r: r * 0.24, iris, sclera });
+	g.strokeStyle = ink(color); g.lineWidth = e.lw;
 	g.beginPath(); g.arc(0, -R * 0.6, R * 0.22, 0.25, Math.PI - 0.25); g.stroke();
-	if (teeth) {
-		g.fillStyle = '#fbf7f0';
-		for (const s of [-1, 1]) path(g, [[s * R * 0.12, -R * 0.42], [s * R * 0.2, -R * 0.28], [s * R * 0.28, -R * 0.44]]), g.fill();
+}
+
+function creatureTeeth(g, { R }) {
+	g.fillStyle = '#fbf7f0';
+	for (const s of [-1, 1]) {
+		path(g, [[s * R * 0.12, -R * 0.42], [s * R * 0.2, -R * 0.28], [s * R * 0.28, -R * 0.44]]);
+		g.fill();
 	}
-	if (key) {   // carries a key: small golden key floating above
-		const ky = -R * 2.05, kx = R * 0.15;
-		g.strokeStyle = '#7a5a12'; g.lineWidth = lw * 2.6;
-		g.beginPath(); g.arc(kx - R * 0.32, ky, R * 0.17, 0, Math.PI * 2); g.moveTo(kx - R * 0.15, ky); g.lineTo(kx + R * 0.45, ky); g.lineTo(kx + R * 0.45, ky + R * 0.18); g.moveTo(kx + R * 0.28, ky); g.lineTo(kx + R * 0.28, ky + R * 0.14); g.stroke();
-		g.strokeStyle = '#ffe27a'; g.lineWidth = lw * 1.3;
-		g.beginPath(); g.arc(kx - R * 0.32, ky, R * 0.17, 0, Math.PI * 2); g.moveTo(kx - R * 0.15, ky); g.lineTo(kx + R * 0.45, ky); g.lineTo(kx + R * 0.45, ky + R * 0.18); g.moveTo(kx + R * 0.28, ky); g.lineTo(kx + R * 0.28, ky + R * 0.14); g.stroke();
-	}
-	if (crown) {
-		const c = '#ffd84a';
-		path(g, [[-R * 0.5, -R * 1.62], [-R * 0.55, -R * 2.15], [-R * 0.25, -R * 1.85], [0, -R * 2.3], [R * 0.25, -R * 1.85], [R * 0.55, -R * 2.15], [R * 0.5, -R * 1.62]]);
-		g.fillStyle = hgrad(g, -R * 0.55, R * 0.55, [[0, '#fff1a8'], [0.5, c], [1, '#b8892a']]); g.fill();
-		g.strokeStyle = '#8a6418'; g.lineWidth = lw * 0.8; g.stroke();
-		g.fillStyle = '#e8384f'; g.beginPath(); g.arc(0, -R * 1.85, R * 0.07, 0, Math.PI * 2); g.fill();
-	}
+}
+
+/** a small golden key floating above (the gold monster drops the door key) */
+function carriedKey(g, e, { R }) {
+	const { lw } = e;
+	g.strokeStyle = '#7a5a12'; g.lineWidth = lw * 2.6;
+	keyPath(g, R); g.stroke();
+	g.strokeStyle = '#ffe27a'; g.lineWidth = lw * 1.3;
+	keyPath(g, R); g.stroke();
+}
+
+function keyPath(g, R) {
+	const ky = -R * 2.05, kx = R * 0.15;
+	g.beginPath(); g.arc(kx - R * 0.32, ky, R * 0.17, 0, Math.PI * 2);
+	g.moveTo(kx - R * 0.15, ky); g.lineTo(kx + R * 0.45, ky); g.lineTo(kx + R * 0.45, ky + R * 0.18);
+	g.moveTo(kx + R * 0.28, ky); g.lineTo(kx + R * 0.28, ky + R * 0.14);
+}
+
+function creatureCrown(g, e, { R }) {
+	const c = '#ffd84a';
+	path(g, [[-R * 0.5, -R * 1.62], [-R * 0.55, -R * 2.15], [-R * 0.25, -R * 1.85], [0, -R * 2.3], [R * 0.25, -R * 1.85], [R * 0.55, -R * 2.15], [R * 0.5, -R * 1.62]]);
+	g.fillStyle = hgrad(g, -R * 0.55, R * 0.55, [[0, '#fff1a8'], [0.5, c], [1, '#b8892a']]); g.fill();
+	g.strokeStyle = '#8a6418'; g.lineWidth = e.lw * 0.8; g.stroke();
+	g.fillStyle = '#e8384f'; g.beginPath(); g.arc(0, -R * 1.85, R * 0.07, 0, Math.PI * 2); g.fill();
 }

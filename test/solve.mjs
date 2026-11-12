@@ -1,5 +1,6 @@
 // Solver tests (js/solve): ledger, walker checkpoints, the wiki first-strike check, robust + exact solves on a small
 // budget, the plan schema, and the worker pool.
+// Standalone suite: `npm test` and CI run it (tools/run-tests.mjs).
 //
 //   node test/solve.mjs [--quick] [--no-workers] [-v]
 import fs from 'node:fs';

@@ -1,4 +1,5 @@
 // End-to-end check: JS generate(type, seed) vs oracle dumps (tools/oracle `gen`/`batch` output).
+// Standalone suite: `npm test` and CI run it (tools/run-tests.mjs).
 //
 //   node test/run.mjs [dir-or-files...]      default: test/fixtures
 //   node test/run.mjs --types=0,8 DIR        only some dungeon types

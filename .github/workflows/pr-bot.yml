@@ -38,10 +38,10 @@ jobs:
       group: pr-bot-review
       cancel-in-progress: false   # never stop a pass between turning the status green and merging
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: node tools/pr-bot.mjs review
@@ -54,10 +54,10 @@ jobs:
     concurrency:
       group: pr-bot-merge-${{ github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: node tools/pr-bot.mjs after-merge "$SHA"
@@ -69,10 +69,10 @@ jobs:
     if: github.event.schedule == '45 4 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: node tools/pr-bot.mjs branches && node tools/pr-bot.mjs prune-branches
