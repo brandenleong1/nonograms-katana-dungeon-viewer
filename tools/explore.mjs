@@ -143,9 +143,10 @@ export class Policy {
 			if (extra && !d.t) { const e = Object.create(d); e.t = true; return e; }
 			return d;
 		};
+		const heldKeys = h.f.D.c.reduce((k, e) => (e.a.a === 167 ? k + e.a_() : k), 0);   // keys open doors 29 (c30.m0)
 		let plan;
 		try {
-			plan = planRoute(level, { rw, pwOf: (t) => zw.M[t], patterns: this.nonogramDone ? null : zw.O, tiles: zw.u, endAtExit: true });
+			plan = planRoute(level, { rw, pwOf: (t) => zw.M[t], patterns: this.nonogramDone ? null : zw.O, tiles: zw.u, endAtExit: true, heldKeys });
 		} catch (e) {
 			this.route = [];
 			this.planError = errText(e);
