@@ -44,6 +44,8 @@ Use the "Dungeon mismatch" issue template. Include:
 ## Pull requests
 
 - Keep each PR to one change, with a short description of what and why.
+- Add or update a test with most changes. A new standalone suite in `test/` runs in CI by itself once its header has
+  the `// Standalone suite:` line ([docs/testing.md](docs/testing.md#standalone)).
 - PRs with no activity for 30 days are closed, and their branches deleted.
 - For UI changes, check all four themes and a narrow window. The Screenshots bot comments on every PR with before
   and after of the main views; add images of anything else to the description.
@@ -59,13 +61,14 @@ ask for (the PR title, a blank line, the PR's URL), so nobody has to type it and
 The bot merges a PR as soon as all of this is true:
 
 1. **Checks pass:**
-   - `precommit`: syntax, `npm test` on Node 18 and 22, and a browser smoke test (see
+   - `precommit`: syntax, the standalone test suites on Node 18 and 22, and a browser smoke test (see
      [docs/testing.md](docs/testing.md#integration));
    - `pr-policy`: title, description and branch name.
 2. **It's up to date with `main`.** If GitHub says the branch is out of date, press "Update branch", or merge or
    rebase `main` yourself.
 3. **A person with write access approved the latest commit**: two people if the PR changes CI or the PR tools
-   (`.github/`, `tools/pr-bot.mjs`, `tools/check-pr.mjs`, the setup and merge scripts, `package.json`). A push that
+   (`.github/`, the PR tools in `tools/` such as `pr-bot.mjs`, `check-pr.mjs` and `run-tests.mjs`, and the setup and
+   merge scripts). A push that
    changes the PR's diff (new code, or a rebase or update that resolves a conflict) dismisses every approval, and the
    reviewers have to look again. Bringing the branch up to date ("Update branch", or a clean rebase onto `main`) keeps
    approvals, because the PR's own changes are the same. Nothing merges unreviewed.
