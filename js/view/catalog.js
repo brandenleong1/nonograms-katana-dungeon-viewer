@@ -34,6 +34,7 @@ export const KINDS = {
 	miniboss:  { layer: 'monsters',  color: '#ff7a20', glyph: '☠', label: 'Mini-boss' },
 	unique:    { layer: 'monsters',  color: '#ffd700', glyph: '♛', label: 'Unique monster' },
 	npc:       { layer: 'monsters',  color: '#b9ff47', glyph: '☺', label: 'NPC' },
+	shapeshifter: { layer: 'monsters', color: '#ff4d4d', glyph: '◆', label: 'Shapeshifter' },
 	spider:    { layer: 'monsters',  color: '#47f3ff', glyph: '✱', label: 'Mechanical spider (yours)' },
 };
 
@@ -77,7 +78,8 @@ export function critterKind(cr, bw) {
 	if (cr.id === 199) return 'spider';
 	if (cr.h === 1101 || cr.h === 1103) return 'boss';
 	if (cr.h === 1100) return 'miniboss';
-	if (cr.k === 0 || cr.k === 1) return 'npc';
+	// bw.N0: talking to it clears its tag and starts a fight (c30, the NPC talk branch)
+	if (cr.k === 0 || cr.k === 1) return bw && bw.N0 ? 'shapeshifter' : 'npc';
 	if (cr.g === 167) return 'goldmonster';   // drops key 167 for the locked door
 	if (bw && bw.l0) return 'unique';
 	if (bw && bw.m0) return 'boss';

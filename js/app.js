@@ -413,6 +413,7 @@ function occupantHtml(cell) {
 	const look = KINDS[cellKind(cell)];
 	const parts = [`<div><span class="glyph" style="color:${look.color}">${look.glyph}</span><b>${look.label}</b> <span class="muted">#${rec.id}</span></div>`];
 	const def = isCritter ? critterDef(rec.id) : objectDef(rec.id);
+	if (isCritter && critterKindOf(rec) === 'shapeshifter') parts.push('<div>Looks like a person, but turns into a monster when you talk to it.</div>');
 	if (def && def.v > 0) parts.push(`<div>Needs <b>${def.v}</b> mental power to open.</div>`);
 	if (!isCritter && objectKindOf(rec) === 'stuckdoor' && state.level) parts.push(`<div>Breaking it costs ${breakCost(state.level.type)} energy.</div>`);
 	if (def && def.t) parts.push(`<div class="muted">Counts as an objective.</div>`);
