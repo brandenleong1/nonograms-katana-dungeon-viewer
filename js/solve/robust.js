@@ -241,7 +241,7 @@ export class Shard {
 
 	/** a sample arrived at an encounter on the way to stop: key it and record what it faces */
 	meetEncounter(s, run, stop) {
-		s.key = encounterKey(stop, countVisit(s.stopCount, stop), null);
+		s.key = encounterKey(stop, countVisit(s.stopCount, stop));
 		const h = run.fight.h;
 		const needs = run.walker.routeNeeds();
 		s.info = { stop: stopOut(stop), enemies: h.D.filter((m) => isFoe(h, m)).map((m) => critterInfo(h, m)), hero: heroOf(h), needs };
@@ -358,7 +358,7 @@ function playEncounters(run, cand, opts) {
 	for (let k = 0; k < (opts.maxEnc ?? 200); k++) {
 		const ev = run.toEncounter(opts.maxWalk);
 		if (ev.ev !== 'combat') return { status: ev.ev, encounters };
-		const key = encounterKey(ev.stop, countVisit(stopCount, ev.stop), null);
+		const key = encounterKey(ev.stop, countVisit(stopCount, ev.stop));
 		const h = run.fight.h;
 		const enemies = h.D.filter((m) => isFoe(h, m)).map((m) => m.a.a);
 		// opts.plan: the decided tactic per encounter key (the replay of a solved plan); cand for unknown keys
@@ -828,7 +828,7 @@ async function decide(shards, enc, o) {
 		if (round >= 1 && allTied(alive, best, stats, tieZone(round, o.zone))) alive = [best];
 		if (done >= cap || alive.length <= 1) {
 			// (the winner's reported numbers come from the commit, which plays it on every sample anyway)
-			return { best: bestBy(alive, statOf, o.maxDeath), stats, pruned, same, n: done, evals };
+			return { best: bestBy(alive, statOf, o.maxDeath), stats, pruned, same, n: done, evals, escalated };
 		}
 		n = round === 0 && o.screen ? Math.min(cap, Math.max(o.n0, n * 2)) : Math.min(cap, n * 2);
 	}
