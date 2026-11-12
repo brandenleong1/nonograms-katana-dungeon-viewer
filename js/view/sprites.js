@@ -22,8 +22,6 @@ export function drawSprite(ctx, kind, cx, cy, hw, { selected = false, theme = 'd
 	ctx.drawImage(spr.canvas, cx - spr.ax * k, cy - spr.ay * k, spr.canvas.width * k, spr.canvas.height * k);
 }
 
-export const hasSprite = (kind) => kind in PAINTERS;
-
 /** sprites are drawn at quarter-octave sizes from 8 to 256 device px, so zooming reuses cached renders */
 function sizeBucket(devicePx) {
 	return Math.min(256, Math.max(8, Math.round(2 ** (Math.round(Math.log2(devicePx) * 4) / 4))));
@@ -199,7 +197,7 @@ function eye(g, e, { x, y, r, iris, sclera }) {
 }
 
 // ---- door helpers -----------------------------------------------------------------------------------
-const WOOD = '#8a5a32', WOOD_D = '#6b4325', STONE = '#8e8a94', IRON = '#5d6470';
+const WOOD = '#8a5a32', STONE = '#8e8a94', IRON = '#5d6470';
 
 /** Door in a doorway. axis = wall direction ('x' or 'y'). Returns face mapping for details. */
 function doorBase(g, e, axis, leaf, { arch = STONE, height = 30 } = {}) {

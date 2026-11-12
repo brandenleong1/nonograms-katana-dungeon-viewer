@@ -649,9 +649,7 @@ export class Walker {
 	afterEncounter() {
 		if (this.opts.recovery === false || this.finished) return;
 		if (!this.unplannedFountainWanted()) return;
-		const replans = this.replans;
-		this.replan();
-		this.replans = replans;
+		this.planAgain();
 	}
 
 	/** an unused fountain is worth visiting now, and the rest of the route does not bump it */
@@ -734,8 +732,14 @@ export class Walker {
 		this.replan();
 	}
 
+	/** re-plan from here after a failure; past maxReplans the walk ends */
 	replan() {
 		if (++this.replans > (this.opts.maxReplans ?? 60)) { this.finished = true; return; }
+		this.planAgain();
+	}
+
+	/** plan the rest of the route from here, without counting it as a re-plan */
+	planAgain() {
 		this.tries = {};
 		this.stall = 0;
 		this.jumpFrom = null;
@@ -1506,10 +1510,10 @@ function sealAt(h, x, y) {
 }
 
 /**
- * Encounter key: the stop being walked to, plus the ordinal of the encounter on that leg (engaged: not part of the
- * key). Stable across RNG samples as long as the route is.
+ * Encounter key: the stop being walked to, plus the ordinal of the encounter on that leg. Stable across RNG samples as
+ * long as the route is; robust and exact mode both use it.
  */
-export function encounterKey(stop, ordinal, engaged) {
+export function encounterKey(stop, ordinal) {
 	return `${stopKey(stop)}#${ordinal}`;
 }
 
