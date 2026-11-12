@@ -325,6 +325,7 @@ export class IsoView {
 		if (hw < 7) {
 			ctx.fillStyle = selected ? (this.theme === 'light' ? '#111' : '#fff') : critterColor(kind, variant);
 			fillCircle(ctx, cx, cy, Math.max(1.6, hw * 0.55));
+			if (kind === 'familiar') familiarRing(ctx, cx, cy, Math.max(1.6, hw * 0.55));
 			return;
 		}
 		drawSprite(ctx, kind, cx, cy, hw, { selected, theme: this.theme, dpr: this.dpr, variant });
@@ -377,6 +378,7 @@ export class IsoView {
 		if (hw < 7) {
 			ctx.fillStyle = actor.hero ? '#4f9ef8' : KINDS[actor.kind] ? critterColor(actor.kind, actor.variant) : KINDS.monster.color;
 			fillCircle(ctx, cx, cy, Math.max(2, hw * 0.6));
+			if (actor.kind === 'familiar') familiarRing(ctx, cx, cy, Math.max(2, hw * 0.6));
 			return;
 		}
 		drawSprite(ctx, actor.kind, cx, cy, hw, { theme: this.theme, dpr: this.dpr, variant: actor.variant || '' });
@@ -789,6 +791,16 @@ function trapCross(ctx, { cx, cy }, { hw, hh }) {
 	ctx.moveTo(cx - hw * 0.4, cy - hh * 0.4); ctx.lineTo(cx + hw * 0.4, cy + hh * 0.4);
 	ctx.moveTo(cx + hw * 0.4, cy - hh * 0.4); ctx.lineTo(cx - hw * 0.4, cy + hh * 0.4);
 	ctx.stroke();
+}
+
+/** a white ring with a dark edge around a wild familiar's dot, so it can't be mistaken for a monster's */
+function familiarRing(ctx, x, y, r) {
+	ctx.save();
+	ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1;
+	ctx.beginPath(); ctx.arc(x, y, r + 3, 0, Math.PI * 2); ctx.stroke();
+	ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.6;
+	ctx.beginPath(); ctx.arc(x, y, r + 1.8, 0, Math.PI * 2); ctx.stroke();
+	ctx.restore();
 }
 
 function fillCircle(ctx, x, y, r) {

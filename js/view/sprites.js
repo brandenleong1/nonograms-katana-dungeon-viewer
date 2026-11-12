@@ -680,11 +680,14 @@ function glowDisc(g, { x, y, r, inner, outer }) {
 	g.globalCompositeOperation = 'source-over';
 }
 
-/** a wild familiar in its rank's colour (white, blue, yellow, purple) with a soft glow; grey when the rank is unknown */
+/**
+ * a wild familiar in its rank's colour (white, blue, yellow, purple) with a soft glow and a paw badge, so it can't be
+ * mistaken for a monster of a similar colour; grey when the rank is unknown
+ */
 function familiarLook(variant) {
 	const color = RANK_COLORS[variant] || '#cfd8e3';
 	const [r, g, b] = hex2rgb(color);
-	return { color, r: 10, aura: `rgba(${r},${g},${b},0.4)` };
+	return { color, r: 10, aura: `rgba(${r},${g},${b},0.4)`, paw: true };
 }
 
 function speciesColor(variant) {
@@ -708,6 +711,19 @@ function creature(g, e, look) {
 	if (body.teeth) creatureTeeth(g, body);
 	if (body.key) carriedKey(g, e, body);
 	if (body.crown) creatureCrown(g, e, body);
+	if (body.paw) pawBadge(g, body);
+}
+
+/** a white paw print on a dark disc, floating above (a wild familiar) */
+function pawBadge(g, { R }) {
+	const cy = -R * 2.25;
+	g.fillStyle = 'rgba(40,40,60,0.75)';
+	g.beginPath(); g.arc(0, cy, R * 0.55, 0, Math.PI * 2); g.fill();
+	g.fillStyle = '#ffffff';
+	g.beginPath(); g.ellipse(0, cy + R * 0.12, R * 0.2, R * 0.16, 0, 0, Math.PI * 2); g.fill();
+	for (const [dx, dy] of [[-0.24, -0.1], [-0.08, -0.24], [0.08, -0.24], [0.24, -0.1]]) {
+		g.beginPath(); g.arc(dx * R, cy + dy * R, R * 0.075, 0, Math.PI * 2); g.fill();
+	}
 }
 
 function creatureHorns(g, e, { R }) {
