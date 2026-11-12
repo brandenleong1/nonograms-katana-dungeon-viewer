@@ -19,7 +19,7 @@
 import { Run, Walker, trimTopUps, mpOk, heroSpecOut, heroOf, isFoe, critterInfo, foesOf, packHas, canSkill, free, SKILL, SPIDER, DIR4, bestItem, makeFight, structuredCloneLite, manh, cheb, encounterKey } from './sim.js';
 import { makePolicy, labelOf, candidates as defaultCandidates, availOf, usable, BASELINE } from './policies.js';
 import { pricesFor, scoreOutcome, compareExact, dist } from './cost.js';
-import { outcomeOf, entryOut, mpPlanOf, runOptsFor, stopIndexOf, routeLegs, stopOut, countVisit, realNeedOf, mpItemsOf, setRestNeed } from './robust.js';
+import { outcomeOf, WALK_BACK, entryOut, mpPlanOf, runOptsFor, stopIndexOf, routeLegs, stopOut, countVisit, realNeedOf, mpItemsOf, setRestNeed } from './robust.js';
 import { LookCache } from './lookcache.js';
 import { newFight } from '../combat/driver.js';
 
@@ -99,7 +99,7 @@ export class ExactWorker {
 	evaluate(jobs, ctx) {
 		const out = [];
 		const lookCache = this.cfg.lookCache === false ? null : new LookCache({ from: this.ck.log.length, verify: !!this.cfg.verifyLookCache, stats: this.look });
-		const options = { ext: ctx.ext ?? 1, look: ctx.look ?? 0, maxInputs: ctx.maxInputs, lookCache };
+		const options = { ext: ctx.ext ?? 1, look: ctx.look ?? 0, maxInputs: ctx.maxInputs, lookCache, walkBack: WALK_BACK.inputs };
 		for (const j of jobs) {
 			const run = this.resume();
 			setRestNeed(run, ctx.restNeed);
@@ -428,7 +428,7 @@ async function solveEncounter(search, { e, key, stop }) {
 	search.jobs += base.length;
 	base.sort(compareJobs);
 	const ranked = base.filter((r) => r.o).map((r) => r.j.c);
-	enc.tactics = base.map((r) => ({ label: labelOf(ec[r.j.c].name, ec[r.j.c].params), dead: r.o ? r.o.dead : true, end: r.o?.end, items: r.o?.items, mp: r.o?.mpSpent, hp: r.o?.hp, score: r.sc?.s }));
+	enc.tactics = base.map((r) => ({ label: labelOf(ec[r.j.c].name, ec[r.j.c].params), dead: r.o ? r.o.dead : true, end: r.o?.end, abandoned: r.o?.abandoned, items: r.o?.items, mp: r.o?.mpSpent, hp: r.o?.hp, score: r.sc?.s }));
 	const incumbent = ec[ranked[0]];
 	enc.tactic = { name: incumbent.name, params: incumbent.params, label: labelOf(incumbent.name, incumbent.params) };
 	const behind = search.strict && now() - search.t0 > search.budget * 0.8;
@@ -447,10 +447,11 @@ async function solveEncounter(search, { e, key, stop }) {
 	return enc;
 }
 
-/** every tactic played out the same (items, MP, HP left, death): nothing to search */
+/** every tactic played out the same (objectives abandoned, items, MP, HP left, death): nothing to search */
 function allAlike(base) {
 	const first = base[0].o;
-	return base.filter((r) => r.o).every((r) => r.o.items === first.items && r.o.mpSpent === first.mpSpent && r.o.hp === first.hp && r.o.dead === first.dead);
+	const same = (o) => o.abandoned === first.abandoned && o.items === first.items && o.mpSpent === first.mpSpent && o.hp === first.hp && o.dead === first.dead;
+	return base.filter((r) => r.o).every((r) => same(r.o));
 }
 
 /**

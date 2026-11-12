@@ -11,10 +11,11 @@ import { resetStatics } from '../js/combat/setup.js';
 import * as S from '../js/solve/sim.js';
 import { makePolicy, candidates, usable, availOf } from '../js/solve/policies.js';
 import { duelModel, verdict } from '../js/solve/kite.js';
-import { solveRobust, InlinePool, outcomeOf, mix32, ScoutProfile } from '../js/solve/robust.js';
+import { solveRobust, InlinePool, outcomeOf, mix32, ScoutProfile, runOptsFor } from '../js/solve/robust.js';
+import { LookCache } from '../js/solve/lookcache.js';
 import { solveExact, replayScript, InlineExactPool } from '../js/solve/exact.js';
 import { buildPlan, validatePlan } from '../js/solve/plan.js';
-import { shadow, pricesFor, compareAgg, aggregate, scoreOutcome } from '../js/solve/cost.js';
+import { shadow, pricesFor, compareAgg, compareExact, dominated, aggregate, scoreOutcome } from '../js/solve/cost.js';
 import { WorkerPool } from '../js/solve/pool.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -62,6 +63,10 @@ const t0 = performance.now();
 	const c = aggregate([{ dead: true, s: [Infinity, Infinity] }, { dead: false, s: [0, 0], items: 0, mp: 0, hp: 10 }]);
 	check('cost: lexicographic items before MP', compareAgg(a, b) < 0);
 	check('cost: death above 1% loses to anything feasible', compareAgg(b, c) < 0);
+	// survive, then objectives, then items: an objective the walker gave up is never worth an item saved
+	const playOut = (abandoned, items) => scoreOutcome({ dead: false, end: 'won', abandoned, items, mpSpent: 0, hp: 40, hpM: 40, ep: 60, mpLeft: 100, inputs: 9 }, { hp: 0, ep: 0, mp: 0 }, pr);
+	const skips = aggregate([playOut(1, 0), playOut(1, 0)]), clears = aggregate([playOut(0, 1), playOut(0, 1)]);
+	check('cost: an objective left behind ranks after survival, before items (robust, pruning, exact)', compareAgg(clears, skips) < 0 && dominated(skips, clears) && compareExact(playOut(0, 1), playOut(1, 0)) < 0 && compareAgg(skips, c) < 0, JSON.stringify({ skips: [skips.abandoned, skips.score[0]], clears: [clears.abandoned, clears.score[0]] }));
 }
 
 // ---- scout need levels: zero after the last encounter only when a scout run got past it ----
@@ -119,6 +124,44 @@ const t0 = performance.now();
 	const lost = (r) => r.before.filter((s) => !r.after.includes(s)).join(' ');
 	check('walker: a re-plan with the gold monsters dead keeps the objectives behind locked doors 29 when the keys are in the pack', all.gold === 2 && all.after.length === all.before.length, `lost ${lost(all) || 'none'}`);
 	check('walker: one key opens one locked door 29', one.after.length === one.before.length - 1, `lost ${lost(one) || 'none'}`);
+}
+
+// ---- walker: objectives given up (a failed leg's stop, still undone and not re-planned) ----
+{
+	resetStatics(tables);
+	const w = S.Run.start({ level: 21, gear: 4, kit2: true }, { type: 15, seed: 1492658333, xseed: 777 }).walker;
+	const givenUp = () => (typeof w.objectivesGivenUp === 'function' ? w.objectivesGivenUp() : null);
+	const failAt = (isCritter) => {
+		const L = w.legs.find((leg) => leg.kind === 'objective' && leg.rec && leg.rec.ri >= 0 && (leg.rec.k !== undefined) === isCritter);
+		w.cur = L.first;
+		w.failLeg();
+	};
+	const before = givenUp();
+	failAt(true);   // a foe stays a stop of the re-planned route
+	const afterFoe = givenUp();
+	failAt(false);
+	check('walker: an objective object it gives up counts as given up, a foe it still plans does not', before === 0 && afterFoe === 0 && givenUp() === 1, `${before} ${afterFoe} ${givenUp()}`);
+}
+
+// ---- look-ahead cache: a reused walk keeps the objectives it gave up (lookcache.js; outcomeOf abandoned) ----
+{
+	resetStatics(tables);
+	const run = S.Run.start({ level: 21, gear: 4, kit2: true }, { type: 15, seed: 1492658333, xseed: 777 }, runOptsFor({}, { log: true }));
+	const stopOf = (w) => { const at = w.route[w.cur]; return at ? w.legs[at.leg] : null; };
+	// melee on to the first encounter met on the way to an objective object (not a foe: a failed foe is re-planned)
+	const objectAhead = () => { const L = stopOf(run.walker); return L && L.kind === 'objective' && L.rec && L.rec.ri >= 0 && L.rec.k === undefined; };
+	for (let k = 0; k < 12 && run.toEncounter().ev === 'combat' && !objectAhead(); k++) { run.fightWith(makePolicy('melee', {})); run.walker.afterEncounter(); }
+	const ck = run.checkpoint();
+	const cache = new LookCache({ from: ck.log.length });
+	const play = () => {
+		const r = S.Run.resume(ck);
+		const w = r.walker, walk = w.walk.bind(w);
+		let first = true;
+		w.walk = () => { if (!first) return walk(); first = false; w.failLeg(); return undefined; };   // the walk after the fight gives the stop up
+		return outcomeOf(r, { name: 'melee', params: {} }, { ext: 1, look: 1, lookCache: cache, walkBack: 40 });
+	};
+	const walked = play(), reused = play();
+	check('cache: a reused look-ahead walk keeps the objectives it gave up', objectAhead() && walked.abandoned === 1 && reused.abandoned === 1 && cache.stats.hits === 1, `walked ${walked.abandoned}, reused ${reused.abandoned}, ${JSON.stringify(cache.stats)}`);
 }
 
 // ---- wiki: first strike against a lone 2-AP melee foe (243, type 10) ----

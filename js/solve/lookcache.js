@@ -9,7 +9,8 @@
 //     (as every resumed play-out relies on), and a play-out's policy leaves nothing behind but its inputs;
 //   - the walker's own state (Walker.stateKey): it moves when it supplies an input, which the inputs alone do not
 //     tell, and it chooses what the walk does next;
-//   - the run's status.
+//   - the run's status;
+//   - with the WALK_BACK check on, where the encounter began (robust.js walkKey adds it).
 // The rest is the same for every play-out of a batch (one checkpoint, one ctx: the continuation policy, the rest
 // rule's needs, the limits), so a cache lives for one batch and never outlives its checkpoint.
 //
@@ -50,5 +51,5 @@ export class LookCache {
 function plain(walk) {
 	const l = walk.led;
 	const ledger = [[...l.used].sort(), [...l.gained].sort(), l.spiderNet, l.mp, l.mpOut, l.hp, l.ep, l.inputs, l.dead, l.mpPeak, Object.entries(l.mpBy).sort()];
-	return JSON.stringify([ledger, walk.turns, walk.ext, walk.looked, walk.end, walk.final]);
+	return JSON.stringify([ledger, walk.turns, walk.ext, walk.looked, walk.end, walk.final, walk.givenUp]);
 }

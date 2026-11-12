@@ -11,7 +11,7 @@
 //
 // The work runs in Shards (sample owners). A Shard is the same object inline (no workers) or behind a worker
 // (worker.js / pool.js); the coordinator only sends plain data and gets plain data back.
-import { Run, RestRule, encounterKey, heroOf, isFoe, critterInfo, Ledger, heroSpecOut, trimTopUps } from './sim.js';
+import { Run, RestRule, encounterKey, heroOf, isFoe, critterInfo, Ledger, heroSpecOut, trimTopUps, manh } from './sim.js';
 import { makePolicy, labelOf, candidates as defaultCandidates, BASELINE, availOf, usable } from './policies.js';
 import { pricesFor, scoreOutcome, aggregate, compareAgg, dominated, dist, TOL } from './cost.js';
 import { vj0 } from '../gen/statics.js';
@@ -49,36 +49,51 @@ export function mix32(x) {
 }
 
 /**
+ * A play-out that leaves the hero more than `from` steps (Manhattan) from where its encounter began walks on (up to
+ * `inputs`, or the next fight) to see whether the walker gets back to its route or gives an objective up there.
+ */
+export const WALK_BACK = { from: 6, inputs: 40 };
+
+/**
  * play a candidate from a resumed run; returns the outcome (plain data). ctx: { ext, look, maxInputs, cont, lookWalk,
- * extWalk, lookCache: a LookCache (lookcache.js) that shares the walk after the fight between play-outs }
+ * extWalk, lookCache: a LookCache (lookcache.js) that shares the walk after the fight between play-outs, walkBack: the
+ * inputs of the WALK_BACK check (0, the default, for commits: the sample walks on itself) }
  */
 export function outcomeOf(run, cand, ctx = {}) {
 	const h0 = run.fight.h;
 	const led0 = run.led.clone();
 	const engaged = h0.D.filter((m) => isFoe(h0, m));
+	const givenUp0 = run.walker.objectivesGivenUp();
+	const from = { a: h0.f.b.a, b: h0.f.b.b };
 	const fought = run.fightWith(makePolicy(cand.name, cand.params), ctx.maxInputs);
-	const play = { engaged, end: fought.end, turns: fought.turns, ext: 0, looked: 0, final: null };
+	const play = { engaged, end: fought.end, turns: fought.turns, ext: 0, looked: 0, final: null, from, givenUp: 0 };
+	// the objectives the walker gave up: in the fight (a stand-off walk), then on the walk after it (walkOn)
+	play.givenUp = run.walker.objectivesGivenUp() - givenUp0;
 	walkOn(run, play, ctx);
 	return outcomeRecord(run, led0, play);
 }
 
 /**
- * What follows the fight: the foes it left behind, then the look-ahead. With a cache, a state that was walked before
- * costs what the walk cost then (the run itself stays where the fight left it: only play and its ledger move on).
+ * What follows the fight: the foes it left behind, the look-ahead, then the WALK_BACK check. With a cache, a state
+ * that was walked before costs what the walk cost then, objectives given up included (the run itself stays where the
+ * fight left it: only play and its ledger move on).
  */
 function walkOn(run, play, ctx) {
 	const cache = ctx.lookCache;
-	const key = cache && walksOn(run, play, ctx) ? cache.keyOf(run) : null;
+	const key = cache && walksOn(run, play, ctx) ? walkKey(cache, run, play, ctx) : null;
 	const known = key === null ? undefined : cache.get(key);
 	if (known && !cache.verify) {
 		adoptWalk(run, play, known);
 		cache.reused();
 		return;
 	}
-	const before = key === null ? null : { led: run.led.clone(), turns: play.turns };
+	const before = key === null ? null : { led: run.led.clone(), turns: play.turns, givenUp: play.givenUp };
+	const givenUp0 = run.walker.objectivesGivenUp();
 	fightLeftovers(run, play, ctx);
 	lookAhead(run, play, ctx);
 	play.final = finalOf(run);
+	walkBack(run, play.from, ctx.walkBack ?? 0);
+	play.givenUp += run.walker.objectivesGivenUp() - givenUp0;
 	if (before) cache.walked(key, walkSince(run, play, before), known);
 }
 
@@ -88,14 +103,36 @@ function walksOn(run, play, ctx) {
 	return play.end === 'won' && !h.f.u_() && !run.fight.c.w && ((ctx.ext ?? 1) > 0 || (ctx.look ?? 0) > 0);
 }
 
+/**
+ * The cache key of the walk after a fight. The WALK_BACK check also reads where the encounter began, which the
+ * inputs alone do not tell (a play-out's first input is its searched input, or its policy's), so it joins the key.
+ */
+function walkKey(cache, run, play, ctx) {
+	const key = cache.keyOf(run);
+	if (key === null || !((ctx.walkBack ?? 0) > 0)) return key;
+	return `${key}|from ${play.from.a},${play.from.b}`;
+}
+
+/** the WALK_BACK check: not charged (the run's ledger is put back), it only shows objectives given up */
+function walkBack(run, from, inputs) {
+	const h = run.fight.h;
+	if (!(inputs > 0) || h.f.u_() || run.fight.c.w || h.C || manh(h.f.b, from) <= WALK_BACK.from) return;
+	const led = run.led.clone();
+	run.toEncounter(inputs);
+	run.led = led;
+}
+
 /** the hero where a play-out ends */
 function finalOf(run) {
 	return { hero: heroOf(run.fight.h), dead: run.fight.h.f.u_() };
 }
 
-/** what the walk since `before` cost (the ledger it added, the turns) and where it left the play */
+/** what the walk since `before` cost (the ledger it added, the turns, the objectives given up) and where it left the play */
 function walkSince(run, play, before) {
-	return { led: run.led.since(before.led), turns: play.turns - before.turns, ext: play.ext, looked: play.looked, end: play.end, final: play.final };
+	return {
+		led: run.led.since(before.led), turns: play.turns - before.turns, ext: play.ext, looked: play.looked, end: play.end, final: play.final,
+		givenUp: play.givenUp - before.givenUp,
+	};
 }
 
 /** a cached walk's cost, added as if it had been made */
@@ -106,6 +143,7 @@ function adoptWalk(run, play, walk) {
 	play.looked += walk.looked;
 	play.end = walk.end;
 	play.final = walk.final;
+	play.givenUp += walk.givenUp;
 }
 
 /**
@@ -150,13 +188,17 @@ function fightOn(run, ctx) {
 	return run.fightWith(makePolicy(c.name, c.params), ctx.maxInputs);
 }
 
-/** what a play-out cost, counted from led0 (the ledger before it), and where it left the hero */
+/**
+ * What a play-out cost, counted from led0 (the ledger before it), and where it left the hero; abandoned: the
+ * objectives the walker gave up during it (Walker.objectivesGivenUp).
+ */
 function outcomeRecord(run, led0, play) {
 	const led = run.led.since(led0);
 	const { hero: P, dead } = play.final;
 	return {
 		dead: led.dead || dead, end: play.end, items: led.items(), byId: led.itemsById(), mpSpent: led.mp, hpLost: led.hp, epLost: led.ep,
 		hp: P.hp, hpM: P.hpM, ep: P.ep, epM: P.epM, mpLeft: P.mp, inputs: led.inputs, turns: play.turns, ext: play.ext, looked: play.looked,
+		abandoned: play.givenUp,
 	};
 }
 
@@ -854,7 +896,7 @@ async function decide(shards, enc, o) {
 	const same = {};                    // candidate -> the identical one kept
 	let done = 0, n = Math.min(o.screen || o.n0, cap);
 	let evals = 0;
-	const ctx = { cands, need, ext: o.ext, maxInputs: o.maxInputs, restNeed: o.restNeed || need };
+	const ctx = { cands, need, ext: o.ext, maxInputs: o.maxInputs, restNeed: o.restNeed || need, walkBack: WALK_BACK.inputs };
 	for (let round = 0; ; round++) {
 		const jobs = jobsFor(units.slice(done, n), alive, done);
 		const res = await runJobs(shards, jobs, ctx);
@@ -920,11 +962,11 @@ function recordSignatures(res, sig) {
 	for (const r of res) if (r.o) sig[r.c][r.u] = `${r.o.dead ? 1 : 0}:${r.o.end}:${r.o.items}:${r.o.mpSpent}:${r.o.hp}:${r.o.ep}:${r.o.inputs}`;
 }
 
-/** the best of the core candidates leaves a death or an item to save: worth trying the late ones */
+/** the best of the core candidates leaves a death, an objective or an item to save: worth trying the late ones */
 function leavesSomethingToSave(alive, scores, maxDeath) {
 	const st = alive.map((i) => aggregate(scores[i]));
 	const b = bestBy(st.map((_, q) => q), (q) => st[q], maxDeath);
-	return st[b].pDeath > 0 || st[b].score[0] > TOL.items || st.some((a) => a.dead > 0);
+	return st[b].pDeath > 0 || st[b].abandoned > TOL.abandoned || st[b].score[0] > TOL.items || st.some((a) => a.dead > 0);
 }
 
 /** tactics that played out identically on every first-round sample are the same tactic here: dupe -> the first one */
@@ -954,10 +996,14 @@ function tieZone(round, zone) {
 	return { items: TOL.items, mp: TOL.mp };
 }
 
-/** everyone left plays as well as the best within the zone (and as safely): more samples would not separate them */
+/**
+ * everyone left plays as well as the best within the zone (as safely, abandoning as few objectives): more samples
+ * would not separate them
+ */
 function allTied(alive, best, stats, zone) {
 	const b = stats[best];
-	return alive.every((i) => i === best || (stats[i].pDeath === b.pDeath && Math.abs(stats[i].score[0] - b.score[0]) <= zone.items && Math.abs(stats[i].score[1] - b.score[1]) <= zone.mp));
+	const tied = (a) => a.pDeath === b.pDeath && Math.abs(a.abandoned - b.abandoned) <= TOL.abandoned && Math.abs(a.score[0] - b.score[0]) <= zone.items && Math.abs(a.score[1] - b.score[1]) <= zone.mp;
+	return alive.every((i) => i === best || tied(stats[i]));
 }
 
 /** evaluate jobs on the shards that own their samples (shards: { pool, owner }) */

@@ -13,7 +13,7 @@ Both modes write the same pure-data plan for the UI.
 | `sim.js` | Read-only state accessors. The resource `Ledger`. The route `Walker`: planner stops, taps along the route, bumps, nonogram, barrels, ladders. The between-fight `RestRule`. `Run`: one play-through, with `toEncounter()`, `fightWith(policy)`, and `checkpoint()` / `Run.resume(ck)`. |
 | `policies.js` | The tactic library (`makePolicy(name, params)`), the candidate sets (`candidates`, `EXTRA`, `usable`) and the baseline. |
 | `kite.js` | The duel model: one hero vs one melee monster with the engine's exact AP rules (`duelModel`, `verdict`), and its grid executor (`duelInput`) for the `kite` tactic. |
-| `cost.js` | The lexicographic objective, the shadow prices for leftover HP/EP/MP, aggregation, comparison and pruning. |
+| `cost.js` | The lexicographic objective (survive, no objective left behind, fewest items, least MP), the shadow prices for leftover HP/EP/MP, aggregation, comparison and pruning. |
 | `robust.js` | `Shard` (owns samples), `InlinePool`, and `solveRobust(problem, opts)`. |
 | `exact.js` | `ExactWorker`, `InlineExactPool`, `solveExact(problem, opts)`, `replayScript(problem, inputs)` and `candidateInputs`. |
 | `lookcache.js` | `LookCache`: what the walk after a play-out costs (leftover foes and the look-ahead), kept by the state it starts from, so equal play-outs of one batch walk once. |
@@ -109,7 +109,7 @@ Walker state holds object and critter references through a ref table. `freeze()`
 
 ## MP (endless, but minimised)
 
-The player can pause the dungeon at any moment, mid-fight included, solve puzzles, refill MP to full (max MP, `nw.n`) and go on, as often as they like. So MP never *limits* a decision -- but it is still the third objective (survive, then fewest items, then least MP), so it is spent only where it buys something.
+The player can pause the dungeon at any moment, mid-fight included, solve puzzles, refill MP to full (max MP, `nw.n`) and go on, as often as they like. So MP never *limits* a decision -- but it is still the last objective (survive, then no objective left behind, then fewest items, then least MP), so it is spent only where it buys something.
 - **No item ever buys MP** (MP potion 217, MP food, the ankh 285 ...).
 - **MP never limits a decision.** With top-ups on, `sim.js mpOk` / `canSkill` ignore the pool (`setMpFree`, set by the live Run), so policies, the duel planner, exact mode's primitives and `usable` treat every skill, unseal and seal as payable.
 - **Top-ups** (`Run.topUpFor`, before every input in `Run.apply`, in or out of combat): a pool that cannot pay what the input needs (a skill's MP, an unseal, a tapped sealed object or critter) or is below a threshold (30; out of combat plus the current leg's doors / chests / seal, `Walker.legNeeds`) is filled to max. Recorded in `Ledger.topUps` (`at` = the input it comes before, `fight` = inside an encounter).
@@ -236,11 +236,12 @@ Setup: 12 dungeons, one per tier and family. The hero is matched to the tier: le
 
 The order is:
 1. **Survival.** A tactic is feasible when its P(death) on the samples is at most `maxDeath` (1%). A stuck encounter counts as a death. If no tactic is feasible, the lowest P(death) wins.
-2. **Items**: the mean of the immediate item cost plus the shadow cost.
-3. **MP**: the mean of the immediate MP cost plus the shadow cost.
-4. Then more HP left, then fewer inputs.
+2. **Objectives left behind**: the mean number of objectives the route walker gave up during the play-out (`Walker.objectivesGivenUp`: stops of legs it failed that are still undone and not on the route again; a failed foe stays a stop, and objectives a re-plan leaves out for now, behind a gate, don't count). A tactic that runs far back can leave the walker unable to get past the foes it left, so it gives the objective up; ranking that here, before items, keeps such a tactic from looking cheap by skipping the objective and the fights it would take. Since the giving up happens on the walk back, a play-out that ends more than 6 steps from where its encounter began walks on (`WALK_BACK`: up to 40 inputs, or the next fight; not charged) to see it.
+3. **Items**: the mean of the immediate item cost plus the shadow cost.
+4. **MP**: the mean of the immediate MP cost plus the shadow cost.
+5. Then more HP left, then fewer inputs.
 
-Items and MP each have a tolerance (0.02 items, 0.1 MP) under which two tactics tie.
+Objectives, items and MP each have a tolerance (0.02 objectives, 0.02 items, 0.1 MP) under which two tactics tie. Pruning drops a tactic that abandons more objectives than the best by 3 standard errors + 0.05, as it does for items.
 
 **Shadow prices.** Within one encounter, a greedy choice could win by bleeding HP or EP that a later fight then pays for with potions. So the pools left at the end of the encounter are converted to future (items, MP), using the hero's cheapest recovery for each pool:
 
@@ -258,7 +259,7 @@ Deficits are measured against **need levels**, which describe what the rest of t
 
 At the last encounter every need is 0, because leftovers are worth nothing in the game. The scout only knows an encounter is the last when one of its runs went on to finish the dungeon. When every scout run that met an encounter died there, what follows is unknown. That encounter, and the rest rule after it, then get the largest need of any scouted encounter, the same as an encounter the scout never met.
 
-Tactics that leave engaged foes alive (rath, stand-offs) are charged for them. Their play-out is extended: walk on, and fight the next encounter with the continuation policy, until those foes are dead (`ext` = 1 encounter).
+Tactics that leave engaged foes alive (rath, stand-offs) are charged for them. Their play-out is extended: walk on, and fight the next encounter with the continuation policy, until those foes are dead (`ext` = 1 encounter). An objective the walker gives up on that walk counts against the tactic (2. above).
 
 ## Robust mode (`robust.js`)
 
@@ -316,7 +317,7 @@ Pure JSON (no functions, no cycles); `validatePlan(plan)` checks the structure.
   "dungeon": { "type": 8, "seed": 172582050, "label": "3C-172582050", "xseed": null | 12345, "at": "start" },
   "heroSpec": { "level": 21, "gear": 4, "kit2": true },          // what was solved for
   "hero": { "x","y","hp","hpM","ep","epM","mp","mpM","ap","spd","atk","def" },   // at the dungeon start
-  "objective": { "order": ["survive","items","mp"], "maxDeath": 0.01, "prices": { "hpLow":[items,mp], "hpHigh":[..], "ep":[..], "mp":[..] } },
+  "objective": { "order": ["survive","objectives","items","mp"], "maxDeath": 0.01, "prices": { "hpLow":[items,mp], "hpHigh":[..], "ep":[..], "mp":[..] } },
   "stops": [                                                      // the planned route, in order
     { "i": 0, "kind": "objective" | "lever" | "gold" | "miniboss" | "nonogram" | "barrels" | "exit" | ...,
       "label": "..." | null, "target": { "id", "x", "y", "critter": bool } | null, "at": { "x","y" },
@@ -331,6 +332,7 @@ Pure JSON (no functions, no cycles); `validatePlan(plan)` checks the structure.
       "tactic": { "name": "firstStrike", "params": {..}, "label": "firstStrike(smash=always)", "description": "..." , "finish"?: "..." },
       "expected": { "pDeath", "items", "mp", "hpLost", "score": [items, mp], "p95": { "items","mp","hpLost" } },
       "candidates": [ { "label", "n", "pDeath", "items", "mp", "score", "pruned", "same" } ],   // robust; exact: { label, pDeath, items, mp, hpLeft, score }
+      // added: objectives the play-outs gave up (mean): expected.abandoned (robust), candidates[].abandoned (both modes)
       "samples": 64, "evaluations": 48, "need": { "hp","ep" },    // robust
       "after": { "hp","ep","mp" }, "searched": 6, "improved": 4,  // exact
       "script": { "from": 120, "to": 133, "inputs": [ {"t":"tap","x":..,"y":..}, ... ] },  // exact: this encounter's inputs
