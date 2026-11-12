@@ -16,28 +16,10 @@ import { ProgressEdits, ProgressPanel, BASIS_TEXT } from './ui/progress-panel.js
 const KEY_SAVE = 'nkd-save';          // base64 guild.dat
 const KEY_HERO = 'nkd-hero';          // chosen hero index
 const KEY_USE = 'nkd-use-profile';    // '1' / '0'
+const KEY_SAVE_NAME = KEY_SAVE + '-name';
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-
-function toB64(u8) {
-	let s = '';
-	for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
-	return btoa(s);
-}
-function fromB64(b) {
-	const s = atob(b);
-	const u8 = new Uint8Array(s.length);
-	for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
-	return u8;
-}
-
-function awayText(ms) {
-	const m = Math.round(ms / 60000);
-	if (m < 60) return `${m} min`;
-	const h = Math.floor(m / 60);
-	return h < 48 ? `${h} h ${m % 60} min` : `${Math.round(h / 24)} days`;
-}
 
 const STAT_ROWS = [['hp', 'Health'], ['ep', 'Energy'], ['mp', 'Mental power'], ['atk', 'Attack'], ['def', 'Defence'], ['ap', 'Action points']];
 const SLOTS = ['Weapon', 'Armour', 'Shield', 'Ring'];
@@ -67,15 +49,14 @@ export class HeroPanel {
 	}
 
 	async modules() {
-		if (!this.mods) {
-			const [save, zip, entry, names, statics] = await Promise.all([
-				import('./save/index.js'), import('./save/zip.js'), import('./combat/entry.js'),
-				fetch('data/names.json').then((r) => r.json()).catch(() => ({})),
-				import('./gen/statics.js'),
-			]);
-			this.mods = { save, zip, entry, statics };
-			this.names = names;
-		}
+		if (this.mods) return this.mods;
+		const [save, zip, entry, names, statics] = await Promise.all([
+			import('./save/index.js'), import('./save/zip.js'), import('./combat/entry.js'),
+			fetch('data/names.json').then((r) => r.json()).catch(() => ({})),
+			import('./gen/statics.js'),
+		]);
+		this.mods = { save, zip, entry, statics };
+		this.names = names;
 		return this.mods;
 	}
 
@@ -127,15 +108,20 @@ export class HeroPanel {
 		const eff = this.effectiveProfile();
 		const from = over === 'save' ? this.profile : freshProfile();
 		if (!from) return null;
-		const d = diffProgress(readProgress(from), readProgress(eff.vj0));
-		return Object.keys(d).length ? d : null;
+		const changes = diffProgress(readProgress(from), readProgress(eff.vj0));
+		return Object.keys(changes).length ? changes : null;
 	}
 
 	/** The solver's hero spec for the imported hero: guild bytes, or { guild, progress } when the map's progress differs. */
 	solverProfile() {
 		if (!this.profile) return null;
 		const progress = this.solverProgress('save');
-		return { bytes: progress ? { guild: this.guild, progress } : this.guild, hero: this.hero, premium: false, name: (this.info && this.info.file) || 'guild.dat' };
+		return {
+			bytes: progress ? { guild: this.guild, progress } : this.guild,
+			hero: this.hero,
+			premium: false,
+			name: (this.info && this.info.file) || 'guild.dat',
+		};
 	}
 
 	/** The progress edits changed: regenerate the map, refresh the badge and the open editor. */
@@ -170,24 +156,35 @@ export class HeroPanel {
 
 	/** Wire the page: buttons, file picker, drag and drop anywhere on the page. */
 	bind() {
-		const open = () => this.open();
-		$('#hero-open-btn').onclick = open;
-		const pb = $('#progress-open-btn');
-		if (pb) pb.onclick = () => this.openProgress();
+		$('#hero-open-btn').onclick = () => this.open();
+		const progressButton = $('#progress-open-btn');
+		if (progressButton) progressButton.onclick = () => this.openProgress();
 		$('#hero-pick').onclick = () => $('#hero-file').click();
-		$('#hero-file').onchange = (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) this.importFile(f); };
+		$('#hero-file').onchange = (e) => {
+			const file = e.target.files && e.target.files[0];
+			e.target.value = '';
+			if (file) this.importFile(file);
+		};
 		$('#hero-use').onclick = () => this.setUse(!this.use);
 		$('#hero-forget').onclick = () => this.forget();
+		this.bindFileDrop();
+	}
+
+	/** A save dropped anywhere on the page is imported, and the Your hero popup opens. */
+	bindFileDrop() {
 		const drop = $('#hero-drop');
-		const hasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
-		window.addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); drop.classList.add('over'); });
+		window.addEventListener('dragover', (e) => {
+			if (!carriesFiles(e)) return;
+			e.preventDefault();
+			drop.classList.add('over');
+		});
 		window.addEventListener('dragleave', (e) => { if (e.target === document.documentElement || e.target === drop) drop.classList.remove('over'); });
 		window.addEventListener('drop', (e) => {
-			if (!hasFiles(e)) return;
+			if (!carriesFiles(e)) return;
 			e.preventDefault();
 			drop.classList.remove('over');
-			const f = e.dataTransfer.files && e.dataTransfer.files[0];
-			if (f) this.importFile(f, { openPanel: true });
+			const file = e.dataTransfer.files && e.dataTransfer.files[0];
+			if (file) this.importFile(file, { openPanel: true });
 		});
 	}
 
@@ -198,10 +195,13 @@ export class HeroPanel {
 
 	/** A reload in the same tab: the guild.dat kept in sessionStorage. */
 	async restore() {
-		const b = sessionStorage.getItem(KEY_SAVE);
-		if (!b) { this.renderStatus(); return false; }
+		const stored = sessionStorage.getItem(KEY_SAVE);
+		if (!stored) {
+			this.renderStatus();
+			return false;
+		}
 		try {
-			await this.load(fromB64(b), { file: sessionStorage.getItem(KEY_SAVE + '-name') || 'guild.dat', persist: false });
+			await this.load(fromB64(stored), { file: sessionStorage.getItem(KEY_SAVE_NAME) || 'guild.dat', persist: false });
 			return true;
 		} catch (e) {
 			console.warn('stored save could not be read again:', e);
@@ -214,64 +214,68 @@ export class HeroPanel {
 	async importFile(file, { openPanel = false } = {}) {
 		this.error = null;
 		try {
-			const u8 = new Uint8Array(await file.arrayBuffer());
-			await this.load(u8, { file: file.name, persist: true });
+			const bytes = new Uint8Array(await file.arrayBuffer());
+			await this.load(bytes, { file: file.name, persist: true });
 			this.opts.onChange();
 		} catch (e) {
 			console.error(e);
 			this.error = e && e.message ? e.message : String(e);
 		}
 		this.render();
-		if (openPanel && typeof Popup !== 'undefined' && $('#popup-hero').parentNode.style.opacity == 0) Popup.popup($('#popup-hero'));
+		const popupHidden = Number($('#popup-hero').parentNode.style.opacity) === 0;
+		if (openPanel && typeof Popup !== 'undefined' && popupHidden) Popup.popup($('#popup-hero'));
 	}
 
-	async load(u8, { file, persist }) {
+	/**
+	 * Read a save (the export zip or a bare guild.dat) and show its heroes. `persist`: a new import, kept for this tab
+	 * and used for maps; else a reload of the kept one, which keeps the hero picked earlier.
+	 */
+	async load(bytes, { file, persist }) {
 		const { save, zip } = await this.modules();
-		let guild = u8;
-		if (zip.isZip(u8)) {
-			const ex = await zip.readExport(u8);
-			if (!ex.guild) throw new Error('This zip has no guild.dat. Use the file from the game\'s Settings → Export.');
-			guild = ex.guild;
-		}
-		const r = await save.importSave(guild);
-		this.profile = r.vj0;
-		this.info = { savedAt: r.header.savedAt, notes: r.notes, inDungeon: r.dungeon != null, file };
+		const guild = await guildBytes(bytes, zip);
+		const imported = await save.importSave(guild);
+		this.profile = imported.vj0;
+		this.info = { savedAt: imported.header.savedAt, notes: imported.notes, inDungeon: imported.dungeon != null, file };
 		this.guild = guild;
-		this.dungeon = r.dungeon ? { type: r.dungeon.b, seed: r.dungeon.a, kind: r.marker === 1 ? 'hw' : 'ew' } : null;
-		const stored = parseInt(sessionStorage.getItem(KEY_HERO), 10);
-		const n = r.vj0.l.length;
-		this.hero = persist || !(stored >= 0 && stored < n) ? (r.vj0.H0 >= 0 && r.vj0.H0 < n ? r.vj0.H0 : 0) : stored;
-		if (persist) {
-			try {
-				sessionStorage.setItem(KEY_SAVE, toB64(guild));
-				sessionStorage.setItem(KEY_SAVE + '-name', file || 'guild.dat');
-				sessionStorage.setItem(KEY_HERO, String(this.hero));
-				this.use = true;
-				sessionStorage.setItem(KEY_USE, '1');
-			} catch (e) {
-				console.warn('could not keep the save for this tab:', e);
-			}
-		}
+		this.dungeon = imported.dungeon ? { type: imported.dungeon.b, seed: imported.dungeon.a, kind: imported.marker === 1 ? 'hw' : 'ew' } : null;
+		const pickedBefore = parseInt(sessionStorage.getItem(KEY_HERO), 10);
+		this.hero = heroToShow(imported.vj0, persist ? -1 : pickedBefore);
+		if (persist) this.keepForTab(guild, file);
 		this.renderStatus();
 	}
 
+	/** Keep the save in sessionStorage for reloads of this tab, and turn on "use my progress". */
+	keepForTab(guild, file) {
+		try {
+			sessionStorage.setItem(KEY_SAVE, toB64(guild));
+			sessionStorage.setItem(KEY_SAVE_NAME, file || 'guild.dat');
+			sessionStorage.setItem(KEY_HERO, String(this.hero));
+			this.use = true;
+			sessionStorage.setItem(KEY_USE, '1');
+		} catch (e) {
+			console.warn('could not keep the save for this tab:', e);
+		}
+	}
+
 	forget() {
-		for (const k of [KEY_SAVE, KEY_SAVE + '-name', KEY_HERO, KEY_USE]) sessionStorage.removeItem(k);
+		for (const key of [KEY_SAVE, KEY_SAVE_NAME, KEY_HERO, KEY_USE]) sessionStorage.removeItem(key);
 		this.profile = null;
 		this.info = null;
 		this.guild = null;
 		this.dungeon = null;
 		this.error = null;
 		this.use = true;
-		this._eff = null;
-		this.render();
-		this.opts.onChange();
-		this.renderProgress();
+		this.profileInUseChanged();
 	}
 
 	setUse(on) {
 		this.use = !!on;
 		sessionStorage.setItem(KEY_USE, this.use ? '1' : '0');
+		this.profileInUseChanged();
+	}
+
+	/** The save or "use my progress" changed: re-render, rebuild the map, refresh the open progress editor. */
+	profileInUseChanged() {
 		this._eff = null;
 		this.render();
 		this.opts.onChange();
@@ -288,143 +292,263 @@ export class HeroPanel {
 
 	/** The left-column block: which progress the map uses. */
 	renderStatus() {
-		const st = $('#profile-status');
+		const status = $('#profile-status');
 		const badge = $('#profile-badge');
 		// the solver panel follows the profile, the hero choice, "use my progress" and the progress edits
 		document.dispatchEvent(new CustomEvent('nkd-hero'));
-		const eff = this.effectiveProfile();
-		badge.textContent = eff.text;
-		badge.className = 'profile-badge' + (eff.basis === 'save' ? ' on' : eff.basis === 'custom' ? ' custom' : '');
-		const edits = eff.basis === 'custom' ? ` · ${eff.changes} change${eff.changes === 1 ? '' : 's'} in Your progress` : '';
-		if (!this.profile) {
-			st.textContent = eff.basis === 'custom'
-				? `A new game with your changes shapes the map${edits}.`
-				: 'Import your save, or set your progress, to see monsters and people as they are for you.';
-			$('#hero-open-btn').textContent = 'Import save';
-			return;
-		}
-		const e = this.profile.l[this.hero];
-		const lvl = e ? e.g : '?';
-		st.textContent = this.use
-			? `Your quests and bosses shape the map · hero ${this.hero + 1}, level ${lvl}${edits}`
-			: `Your save is loaded; maps use a new game${edits}.`;
-		$('#hero-open-btn').textContent = 'Your hero';
+		const mapProfile = this.effectiveProfile();
+		badge.textContent = mapProfile.text;
+		badge.className = 'profile-badge' + (mapProfile.basis === 'save' ? ' on' : mapProfile.basis === 'custom' ? ' custom' : '');
+		status.textContent = this.statusText(mapProfile);
+		$('#hero-open-btn').textContent = this.profile ? 'Your hero' : 'Import save';
 	}
 
+	/** @param {{ basis: string, changes: number }} mapProfile effectiveProfile() */
+	statusText(mapProfile) {
+		const custom = mapProfile.basis === 'custom';
+		const edits = custom ? ` · ${mapProfile.changes} change${mapProfile.changes === 1 ? '' : 's'} in Your progress` : '';
+		if (!this.profile) {
+			return custom
+				? `A new game with your changes shapes the map${edits}.`
+				: 'Import your save, or set your progress, to see monsters and people as they are for you.';
+		}
+		if (!this.use) return `Your save is loaded; maps use a new game${edits}.`;
+		const hero = this.profile.l[this.hero];
+		return `Your quests and bosses shape the map · hero ${this.hero + 1}, level ${hero ? hero.g : '?'}${edits}`;
+	}
+
+	/** The Your hero popup: the file error, and once a save is read, its heroes, the chosen hero's pack and progress. */
 	render() {
 		this.renderStatus();
+		this.renderPopupFrame();
 		const body = $('#hero-body');
-		const err = $('#hero-error');
-		err.textContent = this.error ? `Could not read that file: ${this.error}` : '';
-		err.style.display = this.error ? '' : 'none';
+		if (!this.profile || !this.mods) {
+			body.innerHTML = '';
+			body.style.display = 'none';
+			return;
+		}
+		body.style.display = '';
+		body.innerHTML = this.heroBodyHtml();
+		for (const row of body.querySelectorAll('.hero-row')) row.onclick = () => this.setHero(+row.dataset.i);
+		keepChosenHeroInView(body);
+		$('#hero-drop').classList.toggle('compact', true);
+	}
+
+	renderPopupFrame() {
+		const error = $('#hero-error');
+		error.textContent = this.error ? `Could not read that file: ${this.error}` : '';
+		error.style.display = this.error ? '' : 'none';
 		$('#hero-footer').style.display = this.profile ? '' : 'none';
 		$('#hero-use-box').classList.toggle('selected', this.use);
 		$('#hero-drop').classList.toggle('compact', false);
-		if (!this.profile || !this.mods) { body.innerHTML = ''; body.style.display = 'none'; return; }
-		body.style.display = '';
+	}
+
+	heroBodyHtml() {
 		const { entry } = this.mods;
-		const P = this.profile;
-		const N = this.names || {};
-		const base = (id) => (N.items && N.items[id]) || `item ${id}`;
-		// the game's display name (bj0 name builder): name [+ suffix h] [+ " Lv f"] [+ "+" when g]
-		const def = (id) => { const Z = this.mods.statics.vj0.Z1; return Z && Z.get ? Z.get(id) : null; };
-		const item = (id) => {
-			const b = def(id);
-			let s = base(id);
-			if (b && b.h) s += ` ${b.h}`;
-			if (b && b.f) s += ` Lv ${b.f}${b.g ? '+' : ''}`;
-			return s;
-		};
+		const profile = this.profile;
 		const type = this.opts.getType();
-		const sheet = entry.heroSheet(P, this.hero);
-		const pack = entry.entryPack(P, this.hero, { type });
-		const prog = entry.progressSummary(P);
-
-		// heroes
-		const heroes = P.l.map((h, i) => {
-			const sel = i === this.hero ? ' selected' : '';
-			const star = i === P.H0 ? '<span class="game-pick" title="Selected in the game">★</span>' : '';
-			const away = h.n > 0 ? '<span class="muted small">away</span> · ' : '';
-			return `<div class="row hero-row${sel}" data-i="${i}" title="Hero index ${i}"><span>${star}Hero ${i + 1}${h.p ? ` · ${esc(h.p)}` : ''}</span><span>${away}Lv ${h.g}</span></div>`;
-		}).join('');
-
-		// sheet
-		const stats = STAT_ROWS.map(([k, label]) => `<div class="stat"><span class="muted">${label}</span><b>${sheet[k]}</b></div>`).join('');
-		const skills = sheet.skills.map((l, i) => [l, i]).filter(([l]) => l > 0)
-			.map(([l, i]) => `<div class="row"><span>${esc((N.skills && N.skills[i]) || `Skill ${i}`)}</span><span>${l}</span></div>`).join('') || '<div class="muted">None yet.</div>';
-		// as the game names it: "Sword for a hero Lv 4+"; durability left / max; ★ = incrustation
-		const gear = sheet.gear.map((g, s) => {
-			if (!g) return `<div class="row"><span class="muted">${SLOTS[s]}</span><span>—</span></div>`;
-			const lvl = g.level ? ` <b>Lv ${g.level}${g.plus ? '+' : ''}</b>` : '';
-			const dur = g.durMax ? ` <span class="muted small" title="Durability">${g.dur} / ${g.durMax}</span>` : '';
-			const inc = g.enh ? ' <span title="Incrustation">★</span>' : '';
-			return `<div class="row"><span class="muted">${SLOTS[s]}</span><span>${esc(base(g.id))}${lvl}${inc}${dur}</span></div>`;
-		}).join('');
-		const pets = sheet.pets.length
-			? sheet.pets.map((u, i) => `<div class="row"><span>Companion ${i + 1}${i >= 3 ? ' <span class="muted">(not taken)</span>' : ''}</span><span>${u.foodLeft > 0 ? `${esc(item(u.food))} ×${u.foodLeft}` : '<span class="muted">no food</span>'}</span></div>`).join('')
-			: '<div class="muted">None.</div>';
-		const awayNote = sheet.away > 0 ? `<div class="note">Away when the save was made (about ${awayText(sheet.away)} left then).</div>` : '';
-
-		// pack
-		const packRows = pack.items.map(([id, n]) => `<div class="row" title="item ${id}"><span>${esc(item(id))}</span><span>×${n}</span></div>`).join('') || '<div class="muted">Nothing.</div>';
-		const fam = pack.pets.length
-			? pack.pets.map((p) => `<div class="row"><span>Familiar ${p.slot + 1} <span class="muted">(${esc(item(p.food))})</span></span><span>${p.charges} ${p.charges === 1 ? 'charge' : 'charges'}</span></div>`).join('')
-			: '<div class="muted">No companion with food.</div>';
-		const fee = pack.fee.length
-			? `<div class="mp-line"><span class="muted">Entry fee${pack.feePaid ? '' : ' (you are short)'}</span><span>${pack.fee.map(([id, n]) => `${esc(item(id))} ×${n}`).join(', ')}</span></div>`
-			: '';
-		const gates = pack.gates.filter((g) => g.gate !== 'away' && g.gate !== 'busy');
-		const gateNote = gates.length ? `<div class="note">${gates.map((g) => esc(g.text[0].toUpperCase() + g.text.slice(1))).join('. ')}.</div>` : '';
-
-		// progress
-		const quest = (id) => (N.quests && N.quests[id]) || `Quest ${id}`;
-		const active = prog.activeQuests.length ? prog.activeQuests.map((q) => `<div>${esc(quest(q))}</div>`).join('') : '<div class="muted">None.</div>';
-		const unlocked = prog.unlocked.map(typeLabel).join(' ');
-		const saved = this.info && this.info.savedAt ? new Date(this.info.savedAt * 1000) : null;
-
-		body.innerHTML = `
+		const sheet = entry.heroSheet(profile, this.hero);
+		const pack = entry.entryPack(profile, this.hero, { type });
+		const progress = entry.progressSummary(profile);
+		const names = new DisplayNames(this.names, this.mods.statics.vj0.Z1);
+		return `
 			<div class="hero-col">
 				<div class="content-header-2">Heroes</div>
-				<div class="info-box scroll-list hero-list">${heroes}</div>
+				<div class="info-box scroll-list hero-list">${heroListHtml(profile, this.hero)}</div>
 				<div class="muted small">★ selected in the game. Click to look at another hero.</div>
 			</div>
 			<div class="hero-col">
 				<div class="content-header-2">Hero ${this.hero + 1} · Lv ${sheet.lvl}</div>
-				${awayNote}
-				<div class="stat-grid">${stats}</div>
-				<div class="sub-head">Equipment</div><div class="info-box">${gear}</div>
-				<div class="sub-head">Companions</div><div class="info-box">${pets}</div>
-				<div class="sub-head">Skills</div><div class="info-box scroll-list skill-list">${skills}</div>
+				${awayNoteHtml(sheet)}
+				<div class="stat-grid">${statsHtml(sheet)}</div>
+				<div class="sub-head">Equipment</div><div class="info-box">${gearHtml(sheet, names)}</div>
+				<div class="sub-head">Companions</div><div class="info-box">${companionsHtml(sheet, names)}</div>
+				<div class="sub-head">Skills</div><div class="info-box scroll-list skill-list">${skillsHtml(sheet, names)}</div>
 			</div>
 			<div class="hero-col">
 				<div class="content-header-2">Pack for ${typeLabel(type)}</div>
 				<div class="mp-line"><span>Mental power taken in</span><b>${pack.mp} <span class="muted">of ${sheet.mp}</span></b></div>
-				<div class="muted small">From your stock of ${prog.mpStock}.</div>
-				${fee}${gateNote}
-				<div class="info-box scroll-list pack-list">${packRows}</div>
-				<div class="sub-head">Familiars</div><div class="info-box">${fam}</div>
+				<div class="muted small">From your stock of ${progress.mpStock}.</div>
+				${feeHtml(pack, names)}${gateNoteHtml(pack)}
+				<div class="info-box scroll-list pack-list">${packItemsHtml(pack, names)}</div>
+				<div class="sub-head">Familiars</div><div class="info-box">${familiarsHtml(pack, names)}</div>
 			</div>
 			<div class="hero-col">
 				<div class="content-header-2">Progress</div>
 				<div class="info-box">
-					<div class="row"><span>Dungeon bosses</span><span>${prog.classicBosses} / 15</span></div>
-					<div class="row"><span>Forest bosses</span><span>${prog.forestBosses} / 8</span></div>
-					<div class="row"><span>Cave bosses</span><span>${prog.caveBosses} / 3</span></div>
-					<div class="row"><span>Quests done</span><span>${prog.doneQuests}</span></div>
+					<div class="row"><span>Dungeon bosses</span><span>${progress.classicBosses} / 15</span></div>
+					<div class="row"><span>Forest bosses</span><span>${progress.forestBosses} / 8</span></div>
+					<div class="row"><span>Cave bosses</span><span>${progress.caveBosses} / 3</span></div>
+					<div class="row"><span>Quests done</span><span>${progress.doneQuests}</span></div>
 				</div>
-				<div class="sub-head">Active quests</div><div class="info-box">${active}</div>
-				<div class="sub-head">Dungeons you can enter</div><div class="info-box">${unlocked || '<span class="muted">None.</span>'}</div>
-				<div class="muted small">${saved ? `Saved ${saved.toLocaleString()}` : ''}${this.info && this.info.inDungeon ? ' · inside a dungeon' : ' · in town'}${this.info && this.info.file ? ` · ${esc(this.info.file)}` : ''}</div>
+				<div class="sub-head">Active quests</div><div class="info-box">${activeQuestsHtml(progress, names)}</div>
+				<div class="sub-head">Dungeons you can enter</div><div class="info-box">${unlockedHtml(progress)}</div>
+				<div class="muted small">${saveLineHtml(this.info)}</div>
 			</div>`;
-		for (const r of body.querySelectorAll('.hero-row')) r.onclick = () => this.setHero(+r.dataset.i);
-		// keep the chosen hero in view (the list scrolls by itself; scrollIntoView would also move the popup)
-		const list = body.querySelector('.hero-list');
-		const sel = body.querySelector('.hero-row.selected');
-		if (list && sel && (sel.offsetTop < list.scrollTop || sel.offsetTop + sel.offsetHeight > list.scrollTop + list.clientHeight)) {
-			list.scrollTop = Math.max(0, sel.offsetTop - list.clientHeight / 2);
-		}
-		$('#hero-drop').classList.toggle('compact', true);
 	}
+}
+
+/** Display names: data/names.json, and items as the game names them. */
+class DisplayNames {
+	/**
+	 * @param {object} names data/names.json ({ items, skills, quests }), or null
+	 * @param {Map} itemDefs the game's item definitions (vj0.Z1)
+	 */
+	constructor(names, itemDefs) {
+		this.names = names || {};
+		this.itemDefs = itemDefs;
+	}
+
+	item(id) {
+		return (this.names.items && this.names.items[id]) || `item ${id}`;
+	}
+
+	/** The game's display name (bj0 name builder): name [+ suffix h] [+ " Lv f"] [+ "+" when g]. */
+	fullItem(id) {
+		const def = this.itemDefs && this.itemDefs.get ? this.itemDefs.get(id) : null;
+		let name = this.item(id);
+		if (def && def.h) name += ` ${def.h}`;
+		if (def && def.f) name += ` Lv ${def.f}${def.g ? '+' : ''}`;
+		return name;
+	}
+
+	skill(index) {
+		return (this.names.skills && this.names.skills[index]) || `Skill ${index}`;
+	}
+
+	quest(id) {
+		return (this.names.quests && this.names.quests[id]) || `Quest ${id}`;
+	}
+}
+
+// ---- the Your hero popup's sections ----------------------------------------------------------
+
+function heroListHtml(profile, chosen) {
+	return profile.l.map((hero, i) => {
+		const selected = i === chosen ? ' selected' : '';
+		const star = i === profile.H0 ? '<span class="game-pick" title="Selected in the game">★</span>' : '';
+		const away = hero.n > 0 ? '<span class="muted small">away</span> · ' : '';
+		return `<div class="row hero-row${selected}" data-i="${i}" title="Hero index ${i}"><span>${star}Hero ${i + 1}${hero.p ? ` · ${esc(hero.p)}` : ''}</span><span>${away}Lv ${hero.g}</span></div>`;
+	}).join('');
+}
+
+function awayNoteHtml(sheet) {
+	return sheet.away > 0 ? `<div class="note">Away when the save was made (about ${awayText(sheet.away)} left then).</div>` : '';
+}
+
+function statsHtml(sheet) {
+	return STAT_ROWS.map(([key, label]) => `<div class="stat"><span class="muted">${label}</span><b>${sheet[key]}</b></div>`).join('');
+}
+
+// as the game names it: "Sword for a hero Lv 4+"; durability left / max; ★ = incrustation
+function gearHtml(sheet, names) {
+	return sheet.gear.map((g, slot) => {
+		if (!g) return `<div class="row"><span class="muted">${SLOTS[slot]}</span><span>—</span></div>`;
+		const lvl = g.level ? ` <b>Lv ${g.level}${g.plus ? '+' : ''}</b>` : '';
+		const dur = g.durMax ? ` <span class="muted small" title="Durability">${g.dur} / ${g.durMax}</span>` : '';
+		const inc = g.enh ? ' <span title="Incrustation">★</span>' : '';
+		return `<div class="row"><span class="muted">${SLOTS[slot]}</span><span>${esc(names.item(g.id))}${lvl}${inc}${dur}</span></div>`;
+	}).join('');
+}
+
+function companionsHtml(sheet, names) {
+	if (!sheet.pets.length) return '<div class="muted">None.</div>';
+	return sheet.pets.map((pet, i) => {
+		const notTaken = i >= 3 ? ' <span class="muted">(not taken)</span>' : '';
+		const food = pet.foodLeft > 0 ? `${esc(names.fullItem(pet.food))} ×${pet.foodLeft}` : '<span class="muted">no food</span>';
+		return `<div class="row"><span>Companion ${i + 1}${notTaken}</span><span>${food}</span></div>`;
+	}).join('');
+}
+
+function skillsHtml(sheet, names) {
+	const learned = sheet.skills.map((level, index) => [level, index]).filter(([level]) => level > 0);
+	return learned.map(([level, index]) => `<div class="row"><span>${esc(names.skill(index))}</span><span>${level}</span></div>`).join('') || '<div class="muted">None yet.</div>';
+}
+
+function feeHtml(pack, names) {
+	if (!pack.fee.length) return '';
+	return `<div class="mp-line"><span class="muted">Entry fee${pack.feePaid ? '' : ' (you are short)'}</span><span>${pack.fee.map(([id, n]) => `${esc(names.fullItem(id))} ×${n}`).join(', ')}</span></div>`;
+}
+
+/** Why the pack differs from the usual one (the hero being away or busy is shown elsewhere). */
+function gateNoteHtml(pack) {
+	const gates = pack.gates.filter((g) => g.gate !== 'away' && g.gate !== 'busy');
+	return gates.length ? `<div class="note">${gates.map((g) => esc(g.text[0].toUpperCase() + g.text.slice(1))).join('. ')}.</div>` : '';
+}
+
+function packItemsHtml(pack, names) {
+	return pack.items.map(([id, n]) => `<div class="row" title="item ${id}"><span>${esc(names.fullItem(id))}</span><span>×${n}</span></div>`).join('') || '<div class="muted">Nothing.</div>';
+}
+
+function familiarsHtml(pack, names) {
+	if (!pack.pets.length) return '<div class="muted">No companion with food.</div>';
+	return pack.pets.map((p) => `<div class="row"><span>Familiar ${p.slot + 1} <span class="muted">(${esc(names.fullItem(p.food))})</span></span><span>${p.charges} ${p.charges === 1 ? 'charge' : 'charges'}</span></div>`).join('');
+}
+
+function activeQuestsHtml(progress, names) {
+	if (!progress.activeQuests.length) return '<div class="muted">None.</div>';
+	return progress.activeQuests.map((id) => `<div>${esc(names.quest(id))}</div>`).join('');
+}
+
+function unlockedHtml(progress) {
+	return progress.unlocked.map(typeLabel).join(' ') || '<span class="muted">None.</span>';
+}
+
+/** When the save was made, where the hero was, and the file name. */
+function saveLineHtml(info) {
+	const saved = info && info.savedAt ? new Date(info.savedAt * 1000) : null;
+	return `${saved ? `Saved ${saved.toLocaleString()}` : ''}${info && info.inDungeon ? ' · inside a dungeon' : ' · in town'}${info && info.file ? ` · ${esc(info.file)}` : ''}`;
+}
+
+// keep the chosen hero in view (the list scrolls by itself; scrollIntoView would also move the popup)
+function keepChosenHeroInView(body) {
+	const list = body.querySelector('.hero-list');
+	const chosen = body.querySelector('.hero-row.selected');
+	if (!list || !chosen) return;
+	if (chosen.offsetTop < list.scrollTop || chosen.offsetTop + chosen.offsetHeight > list.scrollTop + list.clientHeight) {
+		list.scrollTop = Math.max(0, chosen.offsetTop - list.clientHeight / 2);
+	}
+}
+
+// ---- reading and keeping a save ------------------------------------------------------------
+
+/** The guild.dat in a file: the file itself, or the one in the game's export zip. */
+async function guildBytes(bytes, zip) {
+	if (!zip.isZip(bytes)) return bytes;
+	const exported = await zip.readExport(bytes);
+	if (!exported.guild) throw new Error('This zip has no guild.dat. Use the file from the game\'s Settings → Export.');
+	return exported.guild;
+}
+
+/** The hero to show: `pickedBefore` if the save has it, else the one selected in the game. */
+function heroToShow(profile, pickedBefore) {
+	const n = profile.l.length;
+	if (pickedBefore >= 0 && pickedBefore < n) return pickedBefore;
+	return profile.H0 >= 0 && profile.H0 < n ? profile.H0 : 0;
+}
+
+function carriesFiles(e) {
+	return e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+}
+
+function toB64(u8) {
+	let s = '';
+	for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+	return btoa(s);
+}
+
+function fromB64(b) {
+	const s = atob(b);
+	const u8 = new Uint8Array(s.length);
+	for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i);
+	return u8;
+}
+
+function awayText(ms) {
+	const m = Math.round(ms / 60000);
+	if (m < 60) return `${m} min`;
+	const h = Math.floor(m / 60);
+	return h < 48 ? `${h} h ${m % 60} min` : `${Math.round(h / 24)} days`;
 }
 
 /** short string hash (FNV-1a), for the progress key */
