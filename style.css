@@ -58,10 +58,10 @@ body {
 }
 
 #map-section {
-	flex: 1 1 auto;
-	/* at least 2/3 as wide as the map is tall (#map's height); on narrow windows the page scrolls sideways instead */
+	/* the space the other columns leave, but at least 2/3 as wide as the map is tall (#map's height); on narrow
+	   windows the page scrolls sideways instead */
+	flex: 1 1 0;
 	min-width: max(380px, calc((100vh - 100px) * 2 / 3));
-	width: calc(100vw - 1212px);
 	justify-content: flex-start;
 	row-gap: 6px;
 }
@@ -80,13 +80,21 @@ body {
 }
 
 #info-section {
-	width: 320px;
+	flex: 0 0 320px;
 	min-width: 0;   /* not max-content (lib/utils): the boxes wrap to the column instead of widening it */
+	box-sizing: border-box;
 }
 
 #info-section .info-box {
 	width: 100%;
 	box-sizing: border-box;
+}
+
+/* Objectives and Route share the height left under the rest of the column */
+#info-section .scroll-list {
+	flex: 1 1 0;
+	min-height: 4em;
+	max-height: none;
 }
 
 .info-box {
@@ -398,12 +406,12 @@ body {
 	font-size: 90%;
 }
 
-body.solver-hidden #map-section {
-	width: calc(100vw - 830px);
-}
-
 body.solver-hidden #solve-section {
 	display: none;
+}
+
+body.solver-hidden #info-section {
+	padding-bottom: 46px;   /* now the last column: clear of the fixed help / settings icons */
 }
 
 #solver-btn.off {
