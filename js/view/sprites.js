@@ -546,6 +546,31 @@ const PAINTERS = {
 		g.fillStyle = 'rgba(255,255,255,0.8)';
 		for (const [x, y] of [[-5, -9], [4, -10], [1, -7.5]]) { g.beginPath(); g.ellipse(x * u, y * u, 1.6 * u, 0.6 * u, 0, 0, Math.PI * 2); g.fill(); }
 	},
+	torchstatue(g, e) {
+		const { u, lw } = e;
+		shadow(g, e, 14, 7);
+		box(g, e, { ex: 0.22, ey: 0.22, height: 6, color: '#a89a7c' });
+		const stone = '#d8c39a';
+		// robed figure: a tapering gown, shoulders and head
+		path(g, [[-7 * u, -6 * u], [-4.5 * u, -26 * u], [4.5 * u, -26 * u], [7 * u, -6 * u]]);
+		g.fillStyle = hgrad(g, -7 * u, 7 * u, [[0, shade(stone, 0.15)], [0.45, stone], [1, shade(stone, -0.35)]]); g.fill();
+		g.strokeStyle = ink(stone); g.lineWidth = lw; g.stroke();
+		g.fillStyle = shade(stone, 0.05); g.beginPath(); g.arc(0, -30 * u, 4 * u, 0, Math.PI * 2); g.fill(); g.stroke();
+		// raised arm and torch
+		g.strokeStyle = shade(stone, -0.1); g.lineWidth = lw * 2.6;
+		g.beginPath(); g.moveTo(3.5 * u, -24 * u); g.lineTo(7 * u, -33 * u); g.stroke();
+		g.strokeStyle = '#6b4a2b'; g.lineWidth = lw * 1.8;
+		g.beginPath(); g.moveTo(7 * u, -30 * u); g.lineTo(8 * u, -39 * u); g.stroke();
+		const fx = 8 * u, fy = -42 * u;
+		glowDisc(g, { x: fx, y: fy, r: 14 * u, inner: 'rgba(255,190,80,0.6)', outer: 'rgba(255,140,40,0)' });
+		g.beginPath(); g.moveTo(fx, fy - 7 * u);
+		g.quadraticCurveTo(fx + 4 * u, fy - 1 * u, fx + 2.5 * u, fy + 2.5 * u);
+		g.quadraticCurveTo(fx, fy + 4 * u, fx - 2.5 * u, fy + 2.5 * u);
+		g.quadraticCurveTo(fx - 4 * u, fy - 1 * u, fx, fy - 7 * u);
+		g.fillStyle = hgrad(g, fx - 4 * u, fx + 4 * u, [[0, '#ffe9a0'], [0.5, '#ffb030'], [1, '#e0601a']]); g.fill();
+		g.fillStyle = 'rgba(255,250,220,0.9)'; g.beginPath(); g.ellipse(fx, fy + 0.5 * u, 1.2 * u, 2 * u, 0, 0, Math.PI * 2); g.fill();
+		gloss(g, -2.5 * u, -20 * u, 1 * u, 3.5 * u, 0.3);
+	},
 	special(g, e) {
 		const { u, lw } = e;
 		shadow(g, e, 14, 7);
