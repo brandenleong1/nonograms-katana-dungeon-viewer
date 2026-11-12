@@ -88,7 +88,7 @@ export class IsoView {
 	 */
 	setSolveOverlay(o) {
 		this.solve = { ...this.solve, ...o };
-		if ('actors' in o) this.solve.actAt = this.level && o.actors ? actorsByCell(o.actors, this.level.w) : new Map();
+		if ('actors' in o) this.solve.actAt = this.level && o.actors ? actorsByCell(o.actors, this.level.w) : null;
 		this.redraw();
 	}
 	clearSolveOverlay() { this.solve = emptySolve(); this.redraw(); }

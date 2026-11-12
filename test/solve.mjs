@@ -200,13 +200,18 @@ if (!quick) {
 	check('demoralize: saves potions against a high-defence group', m1 < m0, `items ${m1} with Demoralize vs ${m0}`);
 }
 
+// ---- labels: a tactic's own switches aren't part of its name ----
+check('labels: the spider tactic is "spider"', makePolicy('spider').label === 'spider' && makePolicy('spider', { demor: 2 }).label === 'spider(demor=2)', `${makePolicy('spider').label} / ${makePolicy('spider', { demor: 2 }).label}`);
+
 // ---- robust: whole dungeon, small N; plan schema ----
 let robustPlan = null;
+let robustKeys = [];
 {
 	resetStatics(tables);
 	const res = await solveRobust({ hero: { level: 21, gear: 4, kit2: true }, type: 15, seed: 1492658333 }, { pool: new InlinePool(1), N: quick ? 6 : 10, nMin: 8, n0: 6, scout: 4, cands: candidates('quick'), budgetMs: 120000 });
 	check('robust: solves', !res.error && res.decisions.length > 0, res.error || `${res.decisions.length} encounters`);
 	if (!res.error) {
+		robustKeys = res.decisions.map((d) => d.key);
 		robustPlan = buildPlan(res, { label: 'F1-1492658333' });
 		const errs = validatePlan(robustPlan);
 		check('robust: plan validates', errs.length === 0, errs.join('; '));
@@ -232,6 +237,8 @@ let robustPlan = null;
 		// never worse than the best single tactic (the incumbent is a candidate at every decision)
 		const worse = res.encounters.filter((e) => e.searched > 0 && e.tactics[0] && e.cost.items > e.tactics[0].items);
 		check('exact: search never worse on items than the best tactic', worse.length === 0, worse.map((e) => e.key).join(','));
+		// same dungeon and hero as the robust case: its first encounter has the same key there
+		check('exact: names encounters as robust mode does', !!res.encounters[0] && robustKeys.includes(res.encounters[0].key), `${res.encounters[0] && res.encounters[0].key} vs ${robustKeys.slice(0, 3).join(' ')}`);
 	}
 }
 

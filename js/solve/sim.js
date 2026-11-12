@@ -1510,10 +1510,10 @@ function sealAt(h, x, y) {
 }
 
 /**
- * Encounter key: the stop being walked to, plus the ordinal of the encounter on that leg (engaged: not part of the
- * key). Stable across RNG samples as long as the route is.
+ * Encounter key: the stop being walked to, plus the ordinal of the encounter on that leg. Stable across RNG samples as
+ * long as the route is; robust and exact mode both use it.
  */
-export function encounterKey(stop, ordinal, engaged) {
+export function encounterKey(stop, ordinal) {
 	return `${stopKey(stop)}#${ordinal}`;
 }
 
