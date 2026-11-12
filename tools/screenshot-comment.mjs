@@ -10,8 +10,10 @@
 //   node tools/screenshot-comment.mjs prune                                  delete the images of PRs closed 30+ days
 //   add --dry-run to print what it would do
 //
-// Images live at `auto/pr-<n>/<sha7>/` on the branch, which is one commit, rewritten each time (old images aren't
-// kept in history). Other paths there (e.g. pr-<n>/ images for PR descriptions) are left alone.
+// Images live at `auto/pr-<n>/<sha7>/` on the branch. Other paths there (e.g. pr-<n>/ images for PR descriptions)
+// are left alone. Several runs can post at once (one per PR), so each adds a commit on top of the branch and moves it
+// only if nobody else moved it meanwhile, retrying otherwise. The daily prune squashes the branch back to one commit,
+// so deleted images don't stay in its history.
 //
 // Needs GITHUB_TOKEN (contents: write, pull-requests: write) and GITHUB_REPOSITORY.
 import fs from 'node:fs';
@@ -57,8 +59,9 @@ async function post(dir, headSha, conclusion, runUrl) {
 
 /** Delete auto/pr-<n>/ for PRs closed PRUNE_DAYS ago or more. */
 async function prune() {
-	const tree = await branchTree();
-	if (!tree) return;
+	const head = await branchHead();
+	if (!head) return;
+	const tree = head.files;
 	const numbers = [...new Set(tree.filter((e) => /^auto\/pr-\d+\//.test(e.path)).map((e) => +e.path.split('/')[1].slice(3)))];
 	const old = [];
 	for (const n of numbers) {
@@ -71,6 +74,7 @@ async function prune() {
 		return;
 	}
 	for (const n of old) await storeImages({ replace: `auto/pr-${n}/`, files: [], message: `Prune screenshots of #${n}` });
+	await squashBranch();
 }
 
 // ---- reading the run's images (untrusted) -------------------------------------------------------------------------
@@ -143,14 +147,12 @@ async function upsertComment(number, body) {
 // ---- the branch ----------------------------------------------------------------------------------------------------
 
 /**
- * Rewrite the branch as one commit: its current files, minus everything under `replace`, plus `files`
- * ([{ path, file }]).
+ * Commit to the branch: its current files, minus everything under `replace`, plus `files` ([{ path, file }]). The
+ * branch only moves if it is still where this run read it; if another run moved it first, start again from there.
  */
 async function storeImages({ replace, files, message }) {
-	const current = (await branchTree()) || [];
-	const kept = current.filter((e) => e.type === 'blob' && !e.path.startsWith(replace)).map((e) => ({ path: e.path, mode: e.mode, type: 'blob', sha: e.sha }));
 	if (DRY_RUN) {
-		console.log(`(dry run) ${BRANCH}: keep ${kept.length} files, drop ${current.length - kept.length}, add ${files.map((f) => f.path).join(', ') || 'nothing'}`);
+		console.log(`(dry run) ${BRANCH}: drop ${replace}, add ${files.map((f) => f.path).join(', ') || 'nothing'}`);
 		return;
 	}
 	const added = [];
@@ -158,22 +160,49 @@ async function storeImages({ replace, files, message }) {
 		const blob = await github(`/repos/${REPO}/git/blobs`, 'POST', { content: fs.readFileSync(f.file).toString('base64'), encoding: 'base64' });
 		added.push({ path: f.path, mode: '100644', type: 'blob', sha: blob.sha });
 	}
-	const tree = await github(`/repos/${REPO}/git/trees`, 'POST', { tree: [...kept, ...added] });
-	const commit = await github(`/repos/${REPO}/git/commits`, 'POST', { message, tree: tree.sha, parents: [] });
-	const exists = await github(`/repos/${REPO}/git/ref/heads/${BRANCH}`, 'GET', null, [404]);
-	if (exists) await github(`/repos/${REPO}/git/refs/heads/${BRANCH}`, 'PATCH', { sha: commit.sha, force: true });
-	else await github(`/repos/${REPO}/git/refs`, 'POST', { ref: `refs/heads/${BRANCH}`, sha: commit.sha });
-	console.log(`${BRANCH}: ${message} (${added.length} images)`);
+	for (let attempt = 1; attempt <= 6; attempt++) {
+		const head = await branchHead();
+		const kept = (head ? head.files : []).filter((e) => e.type === 'blob' && !e.path.startsWith(replace)).map(treeEntry);
+		const tree = await github(`/repos/${REPO}/git/trees`, 'POST', { tree: [...kept, ...added] });
+		const commit = await github(`/repos/${REPO}/git/commits`, 'POST', { message, tree: tree.sha, parents: head ? [head.sha] : [] });
+		if (await moveBranch({ from: head?.sha, to: commit.sha })) {
+			console.log(`${BRANCH}: ${message} (${added.length} images)`);
+			return;
+		}
+		console.log(`${BRANCH} moved meanwhile; trying again (${attempt})`);
+		await new Promise((done) => setTimeout(done, 1000 * attempt));
+	}
+	fail(`${BRANCH}: kept moving; gave up`);
 }
 
-/** The branch's files ([{ path, mode, type, sha }]), or null if it doesn't exist yet. */
-async function branchTree() {
+/** Replace the branch's history with one commit of its current files (daily, from prune). */
+async function squashBranch() {
+	const head = await branchHead();
+	if (!head || DRY_RUN) return;
+	const commit = await github(`/repos/${REPO}/git/commits`, 'POST', { message: 'Screenshots for pull requests', tree: head.tree, parents: [] });
+	await github(`/repos/${REPO}/git/refs/heads/${BRANCH}`, 'PATCH', { sha: commit.sha, force: true });
+	console.log(`${BRANCH}: squashed to one commit`);
+}
+
+/** Point the branch at `to` if it is still at `from` (no branch yet when from is undefined). False if it moved. */
+async function moveBranch({ from, to }) {
+	if (!from) return (await github(`/repos/${REPO}/git/refs`, 'POST', { ref: `refs/heads/${BRANCH}`, sha: to }, [422])) !== null;
+	// a fast-forward only: it fails (422) if the branch is no longer at `from`
+	return (await github(`/repos/${REPO}/git/refs/heads/${BRANCH}`, 'PATCH', { sha: to, force: false }, [422])) !== null;
+}
+
+function treeEntry(e) {
+	return { path: e.path, mode: e.mode, type: 'blob', sha: e.sha };
+}
+
+/** The branch's head: { sha, tree, files: [{ path, mode, type, sha }] }, or null if it doesn't exist yet. */
+async function branchHead() {
 	const ref = await github(`/repos/${REPO}/git/ref/heads/${BRANCH}`, 'GET', null, [404]);
 	if (!ref) return null;
 	const commit = await github(`/repos/${REPO}/git/commits/${ref.object.sha}`);
 	const tree = await github(`/repos/${REPO}/git/trees/${commit.tree.sha}?recursive=1`);
 	if (tree.truncated) fail(`${BRANCH}: too many files to list; prune it`);
-	return tree.tree;
+	return { sha: ref.object.sha, tree: commit.tree.sha, files: tree.tree };
 }
 
 // ---- GitHub ----------------------------------------------------------------------------------------------------------

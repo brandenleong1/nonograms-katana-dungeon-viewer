@@ -1,5 +1,6 @@
 // The game version is written in two places: data/game-version.json (what the site shows) and the README's
 // "Game version" table (what people read). A [Game] Sync PR updates both; this fails if they disagree.
+// Standalone suite: `npm test` and CI run it (tools/run-tests.mjs).
 //
 //   node test/version.mjs
 import fs from 'node:fs';

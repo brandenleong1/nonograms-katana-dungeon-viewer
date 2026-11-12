@@ -17,8 +17,8 @@ jobs:
     if: github.event_name != 'schedule'   # push (an admin's manual merge) or dispatch (the PR bot, after its merge)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: The merged commit follows docs/pr_guidelines.md (title, blank line, PR URL)
@@ -28,20 +28,20 @@ jobs:
     name: Unit tests (Node 22)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - run: npm test
+      - run: node tools/run-tests.mjs
 
   smoke:
     name: Integration (browser smoke test)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Install Playwright (CI only; not a site dependency)

@@ -1010,33 +1010,170 @@ table.cmp tr.muted td {
 	white-space: normal;
 }
 
-.pg-row {
+.pg-col-wide {
+	flex-grow: 2;
+}
+
+/* questline cards: name, where it changes dungeons, the part slider, and what each part does */
+.pg-lines {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+	gap: 10px;
+	align-items: start;
+}
+
+.pg-line {
+	display: flex;
+	flex-direction: column;
+	row-gap: 6px;
+	padding: 8px 10px 9px 10px;
+	border-radius: 6px;
+	background-color: var(--color_bg2);
+	white-space: normal;
+}
+
+.pg-line-head {
+	display: flex;
+	align-items: baseline;
+	column-gap: 8px;
+}
+
+.pg-line-name {
+	flex: 1 1 auto;
+	font-size: 110%;
+	line-height: 1.25em;
+}
+
+.pg-line-count,
+.pg-line-where {
+	font-size: 85%;
+	color: var(--color_txt2);
+}
+
+.pg-line-count {
+	flex: 0 0 auto;
+}
+
+.pg-bar {
+	display: flex;
+	column-gap: 3px;
+	border-radius: 4px;
+}
+
+.pg-bar:focus-visible {
+	outline: 2px solid var(--color_link);
+	outline-offset: 3px;
+}
+
+.pg-bar-seg {
+	flex: 1 1 0;
+	min-width: 0;
+	height: 26px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	border: 1px solid var(--color_txt2);
+	border-radius: 3px;
+	font-size: 75%;
+	color: var(--color_txt2);
+	background-color: var(--color_bg);
+	cursor: pointer;
+	user-select: none;
+}
+
+.pg-bar-seg:hover {
+	border-color: var(--color_btn);
+	color: var(--color_btn);
+}
+
+.pg-bar-seg.done {
+	border-color: var(--color_btn);
+	background-color: var(--color_btn);
+	color: var(--color_bg);
+}
+
+.pg-bar-seg.active {
+	border: 2px solid var(--color_link);
+	color: var(--color_link);
+	font-weight: bold;
+}
+
+.pg-line-sum {
+	font-size: 88%;
+	line-height: 1.3em;
+}
+
+.pg-where {
+	display: flex;
+	align-items: center;
+	column-gap: 8px;
+	font-size: 88%;
+}
+
+.pg-where select {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 3px 5px;
+	font: inherit;
+	border: none;
+	border-radius: 4px;
+	outline: 2px solid var(--color_btn);
+	background-color: var(--color_input);
+	color: var(--color_input_txt);
+}
+
+.pg-parts > summary {
+	cursor: pointer;
+	font-size: 88%;
+	color: var(--color_btn);
+}
+
+.pg-parts ol {
+	list-style: none;
+	margin: 6px 0 0 0;
+	padding: 0;
+}
+
+.pg-part {
 	display: flex;
 	flex-direction: column;
 	row-gap: 3px;
-	padding: 4px 6px;
-	border-radius: 5px;
-	background-color: var(--color_bg2);
+	padding: 6px 0;
+	border-top: 1px solid var(--color_txt2);
 }
 
-.pg-head {
+.pg-part-head {
 	display: flex;
-	flex-wrap: wrap;   /* on narrow screens the state buttons go under the quest name */
+	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
 	column-gap: 8px;
 	row-gap: 4px;
 }
 
-.pg-name {
-	flex: 1 1 9em;
-	white-space: normal;
-	line-height: 1.25em;
+.pg-part.done .pg-part-name {
+	color: var(--color_btn);
+}
+
+.pg-part.active .pg-part-name {
+	color: var(--color_link);
+	font-weight: bold;
+}
+
+.pg-effects {
+	margin: 0;
+	padding-left: 16px;
+	font-size: 85%;
+	line-height: 1.35em;
+}
+
+.pg-when {
+	color: var(--color_txt2);
 }
 
 .pg-seg {
 	flex: 0 0 auto;
-	margin-left: auto;
 	flex-wrap: nowrap;
 	column-gap: 6px;
 }
