@@ -13,6 +13,7 @@
 //   node tools/pr-bot.mjs after-merge SHA     main moved to SHA (an admin merged by hand): delete the merged PR's branch,
 //                                             then review again (the other PRs are now behind main)
 //   node tools/pr-bot.mjs prune-branches      delete branches without an open PR that are merged or 30+ days old
+//                                             (not bot/screenshots, the screenshot bot's image store)
 //   node tools/pr-bot.mjs branches            report every branch: age, PR, ahead/behind main, what prune would do
 //   add --dry-run to print what it would do
 //
@@ -29,10 +30,11 @@ const HOLD_LABEL = 'hold';
 const POSTCOMMIT = 'postcommit.yml';
 const DEPENDS_ON = ['precommit', 'pr-policy'];
 const STALE_DAYS = 30;
+const KEEP_BRANCHES = new Set(['bot/screenshots']);   // not a PR branch: the screenshot bot's image store
 const BOT = 'github-actions[bot]';
 const CAN_APPROVE = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);   // review author_association with write access
 // PRs touching these need two approvals: a PR's own workflows run from its files, so it could weaken what checks it
-const CI_PATHS = [/^\.github\//, /^tools\/(pr-bot|check-pr)\.mjs$/, /^tools\/(github-setup|merge-pr)\.sh$/, /^package\.json$/];
+const CI_PATHS = [/^\.github\//, /^tools\/(pr-bot|check-pr|screenshot-comment)\.mjs$/, /^tools\/(github-setup|merge-pr)\.sh$/, /^package\.json$/];
 const API = 'https://api.github.com';
 const REPO = process.env.GITHUB_REPOSITORY;
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -224,10 +226,11 @@ async function branchReport() {
 	const prByBranch = new Map((await openPulls()).filter((p) => p.head.repo?.full_name === REPO).map((p) => [p.head.ref, p.number]));
 	const rows = [];
 	for (const branch of await github(`/repos/${REPO}/branches?per_page=100`)) {
-		if (branch.name === 'main') continue;
+		if (branch.name === 'main' || KEEP_BRANCHES.has(branch.name)) continue;
 		const commit = await github(`/repos/${REPO}/commits/${branch.commit.sha}`);
 		const ageDays = Math.floor((Date.now() - Date.parse(commit.commit.committer.date)) / 86400000);
-		const compare = await github(`/repos/${REPO}/compare/main...${branch.commit.sha}`);
+		// 404: no history in common with main (a hand-made orphan branch); judged by age alone
+		const compare = (await github(`/repos/${REPO}/compare/main...${branch.commit.sha}`, 'GET', null, [404])) || { ahead_by: -1, behind_by: -1 };
 		const pr = prByBranch.get(branch.name) || null;
 		const action = pr ? 'keep' : compare.ahead_by === 0 ? 'merged' : ageDays >= STALE_DAYS ? 'stale' : 'keep';
 		rows.push({ name: branch.name, ageDays, pr, ahead: compare.ahead_by, behind: compare.behind_by, action });

@@ -1,0 +1,49 @@
+# Screenshots of the site's main views on main and on the pull request (tools/screenshots.mjs), for reviewing layout
+# changes from the PR page. Runs on every push to the PR, so new code always gets new pictures. This run uses the PR's
+# code with a read-only token and only uploads image files; screenshot-comment.yml (from main) checks them and posts
+# the views that look different on the PR.
+name: Screenshots
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: screenshots-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    name: Screenshots
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the PR
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          path: after
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          submodules: recursive
+          path: before
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        working-directory: after
+        run: |
+          npm install --no-save playwright@1.49.1
+          npx playwright install --with-deps chromium
+      - name: Take the screenshots
+        working-directory: after
+        run: node tools/screenshots.mjs --before ../before --out ../shots
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots/
+          retention-days: 7
+          if-no-files-found: error

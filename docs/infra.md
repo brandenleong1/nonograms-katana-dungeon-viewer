@@ -51,6 +51,8 @@ Everything stays in the browser. Nothing is sent anywhere.
 | `pr-reviewed.yml` | a review is submitted, edited or dismissed | nothing itself; it wakes the PR bot, which has the write token review events from forks lack |
 | `postcommit.yml` | push to `main`; weekly; on demand | `commit-format` (the squash commit is title, blank line, PR URL), then `test` and `smoke` on the merged commit. The weekly run catches drift in browsers, runners and `lib/utils`. |
 | `stale.yml` | daily | closes PRs with no activity for 30 days, and deletes their branches. |
+| `screenshots.yml` | PR opened or pushed | screenshots of the main views on `main` and on the PR (`tools/screenshots.mjs`), uploaded as files. |
+| `screenshot-comment.yml` | after Screenshots; daily | posts the views that look different on the PR (`tools/screenshot-comment.mjs`); daily, deletes old images. See [Screenshots](#screenshots). |
 | `update-submodules.yml` | daily; on demand | if `brandenleong1/utils` moved, pushes the bump to `bot/bump-utils` and puts an "Open the pull request" link in the run summary; someone with write access opens it. |
 
 Notes:
@@ -61,6 +63,29 @@ Notes:
   PR from the link, and it goes through the usual checks and review. `bot/bump-utils` is the one branch name
   `pr-policy` accepts without a username.
 - The PR bot runs `tools/pr-bot.mjs` from `main` and never checks out PR code, so a PR can't change what it does.
+
+## Screenshots
+
+Every PR gets a **Screenshots** comment, so layout changes can be reviewed from the PR page. On each push,
+`screenshots.yml` takes the same views of `main` and of the PR. That's the map in every theme and dungeon family, Help,
+Your hero, Your progress, and a 640 px window, all with a new game and fixed labels, so no save data is ever in them.
+It keeps the views that look different, compared pixel by pixel. Then `screenshot-comment.yml` posts them in a
+before/after table and edits the same comment on later pushes. If nothing looks different, the comment says so. If
+the run failed, the comment links to it.
+
+- **Where the images live:** the `bot/screenshots` branch, under `auto/pr-<n>/<commit>/`. It isn't part of the site.
+  The bot rewrites the branch as a single commit each time, so old images don't pile up in its history. Images of
+  PRs closed 30+ days ago are deleted daily, so old PR pages show broken images by then. The PR bot never prunes this
+  branch.
+- **Safety:** the Screenshots run uses the PR's own code (it may be a fork), with a read-only token, and only uploads
+  files. The comment workflow runs `tools/screenshot-comment.mjs` from `main` and treats those files as untrusted
+  data. It parses and checks the manifest, accepts only regular PNG files of bounded size under strict names, and
+  puts nothing from them into the comment but those names.
+- **More images:** the comment covers fixed views. For anything else (a hover state, a solve), add images to the PR
+  description: drag them into the editor on github.com, or push them to `bot/screenshots` under `pr-<n>/` and link
+  `https://raw.githubusercontent.com/<repo>/bot/screenshots/pr-<n>/<file>.png`. The bot leaves `pr-<n>/` alone.
+- **Locally:** `node tools/screenshots.mjs --out /tmp/shots` shoots this checkout. Add `--before <main worktree>` to
+  keep only what changed.
 
 ## The PR bot
 
@@ -172,6 +197,8 @@ or the admin's bypass. Some other parts depend on contributors acting in good fa
   `precommit.yml` and pass. This is why CI changes need two approvals, and why reviewers should read workflow diffs.
   Workflows on a first-time contributor's fork PR wait for a maintainer to approve them before they run.
 - **Admin bypass** skips everything, deliberately.
+- **`bot/screenshots` isn't protected.** Anyone with write access could replace an image there, so treat the
+  screenshot comment as a review aid and check the actual change too.
 - **A hand-merge with a bad message** (via the first point, or the bypass) is caught after the fact by the postcommit
   `commit-format` check.
 
