@@ -7,6 +7,8 @@
 // Units: u = half tile width / 32 (device px). Tile coords project as  sx = (X + Y)·32u,  sy = (Y − X)·16u.
 // Sprites are rendered once per (kind, variant, size bucket, theme) at device-pixel resolution and blitted.
 
+import { RANK_COLORS } from './catalog.js';
+
 const cache = new Map();
 const CACHE_MAX = 600;
 
@@ -639,6 +641,7 @@ const PAINTERS = {
 		gloss(g, 8.4 * u, -31.6 * u, 0.6 * u, 0.6 * u, 0.9);
 	},
 	monster(g, e) { creature(g, e, { color: speciesColor(e.variant), r: 10 }); },
+	familiar(g, e) { creature(g, e, familiarLook(e.variant)); },
 	goldmonster(g, e) { creature(g, e, { color: '#e6b422', r: 10.5, key: true, aura: 'rgba(255,215,90,0.28)' }); },
 	miniboss(g, e) { creature(g, e, { color: '#e07a2c', r: 12.5, horns: true, teeth: true }); },
 	boss(g, e) { creature(g, e, { color: '#9e2430', r: 15, horns: true, teeth: true, aura: 'rgba(255,60,40,0.35)', eyes: '#ffd23f' }); },
@@ -675,6 +678,13 @@ function glowDisc(g, { x, y, r, inner, outer }) {
 	gr.addColorStop(0, inner); gr.addColorStop(1, outer);
 	g.globalCompositeOperation = 'lighter'; g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
 	g.globalCompositeOperation = 'source-over';
+}
+
+/** a wild familiar in its rank's colour (white, blue, yellow, purple) with a soft glow; grey when the rank is unknown */
+function familiarLook(variant) {
+	const color = RANK_COLORS[variant] || '#cfd8e3';
+	const [r, g, b] = hex2rgb(color);
+	return { color, r: 10, aura: `rgba(${r},${g},${b},0.4)` };
 }
 
 function speciesColor(variant) {

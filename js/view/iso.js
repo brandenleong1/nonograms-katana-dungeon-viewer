@@ -1,6 +1,6 @@
 // Isometric dungeon renderer (canvas 2D), using the game's projection (c30.C0):
 //   screen x = (x + y) * HW,  screen y = (y - x) * HH   — +x goes up-right, +y goes down-right.
-import { KINDS, TILE, objectKind, critterKind, isHiddenTrap, isPressurePlate } from './catalog.js';
+import { KINDS, TILE, objectKind, critterKind, critterVariant, critterColor, isHiddenTrap, isPressurePlate } from './catalog.js';
 import { drawSprite } from './sprites.js';
 
 const HW = 32;   // half tile width at scale 1
@@ -323,7 +323,7 @@ export class IsoView {
 	/** a sprite standing on the tile centred at (cx, cy), or a plain dot when zoomed out too far to read one */
 	_badge(ctx, kind, { cx, cy, hw, selected = false, variant = '' }) {
 		if (hw < 7) {
-			ctx.fillStyle = selected ? (this.theme === 'light' ? '#111' : '#fff') : KINDS[kind].color;
+			ctx.fillStyle = selected ? (this.theme === 'light' ? '#111' : '#fff') : critterColor(kind, variant);
 			fillCircle(ctx, cx, cy, Math.max(1.6, hw * 0.55));
 			return;
 		}
@@ -370,12 +370,12 @@ export class IsoView {
 	_critter(ctx, c, cell, frame) {
 		const kind = critterKind(c, this.info.bw(c.id));
 		if (!this.layers.has(KINDS[kind].layer)) return;
-		this._badge(ctx, kind, { cx: cell.cx, cy: cell.cy, hw: frame.hw, selected: this.selected === c, variant: kind === 'monster' ? String(c.id) : '' });
+		this._badge(ctx, kind, { cx: cell.cx, cy: cell.cy, hw: frame.hw, selected: this.selected === c, variant: critterVariant(kind, c, this.level) });
 	}
 
 	_actor(ctx, actor, { cx, cy }, hw) {
 		if (hw < 7) {
-			ctx.fillStyle = actor.hero ? '#4f9ef8' : (KINDS[actor.kind] || KINDS.monster).color;
+			ctx.fillStyle = actor.hero ? '#4f9ef8' : KINDS[actor.kind] ? critterColor(actor.kind, actor.variant) : KINDS.monster.color;
 			fillCircle(ctx, cx, cy, Math.max(2, hw * 0.6));
 			return;
 		}
