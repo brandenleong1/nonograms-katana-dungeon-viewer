@@ -29,7 +29,7 @@ const EFFECTS = {
 	27: [{ when: 'In progress', text: 'a mini-boss guards 2C until you beat it', types: [5], kind: 'map' }],
 	30: [{ when: 'In progress', text: 'mini-bosses guard 3C, 4C and 5C, each once the one before it is beaten', types: [8, 11, 14], kind: 'map' }],
 	36: [{ when: 'Done', text: 'some drops in F3, 6C and 6D change', types: [17, 21, 22], kind: 'loot' }],
-	41: [{ when: 'Done', text: 'one {item:115} no longer counts: with none (and 20 F4 dungeons cleared) a special person is likelier in F3 and F4', types: [17, 18], kind: 'map' }],
+	41: [{ when: 'Done', text: 'one {item:115} no longer counts: with none (and 20 F4 dungeons cleared) a special NPC is likelier in F3 and F4', types: [17, 18], kind: 'map' }],
 	45: [{ when: 'In progress', text: 'one forest merchant is a different person', types: [17, 18, 20], kind: 'map' }],
 	46: [
 		{ when: 'Started', text: 'more finds in F2, F3 and F4', types: [16, 17, 18], kind: 'map' },
@@ -173,9 +173,9 @@ function unlocksByQuest({ v, people }) {
 function partEffects(id, { v, names, people, unlocks, titles }) {
 	const effects = [];
 	const person = people.get(id);
-	if (person && person.offered >= 0) effects.push({ when: 'Not started', text: `its person offers it in ${typeLabel(person.offered)}, once it can start`, types: [person.offered], kind: 'map' });
+	if (person && person.offered >= 0) effects.push({ when: 'Not started', text: `its NPC offers it in ${typeLabel(person.offered)}, once it can start`, types: [person.offered], kind: 'map' });
 	const at = person ? activeTypes(v.Y0_(id)) : [];
-	if (at.length) effects.push({ when: 'In progress', text: `its person is in ${describeTypes(at)}${at.length > 1 ? ' (one at a time)' : ''}`, types: at, kind: 'map' });
+	if (at.length) effects.push({ when: 'In progress', text: `its NPC is in ${describeTypes(at)}${at.length > 1 ? ' (one at a time)' : ''}`, types: at, kind: 'map' });
 	// the next parts of the same questline starting is what the slider's order already says
 	const otherLines = (unlocks.get(id) || []).filter((u) => lineName(titles.get(u.quest)) !== lineName(titles.get(id)));
 	for (const u of otherLines) {
