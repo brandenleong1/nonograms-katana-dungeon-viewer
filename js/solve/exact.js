@@ -16,10 +16,10 @@
 //
 // Workers (pool.js) each hold the same trajectory (re-setup from the problem + the committed inputs, synced) and play
 // out (input, policy) jobs from it.
-import { Run, Walker, trimTopUps, mpOk, heroSpecOut, heroOf, isFoe, critterInfo, foesOf, packHas, canSkill, free, SKILL, SPIDER, DIR4, bestItem, makeFight, structuredCloneLite, manh, cheb } from './sim.js';
+import { Run, Walker, trimTopUps, mpOk, heroSpecOut, heroOf, isFoe, critterInfo, foesOf, packHas, canSkill, free, SKILL, SPIDER, DIR4, bestItem, makeFight, structuredCloneLite, manh, cheb, encounterKey } from './sim.js';
 import { makePolicy, labelOf, candidates as defaultCandidates, availOf, usable, BASELINE } from './policies.js';
 import { pricesFor, scoreOutcome, compareExact, dist } from './cost.js';
-import { outcomeOf, entryOut, mpPlanOf, runOptsFor, stopIndexOf, routeLegs, stopOut, stopCountKey, countVisit, realNeedOf, mpItemsOf, setRestNeed } from './robust.js';
+import { outcomeOf, entryOut, mpPlanOf, runOptsFor, stopIndexOf, routeLegs, stopOut, countVisit, realNeedOf, mpItemsOf, setRestNeed } from './robust.js';
 import { newFight } from '../combat/driver.js';
 
 /**
@@ -290,7 +290,7 @@ export async function solveExact(problem, opts = {}) {
 		const ev = run.toEncounter();
 		if (ev.ev !== 'combat') break;
 		await search.workers.sync(run, { walker: true });
-		const key = `${stopCountKey(ev.stop)}#${countVisit(stopCount, ev.stop)}`;
+		const key = encounterKey(ev.stop, countVisit(stopCount, ev.stop));
 		const enc = await solveEncounter(search, { e, key, stop: ev.stop });
 		encounters.push(enc);
 		if (opts.onProgress) opts.onProgress({ phase: 'encounter', k: encounters.length, key: enc.key, tactic: enc.tactic.label, searched: enc.searched, ms: now() - t0 });
