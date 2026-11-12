@@ -45,64 +45,20 @@ export function describeTactic(t) {
 const r2 = (x) => (x == null || !Number.isFinite(x) ? x : Math.round(x * 100) / 100);
 const distOut = (d) => (d ? { mean: r2(d.mean), p50: d.p50, p95: d.p95, max: d.max } : null);
 
-/** index of the route leg a stop record belongs to */
-function legIndex(route, stop) {
-	if (!stop || !route) return null;
-	const i = route.findIndex((L) => L.kind === stop.kind && ((!L.rec && !stop.rec) || (L.rec && stop.rec && L.rec.id === stop.rec.id && L.rec.x === stop.rec.x && L.rec.y === stop.rec.y)));
-	return i >= 0 ? i : null;
-}
-
 /**
  * buildPlan(result, { label, names: { id: name } (data/names.json items), heroSpec }) -> plan (plain JSON).
  */
 export function buildPlan(res, opts = {}) {
 	if (res.error) return { schema: SCHEMA, error: res.error };
-	const names = opts.names || {};
-	const nameOf = (id) => names[id] || names[String(id)] || null;
+	const robust = res.mode === 'robust';
 	const route = res.route || [];
-	const stops = route.map((L, i) => ({ i, kind: L.kind, label: L.label, target: L.rec ? { ...L.rec } : null, at: L.at, steps: L.steps, doing: (L.doing || []).map((d) => ({ text: d.text, at: d.at, ep: d.ep, mp: d.mp })), encounters: [] }));
-	const encounters = [];
-	if (res.mode === 'robust') {
-		res.decisions.forEach((d, i) => {
-			const si = legIndex(route, d.stop);
-			if (si != null) stops[si].encounters.push(i);
-			const st = d.stats || {};
-			encounters.push({
-				i, key: d.key, stop: si, where: d.hero ? { x: d.hero.x, y: d.hero.y } : null,
-				hero: d.hero ? { hp: d.hero.hp, hpM: d.hero.hpM, ep: d.hero.ep, mp: d.hero.mp, ap: d.hero.ap } : null,
-				enemies: (d.enemies || []).map(enemyOut), enemySets: d.enemySets,
-				tactic: { name: d.tactic.name, params: d.tactic.params, label: d.tactic.label, description: describeTactic(d.tactic) },
-				expected: { pDeath: r2(st.pDeath), items: r2(st.items), mp: r2(st.mp), score: st.score ? st.score.map(r2) : null, hpLost: st.dist ? r2(st.dist.hpLost.mean) : null, p95: st.dist ? { items: st.dist.items.p95, mp: st.dist.mp.p95, hpLost: st.dist.hpLost.p95 } : null },
-				samples: d.samples, evaluations: d.evals, need: d.need, quick: !!d.quick,
-				mpBefore: d.mpBefore ? { mean: r2(d.mpBefore.mean), p05: d.mpBefore.p05, min: d.mpBefore.min } : null,
-				escalated: !!d.escalated, lookahead: d.lookahead ? { risk: r2(d.lookahead.risk), look: d.lookahead.look, n: d.lookahead.n, switched: d.lookahead.switched, candidates: d.lookahead.candidates.map((c) => ({ label: c.label, n: c.n, pDeath: r2(c.pDeath), items: r2(c.items), mp: r2(c.mp) })) } : null,
-				candidates: (d.candidates || []).map((c) => ({ label: c.label, n: c.n ?? 0, pDeath: r2(c.pDeath), items: r2(c.items), mp: r2(c.mp), score: c.score ? c.score.map(r2) : null, pruned: !!c.pruned, same: c.same })),
-			});
-		});
-	} else {
-		res.encounters.forEach((e, i) => {
-			const si = legIndex(route, e.stop);
-			if (si != null) stops[si].encounters.push(i);
-			encounters.push({
-				i, key: e.key, stop: si, where: e.hero ? { x: e.hero.x, y: e.hero.y } : null,
-				hero: e.hero ? { hp: e.hero.hp, hpM: e.hero.hpM, ep: e.hero.ep, mp: e.hero.mp, ap: e.hero.ap } : null,
-				enemies: (e.enemies || []).map(enemyOut),
-				tactic: { name: e.tactic.name, params: e.tactic.params, label: e.tactic.label, description: describeTactic(e.tactic), finish: e.finish || null },
-				expected: e.cost ? { pDeath: e.cost.dead ? 1 : 0, items: e.cost.items, mp: e.cost.mp, hpLost: e.cost.hpLost } : null,
-				after: e.after ? { hp: e.after.hp, ep: e.after.ep, mp: e.after.mp } : null,
-				searched: e.searched, improved: e.improved,
-				candidates: (e.tactics || []).map((t) => ({ label: t.label, pDeath: t.dead ? 1 : 0, items: t.items, mp: t.mp, hpLeft: t.hp, score: t.score ? t.score.map(r2) : null })),
-				script: { from: e.from, to: e.to, inputs: e.inputs },
-			});
-		});
-	}
+	const stops = route.map(planStop);
+	const encounters = robust
+		? res.decisions.map((d, i) => robustEncounterOut(d, i, legIndex(route, d.stop)))
+		: res.encounters.map((e, i) => exactEncounterOut(e, i, legIndex(route, e.stop)));
+	for (const e of encounters) if (e.stop != null) stops[e.stop].encounters.push(e.i);
 	const tot = res.totals || {};
-	const totals = res.mode === 'robust'
-		? { n: tot.n, pDeath: r2(tot.pDeath), dead: tot.dead, stuck: tot.stuck, items: distOut(tot.items), mp: distOut(tot.mp), objectivesLeft: distOut(tot.objectivesLeft), statuses: tot.statuses }
-		: { pDeath: tot.dead ? 1 : 0, items: { mean: tot.items, p50: tot.items, p95: tot.items, max: tot.items }, mp: { mean: tot.mp, p50: tot.mp, p95: tot.mp, max: tot.mp }, objectivesLeft: tot.objectivesLeft, finished: !!tot.end && !tot.dead, final: tot.final };
-	const packRows = res.mode === 'robust'
-		? (tot.pack || []).map((p) => ({ id: p.id, name: nameOf(p.id), mean: r2(p.mean), p95: p.p95, bring: Math.ceil(p.p95) }))
-		: Object.entries(tot.byId || {}).map(([id, n]) => ({ id: +id, name: nameOf(+id), mean: n, p95: n, bring: n }));
+	const totals = robust ? robustTotalsOut(tot) : exactTotalsOut(tot);
 	const plan = {
 		schema: SCHEMA,
 		mode: res.mode,
@@ -111,11 +67,104 @@ export function buildPlan(res, opts = {}) {
 		hero: res.hero,
 		objective: { order: ['survive', 'items', 'mp'], maxDeath: tot.maxDeath ?? 0.01, prices: res.prices },
 		stops, encounters, totals,
-		pack: packRows.filter((p) => p.bring > 0 || p.mean > 0),
+		pack: packOut(res, opts.names || {}).filter((p) => p.bring > 0 || p.mean > 0),
 		perf: { ms: Math.round(res.ms || 0), workers: res.workers || 1, samples: res.N ?? null, search: res.search || null },
 	};
 	// warnings the UI should show before the numbers
+	const warnings = runWarnings(res, { totals, encounters, stops });
+	if (res.mpPlan) {
+		const mp = mpOut(res, encounters, stops);
+		plan.mp = mp.mp;
+		plan.mpTopUps = mp.topUps;
+		plan.mpToSolve = mp.toSolve;
+		plan.mpNeeded = mp.needed;
+		if (mp.warning) warnings.push(mp.warning);
+	}
+	plan.route = { needs: res.needs || null };
+	plan.entry = res.entry || null;
+	plan.warnings = warnings;
+	if (res.baseline) plan.baseline = baselineOut(res.baseline);
+	if (res.mode === 'exact') plan.script = { inputs: res.inputs, topUps: (res.topUps || []).map((t) => ({ at: t.at, amount: t.amount })), replay: opts.replay || null, oracle: opts.oracle || null };
+	return plan;
+}
+
+/** index of the route leg a stop record belongs to */
+function legIndex(route, stop) {
+	if (!stop || !route) return null;
+	const i = route.findIndex((L) => L.kind === stop.kind && ((!L.rec && !stop.rec) || (L.rec && stop.rec && L.rec.id === stop.rec.id && L.rec.x === stop.rec.x && L.rec.y === stop.rec.y)));
+	return i >= 0 ? i : null;
+}
+
+/** a route leg as a plan stop (its encounters are filled in later) */
+function planStop(L, i) {
+	return { i, kind: L.kind, label: L.label, target: L.rec ? { ...L.rec } : null, at: L.at, steps: L.steps, doing: (L.doing || []).map((d) => ({ text: d.text, at: d.at, ep: d.ep, mp: d.mp })), encounters: [] };
+}
+
+/** a robust decision as a plan encounter (si: its stop index) */
+function robustEncounterOut(d, i, si) {
+	const st = d.stats || {};
+	return {
+		i, key: d.key, stop: si, where: d.hero ? { x: d.hero.x, y: d.hero.y } : null,
+		hero: heroOut(d.hero),
+		enemies: (d.enemies || []).map(enemyOut), enemySets: d.enemySets,
+		tactic: { name: d.tactic.name, params: d.tactic.params, label: d.tactic.label, description: describeTactic(d.tactic) },
+		expected: { pDeath: r2(st.pDeath), items: r2(st.items), mp: r2(st.mp), score: st.score ? st.score.map(r2) : null, hpLost: st.dist ? r2(st.dist.hpLost.mean) : null, p95: st.dist ? { items: st.dist.items.p95, mp: st.dist.mp.p95, hpLost: st.dist.hpLost.p95 } : null },
+		samples: d.samples, evaluations: d.evals, need: d.need, quick: !!d.quick,
+		mpBefore: d.mpBefore ? { mean: r2(d.mpBefore.mean), p05: d.mpBefore.p05, min: d.mpBefore.min } : null,
+		escalated: !!d.escalated, lookahead: lookaheadOut(d.lookahead),
+		candidates: (d.candidates || []).map((c) => ({ label: c.label, n: c.n ?? 0, pDeath: r2(c.pDeath), items: r2(c.items), mp: r2(c.mp), score: c.score ? c.score.map(r2) : null, pruned: !!c.pruned, same: c.same })),
+	};
+}
+
+function lookaheadOut(l) {
+	if (!l) return null;
+	return { risk: r2(l.risk), look: l.look, n: l.n, switched: l.switched, candidates: l.candidates.map((c) => ({ label: c.label, n: c.n, pDeath: r2(c.pDeath), items: r2(c.items), mp: r2(c.mp) })) };
+}
+
+/** an exact encounter as a plan encounter, with its slice of the script (si: its stop index) */
+function exactEncounterOut(e, i, si) {
+	return {
+		i, key: e.key, stop: si, where: e.hero ? { x: e.hero.x, y: e.hero.y } : null,
+		hero: heroOut(e.hero),
+		enemies: (e.enemies || []).map(enemyOut),
+		tactic: { name: e.tactic.name, params: e.tactic.params, label: e.tactic.label, description: describeTactic(e.tactic), finish: e.finish || null },
+		expected: e.cost ? { pDeath: e.cost.dead ? 1 : 0, items: e.cost.items, mp: e.cost.mp, hpLost: e.cost.hpLost } : null,
+		after: e.after ? { hp: e.after.hp, ep: e.after.ep, mp: e.after.mp } : null,
+		searched: e.searched, improved: e.improved,
+		candidates: (e.tactics || []).map((t) => ({ label: t.label, pDeath: t.dead ? 1 : 0, items: t.items, mp: t.mp, hpLeft: t.hp, score: t.score ? t.score.map(r2) : null })),
+		script: { from: e.from, to: e.to, inputs: e.inputs },
+	};
+}
+
+function heroOut(h) {
+	return h ? { hp: h.hp, hpM: h.hpM, ep: h.ep, mp: h.mp, ap: h.ap } : null;
+}
+
+function robustTotalsOut(tot) {
+	return { n: tot.n, pDeath: r2(tot.pDeath), dead: tot.dead, stuck: tot.stuck, items: distOut(tot.items), mp: distOut(tot.mp), objectivesLeft: distOut(tot.objectivesLeft), statuses: tot.statuses };
+}
+
+function exactTotalsOut(tot) {
+	return { pDeath: tot.dead ? 1 : 0, items: { mean: tot.items, p50: tot.items, p95: tot.items, max: tot.items }, mp: { mean: tot.mp, p50: tot.mp, p95: tot.mp, max: tot.mp }, objectivesLeft: tot.objectivesLeft, finished: !!tot.end && !tot.dead, final: tot.final };
+}
+
+/** the items the plan uses, by id: how many on average and how many to bring */
+function packOut(res, names) {
+	const nameOf = (id) => names[id] || names[String(id)] || null;
+	const tot = res.totals || {};
+	if (res.mode === 'robust') return (tot.pack || []).map((p) => ({ id: p.id, name: nameOf(p.id), mean: r2(p.mean), p95: p.p95, bring: Math.ceil(p.p95) }));
+	return Object.entries(tot.byId || {}).map(([id, n]) => ({ id: +id, name: nameOf(+id), mean: n, p95: n, bring: n }));
+}
+
+function baselineOut(b) {
+	return { tactic: labelOf('melee', { smash: 'never', kick: false }), n: b.n, pDeath: r2(b.pDeath), items: distOut(b.items), mp: distOut(b.mp), objectivesLeft: distOut(b.objectivesLeft) };
+}
+
+/** the warnings about the run itself: MP for the route, entry gates, invincible bosses, deaths, objectives left */
+function runWarnings(res, { totals, encounters, stops }) {
 	const warnings = [];
+	const tot = res.totals || {};
+	const robust = res.mode === 'robust';
 	const stock = !!(res.mpPlan && res.mpPlan.useItemsForMp);
 	if (res.needs && res.hero && res.needs.mp > res.hero.mp) warnings.push({ kind: 'mp', need: res.needs.mp, have: res.hero.mp, text: `The route needs about ${res.needs.mp} MP (seals, sealed doors, chests); the hero enters with ${res.hero.mp}${stock ? '' : ': solve puzzles for the rest during the run (MP top-ups)'}.` });
 	// a profile run: the game's entry gates (entry.js; away / busy heroes are treated as back) and the MP it hands out
@@ -123,57 +172,66 @@ export function buildPlan(res, opts = {}) {
 	for (const g of gates) warnings.push({ kind: 'gate', gate: g.gate, text: `The game would not start this run: ${g.text}.` });
 	if (res.needs && res.needs.invincible) warnings.push({ kind: 'invincible', n: res.needs.invincible, text: `${res.needs.invincible} objective boss(es) cannot be hurt yet (their quest is not done; the secret name 306 works only then).` });
 	// death risk, plainly: where the hero is too weak, dying is the outcome; say where it happens
-	if (totals.pDeath > (tot.maxDeath ?? 0.01)) {
-		const pct = Math.round(totals.pDeath * 100);
-		let at = null;
-		if (res.mode === 'robust') { for (const e of encounters) if (e.expected && e.expected.pDeath > 0 && (!at || e.expected.pDeath * e.samples > at.expected.pDeath * at.samples)) at = e; }
-		else at = encounters.find((e) => e.expected && e.expected.pDeath > 0) || null;
-		const where = at ? ` ${res.mode === 'robust' ? 'Most deaths are' : 'It dies'} at encounter ${at.i}${at.stop != null && stops[at.stop] ? ` (${stops[at.stop].label || stops[at.stop].kind})` : ''} against ${at.enemies.map((x) => x.id).join(', ')}.` : '';
-		warnings.push({ kind: 'death', p: totals.pDeath, encounter: at ? at.i : null, text: `Death risk ${pct}%: even with the best tactics found, the hero dies in ${res.mode === 'robust' ? `${pct}% of the runs` : 'this run'}; it is too weak for this dungeon.${where}` });
+	if (totals.pDeath > (tot.maxDeath ?? 0.01)) warnings.push(deathWarning(robust, totals.pDeath, encounters, stops));
+	const left = robust ? (tot.objectivesLeft ? tot.objectivesLeft.mean : 0) : tot.objectivesLeft;
+	if (left > 0) warnings.push({ kind: 'objectives', left, text: `${robust ? 'On average ' : ''}${Math.round(left * 10) / 10} objective(s) are left undone.` });
+	return warnings;
+}
+
+function deathWarning(robust, pDeath, encounters, stops) {
+	const pct = Math.round(pDeath * 100);
+	const at = deadliestEncounter(robust, encounters);
+	const where = at ? ` ${robust ? 'Most deaths are' : 'It dies'} at encounter ${at.i}${at.stop != null && stops[at.stop] ? ` (${stops[at.stop].label || stops[at.stop].kind})` : ''} against ${at.enemies.map((x) => x.id).join(', ')}.` : '';
+	return { kind: 'death', p: pDeath, encounter: at ? at.i : null, text: `Death risk ${pct}%: even with the best tactics found, the hero dies in ${robust ? `${pct}% of the runs` : 'this run'}; it is too weak for this dungeon.${where}` };
+}
+
+/** robust: the encounter with the most deaths (the first of equals); exact: the first one the hero dies in */
+function deadliestEncounter(robust, encounters) {
+	if (!robust) return encounters.find((e) => e.expected && e.expected.pDeath > 0) || null;
+	let at = null;
+	for (const e of encounters) if (e.expected && e.expected.pDeath > 0 && (!at || e.expected.pDeath * e.samples > at.expected.pDeath * at.samples)) at = e;
+	return at;
+}
+
+/**
+ * MP the plan needs (see README "MP"): plan.mp in full; plan.mpTopUps / plan.mpToSolve, the puzzles the player solves
+ * for (MP is replenishable); plan.mpNeeded, the short form the UI reads. Returns those, and the MP warning (or null).
+ */
+function mpOut(res, encounters, stops) {
+	const m = res.mpPlan;
+	const robust = res.mode === 'robust';
+	const toSolve = robust ? Math.ceil(m.toSolve.p95) : m.toSolve.max;
+	const mp = {
+		start: m.start, max: m.max, route: m.route, spent: distOut(m.spent), peak: distOut(m.peak), need: m.need, short: m.short,
+		spentBy: m.spentBy, mpItems: r2(m.mpItems), useItemsForMp: !!m.useItemsForMp, toSolve: distOut(m.toSolve),
+		encounters: (m.encounters || []).map((e) => ({ i: e.i, mean: r2(e.mean), low: e.low })),
+		marginal: (m.marginal || []).map((x) => ({ add: x.add, mp: x.mp, n: x.n, items: r2(x.items), saved: r2(x.saved), pDeath: r2(x.pDeath), dDeath: r2(x.dDeath), objectivesLeft: r2(x.objectivesLeft), mpItems: r2(x.mpItems) })),
+	};
+	const topUps = robust
+		? (m.topUps || []).map((t) => ({ stopIndex: t.stopIndex, beforeEncounter: firstEncAt(encounters, t.stopIndex), amount: t.amount, p: r2(t.p), mean: r2(t.mean), max: t.max }))
+		: (res.topUps || []).map((t) => ({ stopIndex: t.stopIndex, beforeEncounter: t.beforeEncounter, atInput: t.at, amount: t.amount, fight: !!t.fight }));
+	const out = { mp, topUps, toSolve, needed: { total: m.start + toSolve, toSolve, start: m.start, route: m.route }, warning: null };
+	if (!m.useItemsForMp && toSolve > 0) {
+		const list = topUps.filter((t) => !robust || t.p >= 0.25).slice(0, 6).map((t) => `${t.amount} ${topUpWhere(t, stops)}${robust && t.p < 0.95 ? ` (${Math.round(t.p * 100)}% of runs)` : ''}`);
+		mp.advice = `Solve puzzles for about ${toSolve} MP during this run (the hero holds at most ${m.max}): ${list.join('; ')}.`;
+		out.warning = { kind: 'mpTopUp', toSolve, text: mp.advice };
+	} else if (m.useItemsForMp) {
+		const best = mp.marginal.filter((x) => x.add > 0 && (x.saved >= 0.25 || x.dDeath >= 0.05));
+		mp.advice = m.short > 0
+			? `Enter with at least ${m.need} MP: the plan draws the pool down by ${m.need}; the hero has ${m.start}.`
+			: best.length ? `More MP pays: ${best.map((x) => `+${x.add} MP saves ${x.saved} item(s)${x.dDeath > 0 ? `, ${Math.round(x.dDeath * 100)}% fewer deaths` : ''}`).join('; ')}.` : null;
+		if (m.short > 0) out.warning = { kind: 'mpShort', need: m.need, have: m.start, text: mp.advice };
+		else if (best.length) out.warning = { kind: 'mpValue', text: mp.advice };
 	}
-	const left = res.mode === 'robust' ? (tot.objectivesLeft ? tot.objectivesLeft.mean : 0) : tot.objectivesLeft;
-	if (left > 0) warnings.push({ kind: 'objectives', left, text: `${res.mode === 'robust' ? 'On average ' : ''}${Math.round(left * 10) / 10} objective(s) are left undone.` });
-	// MP the plan needs (see README "MP"): plan.mp in full; plan.mpTopUps / plan.mpToSolve, the puzzles the player
-	// solves for (MP is replenishable); plan.mpNeeded, the short form the UI reads
-	if (res.mpPlan) {
-		const m = res.mpPlan;
-		const robust = res.mode === 'robust';
-		const toSolve = robust ? Math.ceil(m.toSolve.p95) : m.toSolve.max;
-		plan.mp = {
-			start: m.start, max: m.max, route: m.route, spent: distOut(m.spent), peak: distOut(m.peak), need: m.need, short: m.short,
-			spentBy: m.spentBy, mpItems: r2(m.mpItems), useItemsForMp: !!m.useItemsForMp, toSolve: distOut(m.toSolve),
-			encounters: (m.encounters || []).map((e) => ({ i: e.i, mean: r2(e.mean), low: e.low })),
-			marginal: (m.marginal || []).map((x) => ({ add: x.add, mp: x.mp, n: x.n, items: r2(x.items), saved: r2(x.saved), pDeath: r2(x.pDeath), dDeath: r2(x.dDeath), objectivesLeft: r2(x.objectivesLeft), mpItems: r2(x.mpItems) })),
-		};
-		const tops = robust
-			? (m.topUps || []).map((t) => ({ stopIndex: t.stopIndex, beforeEncounter: firstEncAt(encounters, t.stopIndex), amount: t.amount, p: r2(t.p), mean: r2(t.mean), max: t.max }))
-			: (res.topUps || []).map((t) => ({ stopIndex: t.stopIndex, beforeEncounter: t.beforeEncounter, atInput: t.at, amount: t.amount, fight: !!t.fight }));
-		plan.mpTopUps = tops;
-		plan.mpToSolve = toSolve;
-		plan.mpNeeded = { total: m.start + toSolve, toSolve, start: m.start, route: m.route };
-		const where = (t) => (t.fight ? `during encounter ${t.beforeEncounter}` : t.stopIndex == null ? 'mid-route' : t.stopIndex === 0 && (t.beforeEncounter ?? 0) === 0 ? 'before you start' : `before stop ${t.stopIndex}${stops[t.stopIndex] ? ` (${stops[t.stopIndex].label || stops[t.stopIndex].kind})` : ''}`);
-		if (!m.useItemsForMp && toSolve > 0) {
-			const list = tops.filter((t) => !robust || t.p >= 0.25).slice(0, 6).map((t) => `${t.amount} ${where(t)}${robust && t.p < 0.95 ? ` (${Math.round(t.p * 100)}% of runs)` : ''}`);
-			plan.mp.advice = `Solve puzzles for about ${toSolve} MP during this run (the hero holds at most ${m.max}): ${list.join('; ')}.`;
-			warnings.push({ kind: 'mpTopUp', toSolve, text: plan.mp.advice });
-		} else if (m.useItemsForMp) {
-			const best = plan.mp.marginal.filter((x) => x.add > 0 && (x.saved >= 0.25 || x.dDeath >= 0.05));
-			plan.mp.advice = m.short > 0
-				? `Enter with at least ${m.need} MP: the plan draws the pool down by ${m.need}; the hero has ${m.start}.`
-				: best.length ? `More MP pays: ${best.map((x) => `+${x.add} MP saves ${x.saved} item(s)${x.dDeath > 0 ? `, ${Math.round(x.dDeath * 100)}% fewer deaths` : ''}`).join('; ')}.` : null;
-			if (m.short > 0) warnings.push({ kind: 'mpShort', need: m.need, have: m.start, text: plan.mp.advice });
-			else if (best.length) warnings.push({ kind: 'mpValue', text: plan.mp.advice });
-		}
-	}
-	plan.route = { needs: res.needs || null };
-	plan.entry = res.entry || null;
-	plan.warnings = warnings;
-	if (res.baseline) {
-		const b = res.baseline;
-		plan.baseline = { tactic: labelOf('melee', { smash: 'never', kick: false }), n: b.n, pDeath: r2(b.pDeath), items: distOut(b.items), mp: distOut(b.mp), objectivesLeft: distOut(b.objectivesLeft) };
-	}
-	if (res.mode === 'exact') plan.script = { inputs: res.inputs, topUps: (res.topUps || []).map((t) => ({ at: t.at, amount: t.amount })), replay: opts.replay || null, oracle: opts.oracle || null };
-	return plan;
+	return out;
+}
+
+/** where a top-up happens, in words */
+function topUpWhere(t, stops) {
+	if (t.fight) return `during encounter ${t.beforeEncounter}`;
+	if (t.stopIndex == null) return 'mid-route';
+	if (t.stopIndex === 0 && (t.beforeEncounter ?? 0) === 0) return 'before you start';
+	return `before stop ${t.stopIndex}${stops[t.stopIndex] ? ` (${stops[t.stopIndex].label || stops[t.stopIndex].kind})` : ''}`;
 }
 
 /** the first plan encounter met on the way to stop si (or after it), for top-ups */
