@@ -104,7 +104,7 @@ export function tileName(a, b) {
 		case 0: return 'Rock';
 		case 1: {
 			const f = b & 31;
-			if ((b & 63) === 44) return 'Pressure plate';
+			if (isPressurePlate(a, b)) return 'Pressure plate';
 			if (f === 12) return 'Puzzle floor (nonogram)';
 			if (f === 1) return 'Corridor';
 			if (f === 2 || f === 11) return 'Bridge';
@@ -126,3 +126,6 @@ export function tileName(a, b) {
 
 /** Hidden trap on a floor tile: (b & 0x60) == 0x20. */
 export const isHiddenTrap = (a, b) => a === 1 && (b & 0x60) === 0x20 && (b & 31) !== 12;
+
+/** Pressure plate (barrel puzzles): floor code 44 in the low six bits. */
+export const isPressurePlate = (a, b) => a === 1 && (b & 63) === 44;

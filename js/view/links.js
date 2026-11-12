@@ -29,23 +29,29 @@ export function allLinks(level) {
  * Rows/cols 0..2 hold clues; the inner 5x5 (offset 3..7) must match pattern zw.O[hw.A] (-1 = filled).
  */
 export function floorNonogram(level, patterns) {
-	const { w, h, cells } = level;
-	let x0 = -1, y0 = -1;
-	for (let y = 0; y < h && x0 < 0; y++) {
-		for (let x = 0; x < w; x++) {
-			const i = y * w + x;
-			if (cells[2 * i] === 1 && (cells[2 * i + 1] & 63) === 12) { x0 = x; y0 = y; break; }
-		}
-	}
-	if (x0 < 0) return null;
+	const corner = nonogramCorner(level);
+	if (!corner) return null;
+	const { x0, y0 } = corner;
 	const pat = patterns[level.A];
 	const out = [];
 	for (let r = 0; r < 8; r++) {
 		for (let c = 0; c < 8; c++) {
 			const v = pat[r * 8 + c];
-			if (r >= 3 && c >= 3) { if (v !== 0) out.push([x0 + c, y0 + r, 'fill']); }
-			else if (v > 0) out.push([x0 + c, y0 + r, 'clue', String(v)]);
+			const inGrid = r >= 3 && c >= 3;
+			if (inGrid && v !== 0) out.push([x0 + c, y0 + r, 'fill']);
+			else if (!inGrid && v > 0) out.push([x0 + c, y0 + r, 'clue', String(v)]);
 		}
 	}
 	return { x0, y0, cells: out };
+}
+
+/** the first cell (row-major) with floor code 12, or null when the level has no floor nonogram */
+function nonogramCorner({ w, h, cells }) {
+	for (let y = 0; y < h; y++) {
+		for (let x = 0; x < w; x++) {
+			const i = y * w + x;
+			if (cells[2 * i] === 1 && (cells[2 * i + 1] & 63) === 12) return { x0: x, y0: y };
+		}
+	}
+	return null;
 }
