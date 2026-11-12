@@ -19,13 +19,62 @@ const isNode = typeof process !== 'undefined' && !!(process.versions && process.
 let port = null;
 let target = null;      // Shard | ExactWorker
 let tablesJson = null;
-let M = null;           // the loaded modules
+let engine = null;      // what this worker uses from the loaded modules
 
 const ready = (async () => {
 	await import('../combat/all.js');
 	const [setup, sim, robust, exact] = await Promise.all([import('../combat/setup.js'), import('./sim.js'), import('./robust.js'), import('./exact.js')]);
-	M = { resetStatics: setup.resetStatics, loadEntry: sim.loadEntry, resolveProfile: sim.resolveProfile, Shard: robust.Shard, ExactWorker: exact.ExactWorker, resolveSave: exact.resolveSave };
+	engine = { resetStatics: setup.resetStatics, loadEntry: sim.loadEntry, resolveProfile: sim.resolveProfile, Shard: robust.Shard, ExactWorker: exact.ExactWorker, resolveSave: exact.resolveSave };
 })();
+
+if (isNode) {
+	// worker_threads queue messages until a listener is attached
+	const { parentPort } = await import('node:worker_threads');
+	port = parentPort;
+	parentPort.on('message', onMessage);
+} else {
+	port = self;
+	self.onmessage = (e) => onMessage(e.data);
+}
+
+async function onMessage(msg) {
+	try {
+		const result = await handle(msg);
+		port.postMessage({ id: msg.id, result });
+	} catch (e) {
+		port.postMessage({ id: msg.id, error: String((e && e.stack) || e) });
+	}
+}
+
+async function handle({ method, args = [] }) {
+	await ready;
+	if (method === 'tables') return setTables(args[0]);
+	if (method === 'shard') return startShard(args[0]);
+	if (method === 'exact') return startExact(args[0]);
+	if (!target || typeof target[method] !== 'function') throw new Error(`worker: no method ${method}`);
+	return target[method](...args);
+}
+
+async function setTables(src) {
+	if (!tablesJson) tablesJson = await loadTables(src);
+	engine.resetStatics(tablesJson);
+	await engine.loadEntry();
+	return { ok: true };
+}
+
+async function startShard(cfg) {
+	engine.resetStatics(tablesJson);
+	target = new engine.Shard({ ...cfg, hero: await engine.resolveProfile(cfg.hero) });
+	return { ok: true };
+}
+
+/** cfg.problem.saveBytes (an in-dungeon save) is imported here, after resetStatics */
+async function startExact(cfg) {
+	engine.resetStatics(tablesJson);
+	const problem = await engine.resolveSave(cfg.problem);
+	target = new engine.ExactWorker({ ...cfg, problem: { ...problem, hero: await engine.resolveProfile(problem.hero) } });
+	return target.init();
+}
 
 async function loadTables(src) {
 	if (src.json) return src.json;
@@ -38,50 +87,3 @@ async function loadTables(src) {
 	return r.json();
 }
 
-async function handle(msg) {
-	await ready;
-	const { method, args = [] } = msg;
-	switch (method) {
-		case 'tables':
-			if (!tablesJson) tablesJson = await loadTables(args[0]);
-			M.resetStatics(tablesJson);
-			await M.loadEntry();
-			return { ok: true };
-		case 'shard': {
-			M.resetStatics(tablesJson);
-			const cfg = { ...args[0], hero: await M.resolveProfile(args[0].hero) };
-			target = new M.Shard(cfg);
-			return { ok: true };
-		}
-		case 'exact': {
-			M.resetStatics(tablesJson);
-			const p = await M.resolveSave(args[0].problem);
-			const cfg = { ...args[0], problem: { ...p, hero: await M.resolveProfile(p.hero) } };
-			target = new M.ExactWorker(cfg);
-			return target.init();
-		}
-		default: {
-			if (!target || typeof target[method] !== 'function') throw new Error(`worker: no method ${method}`);
-			return target[method](...args);
-		}
-	}
-}
-
-async function onMessage(msg) {
-	try {
-		const result = await handle(msg);
-		port.postMessage({ id: msg.id, result });
-	} catch (e) {
-		port.postMessage({ id: msg.id, error: String((e && e.stack) || e) });
-	}
-}
-
-if (isNode) {
-	// worker_threads queue messages until a listener is attached
-	const { parentPort } = await import('node:worker_threads');
-	port = parentPort;
-	parentPort.on('message', onMessage);
-} else {
-	port = self;
-	self.onmessage = (e) => onMessage(e.data);
-}

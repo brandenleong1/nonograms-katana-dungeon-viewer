@@ -9,44 +9,7 @@
 // pool.setup(cfg) (robust) / pool.setupExact(cfg) (exact) make each worker's target; pool.call(i, method, ...args)
 // runs a method on worker i and resolves with its (structured-cloned) result.
 
-/** an imported profile (object graph) does not survive postMessage: workers re-import it from its bytes */
-function portableHero(hero) {
-	if (!hero || !hero.profile) return hero;
-	const { vj0, ...rest } = hero.profile;
-	void vj0;
-	return { ...hero, profile: rest };
-}
-
 const isNode = typeof process !== 'undefined' && !!(process.versions && process.versions.node) && typeof window === 'undefined' && typeof self === 'undefined';
-
-class Port {
-	constructor(w, node) {
-		this.w = w;
-		this.node = node;
-		this.seq = 0;
-		this.wait = new Map();
-		const on = (msg) => {
-			const p = this.wait.get(msg.id);
-			if (!p) return;
-			this.wait.delete(msg.id);
-			if (msg.error) p.reject(new Error(msg.error));
-			else p.resolve(msg.result);
-		};
-		const fail = (e) => { for (const p of this.wait.values()) p.reject(e instanceof Error ? e : new Error(String(e && e.message || e))); this.wait.clear(); };
-		if (node) { w.on('message', on); w.on('error', fail); w.on('exit', (c) => { if (c !== 0) fail(new Error(`worker exit ${c}`)); }); }
-		else { w.onmessage = (e) => on(e.data); w.onerror = (e) => fail(e); }
-	}
-
-	call(method, ...args) {
-		const id = ++this.seq;
-		return new Promise((resolve, reject) => {
-			this.wait.set(id, { resolve, reject });
-			this.w.postMessage({ id, method, args });
-		});
-	}
-
-	close() { if (this.node) this.w.terminate(); else this.w.terminate(); }
-}
 
 export class WorkerPool {
 	constructor(ports) { this.ports = ports; }
@@ -58,9 +21,9 @@ export class WorkerPool {
 		const ports = [];
 		if (isNode) {
 			const { Worker } = await import('node:worker_threads');
-			for (let i = 0; i < size; i++) ports.push(new Port(new Worker(url), true));
+			for (let i = 0; i < size; i++) ports.push(Port.node(new Worker(url)));
 		} else {
-			for (let i = 0; i < size; i++) ports.push(new Port(new Worker(url, { type: 'module' }), false));
+			for (let i = 0; i < size; i++) ports.push(Port.browser(new Worker(url, { type: 'module' })));
 		}
 		const pool = new WorkerPool(ports);
 		await Promise.all(ports.map((p) => p.call('tables', tables)));
@@ -86,4 +49,65 @@ export async function defaultSize() {
 	if (isNode) { const os = await import('node:os'); return Math.max(1, Math.min(16, os.cpus().length - 1)); }
 	const n = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
 	return Math.max(1, Math.min(16, n - 1));
+}
+
+/** one worker's request / reply channel: call() posts { id, method, args } and settles on its { id, result | error } */
+class Port {
+	constructor(worker) {
+		this.w = worker;
+		this.seq = 0;
+		this.wait = new Map();   // id -> { resolve, reject } of calls not answered yet
+	}
+
+	/** a Port on a Node worker_threads Worker */
+	static node(worker) {
+		const port = new Port(worker);
+		worker.on('message', (msg) => port.settle(msg));
+		worker.on('error', (e) => port.failAll(e));
+		worker.on('exit', (code) => { if (code !== 0) port.failAll(new Error(`worker exit ${code}`)); });
+		return port;
+	}
+
+	/** a Port on a browser module Worker */
+	static browser(worker) {
+		const port = new Port(worker);
+		worker.onmessage = (e) => port.settle(e.data);
+		worker.onerror = (e) => port.failAll(e);
+		return port;
+	}
+
+	call(method, ...args) {
+		const id = ++this.seq;
+		return new Promise((resolve, reject) => {
+			this.wait.set(id, { resolve, reject });
+			this.w.postMessage({ id, method, args });
+		});
+	}
+
+	close() { this.w.terminate(); }
+
+	settle(msg) {
+		const p = this.wait.get(msg.id);
+		if (!p) return;
+		this.wait.delete(msg.id);
+		if (msg.error) p.reject(new Error(msg.error));
+		else p.resolve(msg.result);
+	}
+
+	/** a worker failed: every call still waiting rejects */
+	failAll(e) {
+		for (const p of this.wait.values()) p.reject(e instanceof Error ? e : new Error(String(e && e.message || e)));
+		this.wait.clear();
+	}
+}
+
+/**
+ * A hero spec without its imported profile, which does not survive postMessage: workers re-import it from its bytes.
+ * The same as sim.js portableHero, kept here so the pool does not load the engine.
+ */
+function portableHero(hero) {
+	if (!hero || !hero.profile) return hero;
+	const { vj0, ...rest } = hero.profile;
+	void vj0;
+	return { ...hero, profile: rest };
 }
