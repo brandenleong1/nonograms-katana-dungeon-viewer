@@ -432,7 +432,7 @@ class PathSearch {
 
 	/** { dist, prev } from src: dist is -1 where unreachable, prev the tile before on a shortest path. */
 	search(src, mask) {
-		const key = src * 64 + mask;
+		const key = mask * this.grid.cellCount + src;   // unique for any number of gates (src < cellCount)
 		if (this.cache.has(key)) return this.cache.get(key);
 		const { grid, enter, gateOf, teleports } = this;
 		const N = grid.cellCount;
