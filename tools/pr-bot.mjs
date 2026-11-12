@@ -5,9 +5,9 @@
 // could press Merge and type their own message. Drafts and PRs labelled `hold` are left alone. The bot never submits
 // reviews, so it can't stand in for the human approval the ruleset requires.
 //
-// No code merges unreviewed: a review counts only for the commit it was given on. Whenever the head moves (new commits,
-// a rebase, "Update branch"), the bot dismisses the older approvals and change requests, and asks those reviewers to
-// review again.
+// No code merges unreviewed: an approval holds for the diff it was given on. GitHub dismisses approvals when a push
+// changes the PR's diff, and moves them to the new head when it doesn't ("Update branch", a clean rebase). The bot
+// dismisses any verdict still pointing at an older commit, and asks those reviewers to review again.
 //
 //   node tools/pr-bot.mjs review              set `pr-bot` on every open PR, and merge the first one that is ready
 //   node tools/pr-bot.mjs after-merge SHA     main moved to SHA (an admin merged by hand): delete the merged PR's branch,

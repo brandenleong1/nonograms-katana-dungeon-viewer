@@ -116,11 +116,15 @@ workflow token don't trigger `push` workflows, so after its own merge the bot de
 PRs, and dispatches `postcommit` itself. It runs after Precommit, PR Policy and PR Reviewed, on label and
 ready-for-review changes (`pull_request_target`, still running only code from `main`), and hourly.
 
-**No code merges unreviewed.** A review counts only for the commit it was given on. Whenever the head moves (new
-commits, a rebase or force-push, "Update branch"), the bot dismisses the older approvals and change requests, and
-asks those reviewers to review again. GitHub's own "dismiss stale approvals" can keep an approval when a push doesn't
-change the diff; the bot doesn't. The ruleset also requires the latest push to be approved by someone other than whoever
-pushed it.
+**No code merges unreviewed.** An approval holds only for the diff it was given on. When a push changes the PR's
+diff (new commits, or a rebase or update that resolves a conflict), GitHub dismisses the approvals ("dismiss stale
+approvals" in the ruleset). A push that leaves the diff as it was keeps them: "Update branch", or a clean rebase onto
+`main`. GitHub then moves each approval to the new head commit. The bot dismisses any approval or change request that
+still points at an older commit, and asks those reviewers to look again. The ruleset also requires the latest push to
+be approved by someone other than whoever pushed it.
+
+**Approving several PRs at once:** the bot merges one per pass, and the others fall behind `main`. Update each one;
+its approval stays, its checks run again, and the bot merges it.
 
 When any PR merges, `main` moves. Every other PR is then behind `main`, and the bot sets it back to pending. Its
 author updates the branch, the checks run against the new `main`, a reviewer approves the new head, and the bot
@@ -151,7 +155,7 @@ Two rulesets in `.github/rulesets/`.
 **`main.json`**, on `main`:
 
 - changes arrive through a pull request with **one approving human review** of the latest push, given by someone other
-  than whoever pushed it; approvals are dismissed when new commits are pushed (and by the PR bot on any head change);
+  than whoever pushed it; approvals are dismissed when a push changes the PR's diff (and by the PR bot if one still points at an older commit);
   all review threads are resolved;
 - **`precommit`**, **`pr-policy`** and **`pr-bot`** must pass, reported **by GitHub Actions** (a status posted with
   someone's own token doesn't count), on a branch **up to date with `main`**;
