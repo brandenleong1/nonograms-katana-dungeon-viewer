@@ -140,7 +140,8 @@ async function solveExactJob(job, pool, { budget, cands, onProgress }) {
 		return { res: await solveExact(problem, { pool, ...opts }), problem, hero };
 	}
 	const imp = await freshSave(job.saveBytes);
-	const problem = { save: imp, saveName: job.saveName || 'guild.dat', hero, type: imp.dungeon.b, seed: imp.dungeon.a, at: 'save' };
+	// the bytes too: every fight imports its own copy of the save (js/solve/exact.js)
+	const problem = { save: imp, saveBytes: job.saveBytes, saveName: job.saveName || 'guild.dat', hero, type: imp.dungeon.b, seed: imp.dungeon.a, at: 'save' };
 	return { res: await solveExact(problem, { pool: new SavePool(pool, job.saveBytes, job.saveName), ...opts }), problem, hero };
 }
 
