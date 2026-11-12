@@ -9,6 +9,10 @@
 // a rebase, "Update branch"), the bot dismisses the older approvals and change requests, and asks those reviewers to
 // review again.
 //
+// Reviewers are asked for automatically: once a PR is out of draft, the bot requests a review from everyone with write
+// access but the author (once per person and PR), so GitHub shows them its "Add your review" banner. Only requests a
+// person made must be answered before the bot merges; its own are invitations.
+//
 //   node tools/pr-bot.mjs review              set `pr-bot` on every open PR, and merge the first one that is ready
 //   node tools/pr-bot.mjs after-merge SHA     main moved to SHA (an admin merged by hand): delete the merged PR's branch,
 //                                             then review again (the other PRs are now behind main)
@@ -26,6 +30,7 @@
 import { checkPr } from './check-pr.mjs';
 
 const STATUS = 'pr-bot';
+const HOW_TO_APPROVE = 'To approve: Details, then Review changes, Approve, Submit.';
 const HOLD_LABEL = 'hold';
 const POSTCOMMIT = 'postcommit.yml';
 const DEPENDS_ON = ['precommit', 'pr-policy'];
@@ -51,16 +56,18 @@ async function main() {
 	fail('usage: node tools/pr-bot.mjs review | after-merge SHA | prune-branches | branches [--dry-run]');
 }
 
-/** Set `pr-bot` on every open PR's head: success when ready, otherwise pending with the reason. */
 /**
  * Set `pr-bot` on every open PR, and merge the first ready one. One merge per pass: it moves main, so every other PR
  * is behind and the follow-up review sets them back to pending.
  */
 async function reviewAll({ merge = true } = {}) {
 	const mainSha = (await github(`/repos/${REPO}/branches/main`)).commit.sha;
+	const writers = await writersOfRepo();
 	for (const pr of await openPulls()) {
 		await resetOutdatedReviews(pr);
-		const reason = (await notReadyReason(pr, mainSha)) || heldReason(pr, merge);
+		const earlier = await reviewRequestEvents(pr);
+		const timeline = [...earlier, ...(await requestWriters(pr, { writers, timeline: earlier }))];
+		const reason = (await notReadyReason(pr, { mainSha, timeline })) || heldReason(pr, merge);
 		if (reason) {
 			await setStatus(pr, 'pending', reason);
 			continue;
@@ -141,7 +148,7 @@ async function reportBranches() {
 
 // ---- readiness ------------------------------------------------------------------------------------------------------
 
-async function notReadyReason(pr, mainSha) {
+async function notReadyReason(pr, { mainSha, timeline }) {
 	if (pr.draft) return 'Draft';
 	const detail = await github(`/repos/${REPO}/pulls/${pr.number}`);
 	if (detail.mergeable === false) return 'Merge conflict with main';
@@ -151,16 +158,64 @@ async function notReadyReason(pr, mainSha) {
 	if (unmet.length) return `Waiting for ${unmet.join(', ')}`;
 	const verdicts = await currentReviews(pr);
 	if (verdicts.some((r) => r.state === 'CHANGES_REQUESTED')) return 'Changes requested';
-	const waitingFor = [...(detail.requested_reviewers || []).map((u) => `@${u.login}`), ...(detail.requested_teams || []).map((t) => `team ${t.name}`)];
+	const waitingFor = requestedByPeople(detail, timeline);
 	if (waitingFor.length) return `Waiting for review from ${waitingFor.join(', ')}`;
 	const approvers = verdicts.filter((r) => r.state === 'APPROVED' && r.commit_id === pr.head.sha && CAN_APPROVE.has(r.author_association));
 	const needed = (await changesCi(pr)) ? 2 : 1;
 	if (approvers.length < needed) {
 		return needed === 2
-			? `Changes CI or the PR tools: needs 2 reviews of the latest commit (has ${approvers.length})`
-			: 'Needs a review of the latest commit';
+			? `Changes CI or the PR tools: needs 2 approvals of the latest commit (has ${approvers.length}). ${HOW_TO_APPROVE}`
+			: `Needs an approval of the latest commit. ${HOW_TO_APPROVE}`;
 	}
 	return null;
+}
+
+/** Outstanding review requests that a person made (the bot's own invitations don't hold a PR up): "@alice", "team x". */
+function requestedByPeople(detail, timeline) {
+	const requester = new Map();
+	for (const e of timeline) if (e.event === 'review_requested') requester.set(requestKey(e), e.actor?.login);
+	const outstanding = [...(detail.requested_reviewers || []).map((u) => `@${u.login}`), ...(detail.requested_teams || []).map((t) => `team ${t.name}`)];
+	return outstanding.filter((key) => requester.get(key) !== BOT);
+}
+
+function requestKey(event) {
+	return event.requested_reviewer ? `@${event.requested_reviewer.login}` : `team ${event.requested_team?.name}`;
+}
+
+/**
+ * Ask everyone with write access but the author to review a PR that is out of draft, so GitHub shows them its "Add
+ * your review" banner. Once per person: nobody already asked (by anyone) or who already reviewed is asked again, so a
+ * removed request stays removed. Returns the requests made, as timeline events.
+ */
+async function requestWriters(pr, { writers, timeline }) {
+	if (pr.draft || !writers.length) return [];
+	const asked = new Set(timeline.filter((e) => e.event === 'review_requested' && e.requested_reviewer).map((e) => e.requested_reviewer.login));
+	const reviewed = new Set((await github(`/repos/${REPO}/pulls/${pr.number}/reviews?per_page=100`)).map((r) => r.user?.login));
+	const reviewers = writers.filter((login) => login !== pr.user?.login && !asked.has(login) && !reviewed.has(login));
+	if (!reviewers.length) return [];
+	await act(`#${pr.number}: ask ${reviewers.join(', ')} to review`, () => github(`/repos/${REPO}/pulls/${pr.number}/requested_reviewers`, 'POST', { reviewers }));
+	return reviewers.map((login) => ({ event: 'review_requested', actor: { login: BOT }, requested_reviewer: { login } }));
+}
+
+/** The review_requested events on a PR, oldest first. */
+async function reviewRequestEvents(pr) {
+	const events = [];
+	for (let page = 1; ; page++) {
+		const batch = await github(`/repos/${REPO}/issues/${pr.number}/timeline?per_page=100&page=${page}`);
+		events.push(...batch.filter((e) => e.event === 'review_requested'));
+		if (batch.length < 100) return events;
+	}
+}
+
+/** Logins with write access (not bots). Empty, with a note, if the token may not list them. */
+async function writersOfRepo() {
+	try {
+		const people = await github(`/repos/${REPO}/collaborators?per_page=100`);
+		return people.filter((p) => p.permissions?.push && p.type !== 'Bot').map((p) => p.login);
+	} catch (e) {
+		console.log(`could not list collaborators, so nobody is asked to review: ${e.message.split('\n')[0]}`);
+		return [];
+	}
 }
 
 async function changesCi(pr) {
@@ -209,13 +264,17 @@ async function unmetChecks(sha) {
 }
 
 /** Only writes when the status changes, so the PR's timeline doesn't fill up with repeats. */
+/** Set `pr-bot` on the PR's head (unless it already says this). Its Details link opens the PR's Files changed tab. */
 async function setStatus(pr, state, description) {
+	const text = description.slice(0, 140);
+	const target = `${pr.html_url}/files`;
 	const current = (await github(`/repos/${REPO}/commits/${pr.head.sha}/status`)).statuses.find((s) => s.context === STATUS);
-	if (current && current.state === state && current.description === description) return;
-	await act(`#${pr.number} ${pr.head.sha.slice(0, 7)}: ${state} (${description})`, () => github(`/repos/${REPO}/statuses/${pr.head.sha}`, 'POST', {
+	if (current && current.state === state && current.description === text && current.target_url === target) return;
+	await act(`#${pr.number} ${pr.head.sha.slice(0, 7)}: ${state} (${text})`, () => github(`/repos/${REPO}/statuses/${pr.head.sha}`, 'POST', {
 		state,
 		context: STATUS,
-		description: description.slice(0, 140),
+		description: text,
+		target_url: target,
 	}));
 }
 

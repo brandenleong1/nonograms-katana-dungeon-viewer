@@ -100,15 +100,18 @@ Ready means the PR:
 - is up to date with `main`;
 - has `precommit` and `pr-policy` green on its head commit;
 - has no reviewer requesting changes;
-- has **no outstanding review requests**: every requested reviewer, person or team, has responded (GitHub removes a
-  request once that reviewer submits a review, and the bot re-requests everyone whose review it resets);
+- has **no outstanding review requests made by a person**: everyone a person asked to review (or team) has responded.
+  GitHub removes a request once that reviewer submits a review. The bot's own requests don't count: it asks everyone
+  with write access to review each PR once it's out of draft (so they get the "Add your review" banner), and
+  re-requests everyone whose review it resets;
 - has an approval **of its head commit** from someone with write access, or from **two** people if it changes CI,
   the rulesets or the PR tools (`.github/`, `tools/pr-bot.mjs`, `tools/check-pr.mjs`, `tools/github-setup.sh`,
   `tools/merge-pr.sh`, `package.json`): a PR's own workflows run from its files, so it could weaken what checks it;
 - has a title that passes `tools/check-pr.mjs`.
 
-Example pending reasons: "3 commit(s) behind main: update the branch", "Waiting for review from @alice", "Needs a
-review of the latest commit", "Ready, but held: remove the `hold` label".
+Example pending reasons: "3 commit(s) behind main: update the branch", "Waiting for review from @alice", "Needs an
+approval of the latest commit. To approve: Details, then Review changes, Approve, Submit.", "Ready, but held: remove
+the `hold` label". The status's Details link opens the PR's Files changed tab, where the review button is.
 
 It merges at most one PR per pass, since a merge moves `main` and puts every other PR behind. Merges made with the
 workflow token don't trigger `push` workflows, so after its own merge the bot deletes the branch, re-checks the other

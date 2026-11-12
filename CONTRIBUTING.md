@@ -68,11 +68,19 @@ The bot merges a PR as soon as all of this is true:
    (`.github/`, `tools/pr-bot.mjs`, `tools/check-pr.mjs`, the setup and merge scripts, `package.json`). Any push (new
    code, a rebase, "Update branch") resets every review; the bot dismisses the old ones and asks those reviewers to
    look again. Nothing merges unreviewed.
-4. **Every requested reviewer has approved.** If you (or anyone) request a review from someone, the bot waits for them,
-   even if someone else already approved. To go ahead without them, remove the request.
+4. **Everyone a person asked to review has approved.** If you (or anyone) request a review from someone, the bot
+   waits for them, even if someone else already approved. To go ahead without them, remove the request.
 5. **Nobody requests changes**, there are no merge conflicts, and the PR isn't a draft.
 
-The **`pr-bot`** check on your PR says what it's waiting for, e.g. "Needs a review of the latest commit" or
+**Reviewers are asked automatically.** Once a PR is out of draft, the bot asks everyone with write access (except
+the author) to review it, once each, so they get a notification and GitHub's "Add your review" banner. Those
+invitations don't hold the PR up: one approval (two for CI changes) is enough.
+
+**To approve a PR:** open it, then the **Files changed** tab (or the `pr-bot` check's **Details** link). Press
+**Review changes** (**Submit review** in GitHub's newer layout), choose **Approve**, and submit. You don't have to be
+listed as a reviewer first.
+
+The **`pr-bot`** check on your PR says what it's waiting for, e.g. "Needs an approval of the latest commit" or
 "2 commit(s) behind main: update the branch". It runs after every push, edit, review or label change, and hourly. It
 never stays green: it only turns green at the moment the bot merges, so there's no window to merge by hand.
 
