@@ -57,6 +57,10 @@ More docs:
 - **Cloning:** `js/combat/clone.js` snapshots fight state for search. Any static the engine mutates during play must be
   pinned there, or clones leak state into each other.
 - **Plan schema:** `js/solve/plan.js` (`nk-solve-plan/1`) is read by the UI. Only add fields; keep old ones working.
+- **No dungeon:** the page starts empty ("No Dungeon Loaded", `window.nkd.state.level === null`) unless the URL has a
+  label or the save kept in the tab is inside a dungeon. UI code must cope with a null level. Importing a save asks
+  first when a dungeon or plan is on screen, then shows the save's dungeon or none; nothing of the old save or solve
+  stays (`importFile` in `js/hero.js`, `showImportedSave` in `js/app.js`).
 
 ## Commands
 
