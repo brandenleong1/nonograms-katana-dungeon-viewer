@@ -98,7 +98,7 @@ Rules and file ownership are in [js/combat/PORTING.md](../js/combat/PORTING.md);
 | Path | What |
 |---|---|
 | `test/*.mjs` | Suites; see [testing.md](testing.md). |
-| `test/fixtures/` | Ten sample dungeons dumped from the game's generator, so `npm test` works without the oracle. |
+| `test/fixtures/` | Ten sample dungeons dumped from the game's generator, so `npm test` works without the oracle; and `fake-github.mjs`, a fake GitHub for the screenshot bot's test. |
 | `test/scenarios/` | Scripted fights, one per ability or item, for the combat corpus. |
 | `test/make-fights.*` | Maintainer: regenerates the oracle fight corpus. |
 | `tools/solve.mjs`, `tools/solve-eval.mjs` | Solve a dungeon from Node; compare the solver against plain melee. |

@@ -74,13 +74,18 @@ the solver's settings and a finished plan in each mode, and every popup. They al
 no save data is ever in them ([the list](testing.md#screenshots)). The run keeps the views that look different,
 compared pixel by pixel. Then `screenshot-comment.yml` posts them in a before/after table, in the list's order, and
 edits the same comment on later pushes. A view `main` can't show yet (it needs a control the PR adds) is posted on
-its own as a new view. If nothing looks different, the comment says so. If the run failed, the comment links to it.
+its own as a new view. If nothing looks different, the comment says so. If the run failed, the comment links to it. If
+the images were taken but the comment couldn't be posted, it says so: if they were stored it links their folder on
+`bot/screenshots`, and if not it links the Screenshots run, whose artifact keeps them for 7 days. Pushing again, or
+re-running the Screenshots run (`gh run rerun <run id>`, needs write access), tries again.
 
 - **Where the images live:** the `bot/screenshots` branch, under `auto/pr-<n>/<commit>/`. It isn't part of the site.
   Runs for several PRs can finish at once. Each adds a commit and moves the branch only if no other run moved it
   first, and tries again otherwise, so no PR's images are lost. Daily, the bot deletes the images of PRs closed 30+
   days ago, so old PR pages show broken images by then. It also squashes the branch to one commit, so old images don't
-  pile up in its history. The PR bot never prunes this branch.
+  pile up in its history. The PR bot never prunes this branch. A request GitHub times out on or answers with an error
+  is repeated a few times, so a passing hiccup doesn't cost a PR its comment. The new tree is sent as changes to the
+  branch's tree, not as every file on it; if GitHub refuses that for good (a 4xx), the whole list is sent instead.
 - **Safety:** the Screenshots run uses the PR's own code (it may be a fork), with a read-only token, and only uploads
   files. The comment workflow runs `tools/screenshot-comment.mjs` from `main` and treats those files as untrusted
   data. It parses and checks the manifest, accepts only regular PNG files of bounded size under strict names, and
