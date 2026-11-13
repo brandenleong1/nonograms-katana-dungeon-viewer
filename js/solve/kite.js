@@ -296,7 +296,8 @@ function strikeAttractor(strikeFree, target) {
 
 const D4 = [[-1, 0], [0, -1], [1, 0], [0, 1]];
 
-/** a lone foe the duel model describes: melee, no leap (2) / charge (4) / summons, not sealed, held or netted */
+/** a lone foe the duel model describes: melee, no leap (2) / charge (4) / summons, not held or netted, and sealed only
+ * if the seal is revealed and payable */
 export function duelable(h, m) {
 	const t = m.a;
 	if (m.w > 0 || t.O_(2) || t.O_(4) || t.M0 || (t.C0 !== 0 && m.x > 0)) return false;

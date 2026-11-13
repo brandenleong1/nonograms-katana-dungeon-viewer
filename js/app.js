@@ -2,7 +2,7 @@
 import { showGameVersion } from './game-version.js';
 import { parseLabel, formatLabel, typeLabel, family } from './labels.js';
 import { IsoView } from './view/iso.js';
-import { KINDS, objectKind, critterKind, tileName, linkGroup } from './view/catalog.js';
+import { KINDS, objectKind, critterKind, familiarRank, tileName, linkGroup } from './view/catalog.js';
 import { partners, allLinks, floorNonogram, LINK_COLORS } from './view/links.js';
 import { initTables, zw, vj0 as V } from './gen/statics.js';
 import { planRoute, objectives as gameObjectives } from './plan/planner.js';
@@ -356,12 +356,13 @@ function drawLevel(level, type) {
 	$('#selected-info').textContent = SELECT_HINT;
 }
 
-/** The status line under the label: size, counts, and a badge for the progress the map is built with. */
+/** The status under the label: size and counts, then (a line of its own) the progress the map is built with. */
 function levelStatusHtml(level, type) {
 	const mapProfile = state.hero ? state.hero.effectiveProfile() : null;
 	const basis = mapProfile ? mapProfile.basis : 'new';
-	return `${typeLabel(type)} · ${level.w}×${level.h} · ${level.objects.length} objects · ${level.critters.length} creatures ` +
-		`<span class="profile-badge status-badge${basis === 'save' ? ' on' : basis === 'custom' ? ' custom' : ''}" title="The progress this map is built with (Your hero, Progress)">${mapProfile ? mapProfile.text.toLowerCase() : 'new game'}</span>`;
+	const text = mapProfile ? mapProfile.text : 'New game';
+	return `${typeLabel(type)} · ${level.w}×${level.h} · ${level.objects.length} objects · ${level.critters.length} creatures` +
+		`<div class="map-basis basis-${basis}" title="The progress this map is built with (Your hero, Progress)">Built with: <b>${text}</b></div>`;
 }
 
 /** The Your hero popups and the solver follow the dungeon shown. */
@@ -414,12 +415,23 @@ function occupantHtml(cell) {
 	const parts = [`<div><span class="glyph" style="color:${look.color}">${look.glyph}</span><b>${look.label}</b> <span class="muted">#${rec.id}</span></div>`];
 	const def = isCritter ? critterDef(rec.id) : objectDef(rec.id);
 	if (isCritter && critterKindOf(rec) === 'shapeshifter') parts.push('<div>Looks like a person, but turns into a monster when you talk to it.</div>');
-	if (def && def.v > 0) parts.push(`<div>Needs <b>${def.v}</b> mental power to open.</div>`);
+	// a familiar's v is its level cap (zw.d by rank), not a mental power cost
+	const familiar = isCritter && critterKindOf(rec) === 'familiar';
+	if (familiar) parts.push(familiarRankHtml(familiarRank(state.level, rec)));
+	if (def && def.v > 0 && !familiar) parts.push(`<div>Needs <b>${def.v}</b> mental power to open.</div>`);
 	if (!isCritter && objectKindOf(rec) === 'stuckdoor' && state.level) parts.push(`<div>Breaking it costs ${breakCost(state.level.type)} energy.</div>`);
 	if (def && def.t) parts.push(`<div class="muted">Counts as an objective.</div>`);
 	const linked = isCritter ? [] : partners(state.level, rec);
 	if (linked.length) parts.push(`<div>Links to ${linked.map(partnerLinkHtml).join(', ')}.</div>`);
 	return parts.join('');
+}
+
+const RANK_NAMES = ['white', 'blue', 'yellow', 'purple'];
+
+/** a wild familiar's rank, named by the colour the game shows it in */
+function familiarRankHtml(rank) {
+	if (rank === null) return '<div class="muted">Its rank is not known for this dungeon.</div>';
+	return `<div>Rank <b>${rank}</b> of 3 (${RANK_NAMES[rank]}).</div>`;
 }
 
 function partnerLinkHtml(p) {

@@ -74,6 +74,18 @@ const t0 = performance.now();
 	check('scout: a run finished after the last key: nothing is needed after it', str(finished.needAfter('b')) === str({ hp: 0, ep: 0 }) && str(finished.restNeedAfter('b')) === str({ hp: 0, ep: 0 }) && str(finished.needAfter('a')) === str({ hp: 38, ep: 7 }));
 }
 
+// ---- walker: a fountain re-plan doesn't count toward maxReplans ----
+{
+	resetStatics(tables);
+	const run = S.Run.start({ level: 21, gear: 4, kit2: true }, { type: 15, seed: 1492658333, xseed: 777 }, { walker: { rest: new S.RestRule({ mpReserve: 'route' }) } });
+	const w = run.walker;
+	const limit = w.opts.maxReplans ?? 60;
+	w.replans = limit;                          // every failure re-plan used up
+	w.unplannedFountainWanted = () => true;     // a fountain just became worth a detour
+	w.afterEncounter();
+	check('walker: a fountain re-plan at the re-plan limit keeps walking', !w.finished && w.replans === limit, `finished ${w.finished}, replans ${w.replans}`);
+}
+
 // ---- walker checkpoint: freeze / thaw continues identically ----
 {
 	resetStatics(tables);
@@ -87,6 +99,26 @@ const t0 = performance.now();
 	const k1 = play(a);
 	const k2 = play(S.Run.resume(ck));
 	check('walker: checkpoint resumes identically', k1 === k2, `${k1} vs ${k2}`);
+}
+
+// ---- walker: keys in the pack open locked doors 29 once their gold monsters are dead (c30.m0: any key, one per door) ----
+{
+	const objectiveStops = (w) => w.legs.filter((L) => L.kind === 'objective').map((L) => (L.rec ? `${L.rec.id}@${L.rec.x},${L.rec.y}` : L.label)).sort();
+	const replanWithKeys = (keys) => {
+		resetStatics(tables);
+		const run = S.Run.start({ level: 21, gear: 4, kit2: true }, { type: 12, seed: 344057351, xseed: 1 });
+		const h = run.fight.h, w = run.walker;
+		const before = objectiveStops(w);
+		const gold = h.o.filter((m) => m.g === 167);
+		for (const m of gold) h.j_(m, false);   // dead: the engine takes a critter off the level (hw.j)
+		if (keys) h.f.D.b_(167, keys);
+		w.replan();
+		return { before, after: objectiveStops(w), gold: gold.length };
+	};
+	const all = replanWithKeys(2), one = replanWithKeys(1);
+	const lost = (r) => r.before.filter((s) => !r.after.includes(s)).join(' ');
+	check('walker: a re-plan with the gold monsters dead keeps the objectives behind locked doors 29 when the keys are in the pack', all.gold === 2 && all.after.length === all.before.length, `lost ${lost(all) || 'none'}`);
+	check('walker: one key opens one locked door 29', one.after.length === one.before.length - 1, `lost ${lost(one) || 'none'}`);
 }
 
 // ---- wiki: first strike against a lone 2-AP melee foe (243, type 10) ----
@@ -198,13 +230,18 @@ if (!quick) {
 	check('demoralize: saves potions against a high-defence group', m1 < m0, `items ${m1} with Demoralize vs ${m0}`);
 }
 
+// ---- labels: a tactic's own switches aren't part of its name ----
+check('labels: the spider tactic is "spider"', makePolicy('spider').label === 'spider' && makePolicy('spider', { demor: 2 }).label === 'spider(demor=2)', `${makePolicy('spider').label} / ${makePolicy('spider', { demor: 2 }).label}`);
+
 // ---- robust: whole dungeon, small N; plan schema ----
 let robustPlan = null;
+let robustKeys = [];
 {
 	resetStatics(tables);
 	const res = await solveRobust({ hero: { level: 21, gear: 4, kit2: true }, type: 15, seed: 1492658333 }, { pool: new InlinePool(1), N: quick ? 6 : 10, nMin: 8, n0: 6, scout: 4, cands: candidates('quick'), budgetMs: 120000 });
 	check('robust: solves', !res.error && res.decisions.length > 0, res.error || `${res.decisions.length} encounters`);
 	if (!res.error) {
+		robustKeys = res.decisions.map((d) => d.key);
 		robustPlan = buildPlan(res, { label: 'F1-1492658333' });
 		const errs = validatePlan(robustPlan);
 		check('robust: plan validates', errs.length === 0, errs.join('; '));
@@ -240,6 +277,8 @@ let robustPlan = null;
 		// never worse than the best single tactic (the incumbent is a candidate at every decision)
 		const worse = res.encounters.filter((e) => e.searched > 0 && e.tactics[0] && e.cost.items > e.tactics[0].items);
 		check('exact: search never worse on items than the best tactic', worse.length === 0, worse.map((e) => e.key).join(','));
+		// same dungeon and hero as the robust case: its first encounter has the same key there
+		check('exact: names encounters as robust mode does', !!res.encounters[0] && robustKeys.includes(res.encounters[0].key), `${res.encounters[0] && res.encounters[0].key} vs ${robustKeys.slice(0, 3).join(' ')}`);
 	}
 }
 

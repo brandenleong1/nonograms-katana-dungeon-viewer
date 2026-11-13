@@ -7,6 +7,8 @@
 // Units: u = half tile width / 32 (device px). Tile coords project as  sx = (X + Y)·32u,  sy = (Y − X)·16u.
 // Sprites are rendered once per (kind, variant, size bucket, theme) at device-pixel resolution and blitted.
 
+import { RANK_COLORS } from './catalog.js';
+
 const cache = new Map();
 const CACHE_MAX = 600;
 
@@ -21,8 +23,6 @@ export function drawSprite(ctx, kind, cx, cy, hw, { selected = false, theme = 'd
 	if (selected) ring(ctx, cx, cy, hw, theme);
 	ctx.drawImage(spr.canvas, cx - spr.ax * k, cy - spr.ay * k, spr.canvas.width * k, spr.canvas.height * k);
 }
-
-export const hasSprite = (kind) => kind in PAINTERS;
 
 /** sprites are drawn at quarter-octave sizes from 8 to 256 device px, so zooming reuses cached renders */
 function sizeBucket(devicePx) {
@@ -199,7 +199,7 @@ function eye(g, e, { x, y, r, iris, sclera }) {
 }
 
 // ---- door helpers -----------------------------------------------------------------------------------
-const WOOD = '#8a5a32', WOOD_D = '#6b4325', STONE = '#8e8a94', IRON = '#5d6470';
+const WOOD = '#8a5a32', STONE = '#8e8a94', IRON = '#5d6470';
 
 /** Door in a doorway. axis = wall direction ('x' or 'y'). Returns face mapping for details. */
 function doorBase(g, e, axis, leaf, { arch = STONE, height = 30 } = {}) {
@@ -651,6 +651,7 @@ const PAINTERS = {
 	// looks like a person until you talk to it: red, with a red diamond on its staff
 	shapeshifter(g, e) { robedFigure(g, e, { robe: '#b23a3a', hood: '#7e2424', gem: staffDiamond }); },
 	monster(g, e) { creature(g, e, { color: speciesColor(e.variant), r: 10 }); },
+	familiar(g, e) { creature(g, e, familiarLook(e.variant)); },
 	goldmonster(g, e) { creature(g, e, { color: '#e6b422', r: 10.5, key: true, aura: 'rgba(255,215,90,0.28)' }); },
 	miniboss(g, e) { creature(g, e, { color: '#e07a2c', r: 12.5, horns: true, teeth: true }); },
 	boss(g, e) { creature(g, e, { color: '#9e2430', r: 15, horns: true, teeth: true, aura: 'rgba(255,60,40,0.35)', eyes: '#ffd23f' }); },
@@ -720,6 +721,16 @@ function glowDisc(g, { x, y, r, inner, outer }) {
 	g.globalCompositeOperation = 'source-over';
 }
 
+/**
+ * a wild familiar in its rank's colour (white, blue, yellow, purple) with a soft glow and a paw badge, so it can't be
+ * mistaken for a monster of a similar colour; grey when the rank is unknown
+ */
+function familiarLook(variant) {
+	const color = RANK_COLORS[variant] || '#cfd8e3';
+	const [r, g, b] = hex2rgb(color);
+	return { color, r: 10, aura: `rgba(${r},${g},${b},0.4)`, paw: true };
+}
+
 function speciesColor(variant) {
 	const n = parseInt(variant, 10);
 	if (!Number.isFinite(n)) return '#d9534f';
@@ -741,6 +752,19 @@ function creature(g, e, look) {
 	if (body.teeth) creatureTeeth(g, body);
 	if (body.key) carriedKey(g, e, body);
 	if (body.crown) creatureCrown(g, e, body);
+	if (body.paw) pawBadge(g, body);
+}
+
+/** a white paw print on a dark disc, floating above (a wild familiar) */
+function pawBadge(g, { R }) {
+	const cy = -R * 2.25;
+	g.fillStyle = 'rgba(40,40,60,0.75)';
+	g.beginPath(); g.arc(0, cy, R * 0.55, 0, Math.PI * 2); g.fill();
+	g.fillStyle = '#ffffff';
+	g.beginPath(); g.ellipse(0, cy + R * 0.12, R * 0.2, R * 0.16, 0, 0, Math.PI * 2); g.fill();
+	for (const [dx, dy] of [[-0.24, -0.1], [-0.08, -0.24], [0.08, -0.24], [0.24, -0.1]]) {
+		g.beginPath(); g.arc(dx * R, cy + dy * R, R * 0.075, 0, Math.PI * 2); g.fill();
+	}
 }
 
 function creatureHorns(g, e, { R }) {

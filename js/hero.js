@@ -293,12 +293,9 @@ export class HeroPanel {
 	/** The left-column block: which progress the map uses. */
 	renderStatus() {
 		const status = $('#profile-status');
-		const badge = $('#profile-badge');
 		// the solver panel follows the profile, the hero choice, "use my progress" and the progress edits
 		document.dispatchEvent(new CustomEvent('nkd-hero'));
 		const mapProfile = this.effectiveProfile();
-		badge.textContent = mapProfile.text;
-		badge.className = 'profile-badge' + (mapProfile.basis === 'save' ? ' on' : mapProfile.basis === 'custom' ? ' custom' : '');
 		status.textContent = this.statusText(mapProfile);
 		$('#hero-open-btn').textContent = this.profile ? 'Your hero' : 'Import save';
 	}

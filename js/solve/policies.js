@@ -640,7 +640,10 @@ class Rath extends Policy {
 
 /** Mechanical spider (wiki): throw it next to the target when it is in reach and we have full AP, then melee */
 class Spider extends Policy {
-	constructor(name, params) { super(name, { ...params, spider: true }); }
+	constructor(name, params) {
+		super(name, params);
+		this.params.spider = true;   // its own switch: not part of the label
+	}
 	decide(fight, ctx) {
 		const spider = this.spiderInput(fight, ctx);
 		if (spider) return spider;

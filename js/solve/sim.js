@@ -25,6 +25,7 @@ const TELEPORTS = new Set([38, 39, 40, 74, 88, 126]);
 const DOOR_IDS = new Set([27, 28, 29, 33, 35, 53, 60, 73]);
 const HERO_ID = 180;
 const REEDS = 84;          // the one object the hero walks through
+const KEY = 167;           // the gold monster's key: opens one locked door 29 (c30.m0)
 const STAIRS_TILE = 5;
 /** seal MP from here up marks bw.m0 bosses (100000) until their quest is done: no MP opens them */
 const UNSEALABLE = 1000;
@@ -63,6 +64,8 @@ export function packOf(h) {
 	return m;
 }
 export const packHas = (h, id) => h.f.D.c.some((e) => e.a.a === id && e.a_() > 0);
+/** how many of item id the hero carries */
+export const packCount = (h, id) => h.f.D.c.reduce((n, e) => (e.a.a === id ? n + e.a_() : n), 0);
 /** skill learned (nw.h level >= 1, or no skill index) */
 export function learned(h, id) {
 	const sk = zw.q.get(id);
@@ -575,7 +578,8 @@ export class Walker {
 	planOptions() {
 		// the first plan is exact up to 16 stops (Held-Karp, 50-200 ms); re-plans mid-dungeon up to 10 (~1 ms), heuristic beyond
 		const exactLimit = this.stats.plans > 1 ? (this.opts.replanExact ?? 10) : (this.opts.planExact ?? 16);
-		return { rw: (id) => this.objectDef(id), bw: (id) => zw.R.get(id) ?? null, pwOf: (t) => zw.M[t], patterns: this.nonogramDone ? null : zw.O, tiles: zw.u, endAtExit: true, exactLimit };
+		// keys 167 in the pack open locked doors 29 even once their gold monsters are dead
+		return { rw: (id) => this.objectDef(id), bw: (id) => zw.R.get(id) ?? null, pwOf: (t) => zw.M[t], patterns: this.nonogramDone ? null : zw.O, tiles: zw.u, endAtExit: true, exactLimit, heldKeys: packCount(this.h, KEY) };
 	}
 
 	/**
@@ -649,9 +653,7 @@ export class Walker {
 	afterEncounter() {
 		if (this.opts.recovery === false || this.finished) return;
 		if (!this.unplannedFountainWanted()) return;
-		const replans = this.replans;
-		this.replan();
-		this.replans = replans;
+		this.planAgain();
 	}
 
 	/** an unused fountain is worth visiting now, and the rest of the route does not bump it */
@@ -734,8 +736,14 @@ export class Walker {
 		this.replan();
 	}
 
+	/** re-plan from here after a failure; past maxReplans the walk ends */
 	replan() {
 		if (++this.replans > (this.opts.maxReplans ?? 60)) { this.finished = true; return; }
+		this.planAgain();
+	}
+
+	/** plan the rest of the route from here, without counting it as a re-plan */
+	planAgain() {
 		this.tries = {};
 		this.stall = 0;
 		this.jumpFrom = null;
@@ -1506,10 +1514,10 @@ function sealAt(h, x, y) {
 }
 
 /**
- * Encounter key: the stop being walked to, plus the ordinal of the encounter on that leg (engaged: not part of the
- * key). Stable across RNG samples as long as the route is.
+ * Encounter key: the stop being walked to, plus the ordinal of the encounter on that leg. Stable across RNG samples as
+ * long as the route is; robust and exact mode both use it.
  */
-export function encounterKey(stop, ordinal, engaged) {
+export function encounterKey(stop, ordinal) {
 	return `${stopKey(stop)}#${ordinal}`;
 }
 
