@@ -81,6 +81,8 @@ node tools/solve.mjs --help   # solver from the command line
   `node tools/screenshots.mjs --before <main worktree> --out /tmp/shots`. The Screenshots bot comments on the PR with the
   fixed views. For other images in a PR description, push them to `bot/screenshots` under `pr-<n>/` and link the raw
   URL ([docs/infra.md](docs/infra.md#screenshots)); never images taken with a real save.
+- **Issues:** before starting work on an issue, check that it is not assigned. Also check the issue's comments for any
+  sign that someone else is working on it. Then assign the issue to yourself before starting work.
 - **Branches:** `<username>/<short-name>`, lowercase, e.g. `brandenleong1/docs`. Other names are rejected.
 - **Commits and PRs:** follow [docs/pr_guidelines.md](docs/pr_guidelines.md) and check with `node tools/check-pr.mjs`. The title is
   `[Area] Qualifier: Title Case Summary` (e.g. `[Solve] Feature: Kite Melee Foes With Two Or More Speed To Spare`),
