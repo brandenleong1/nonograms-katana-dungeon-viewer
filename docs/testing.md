@@ -19,7 +19,7 @@ npm test        # = node tools/run-tests.mjs: every standalone suite in test/
 | `test/version.mjs` | `data/game-version.json` and the README's Game version table agree. | instant |
 | `test/details.mjs` | Object contents, collected/unsealed states, hidden-creature warnings, distinct item labels and retained catalog behavior. | ~1 s |
 | `test/catalog.mjs` | `data/catalog.json`: every creature and object in about 770 generated dungeons (new game and progress states) has an entry with a name and a kind the map draws, and every id is drawn as before the table existed, except object 84 (the caves' mine cart, drawn as reeds before). Also the level's wild familiars and mine-cart riders. | ~9 s |
-| `test/questlines.mjs` | The Your progress questlines: every quest the generator reads is on a slider, every position round-trips through a profile, and part 3 of Once Upon a Forest brings 3C's mini-boss. | ~1 s |
+| `test/questlines.mjs` | The Your progress questlines: every quest the generator reads is on a slider, every position round-trips through a profile, and part 4 of Once Upon a Forest brings 3C's mini-boss. Quest 27 is part 1 of Once Upon a Forest, as the game files it, no shown text has the game's teaser ellipsis, and effects read "Unlocks <quest> (4A)". The mark-all buttons: every slider at its end and every boss beaten, the same on a save, nothing changed on a second press, the user's other edits kept, and dungeons of every family build with everything done. | ~4 s |
 | `test/astar.mjs` | `hw.t_` (A*) against a copy of the version before it stopped allocating, on about 10,000 calls over real mid-dungeon states (free, blocked, occupied, revealed or not, doors, teams, regions): same cost, same path (so the same tie-break among equal costs), same scratch point, open list emptied. It fails if the heap order changes. | ~10 s |
 | `test/solve.mjs` | Solver: resource ledger, route walker, the wiki's first-strike rule, robust and exact solves on small budgets, MP top-ups (including mid-fight), the plan schema, the worker pool. Use `--quick` to skip the slow cases and `--no-workers` to skip the pool. | ~1 min |
 | `test/exact-workers.mjs` | Exact mode gives the same plan with 2, 4 and 8 workers as with the inline pool, and the look-ahead cache changes nothing: a run that re-walks every cache hit finds no difference (`1A-1429008869`, small search). | ~20 s |
@@ -53,6 +53,7 @@ tomb) in each of the four themes, in headless Chromium. On every page:
 - the purple chest at 33,35 shows its Meteoric Iron contents in the panel and tooltip;
 - the Help popup credits the Nonograms Katana Wiki for the names;
 - the Your hero and Your progress popups open;
+- on 3C-172582050, the Progress popup shows no quest name with an ellipsis, unlocks as "Unlocks **Magic Beans** (4A)", the quest NPC grid in the game's rows with "← here" on 3C, and where the game shows items, buildings, and counts; its mark buttons move every questline slider to its end, tick every boss (by keyboard), and turn the map's badge to Custom progress; Clear changes puts the new game back;
 - nothing raises a page error or logs a console error.
 
 It also checks the page with no dungeon and the importing of saves:
