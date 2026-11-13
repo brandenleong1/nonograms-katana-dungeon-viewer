@@ -106,5 +106,7 @@ The creature and object names in `data/catalog.json` come from the
 [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/). That file is shared under the same licence, separately
 from the MIT-licensed code (see [NOTICE.md](NOTICE.md)).
 
+See [display catalog additions](docs/display_catalog.md) for contents, hidden-creature warnings and item distinctions.
+
 This is an unofficial fan project. It is not affiliated with or endorsed by the developer of Nonograms Katana. If you
 are the developer and would like anything changed or removed, please open an issue and it will be taken down.

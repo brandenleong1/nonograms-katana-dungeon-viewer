@@ -9,7 +9,7 @@
 //             walked trail)
 // The solve runs in js/ui/solve-host.js (a module worker with its own pool), so the page stays responsive.
 import { formatLabel, typeLabel, family } from '../labels.js';
-import { KINDS, critterKind, critterVariant, objectKind, critterName as catalogName, objectName } from '../view/catalog.js';
+import { KINDS, critterKind, critterVariant, objectKind, critterName as catalogName, objectName, itemName } from '../view/catalog.js';
 import { drawSprite } from '../view/sprites.js';
 import { zw, vj0 as V } from '../gen/statics.js';
 import { SolveClient, CancelError } from './solve-client.js';
@@ -89,7 +89,7 @@ export class SolvePanel {
 	}
 
 	// ---- names ----------------------------------------------------------------------------------------------
-	item(id) { return (this.names.items && this.names.items[id]) || `item ${id}`; }
+	item(id) { return itemName(id, this.names); }
 	skill(index, id) { return (index != null && index >= 0 && this.names.skills && this.names.skills[index]) || SKILL_NAMES_FALLBACK[id] || `skill ${id}`; }
 	/** an object's name in the dungeon shown (data/catalog.json), e.g. "purple chest"; its kind if it has none */
 	objectLabel(id) { return this.objectTitle(id).toLowerCase(); }

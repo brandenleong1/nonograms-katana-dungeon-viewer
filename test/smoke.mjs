@@ -1,6 +1,6 @@
 // Browser smoke test: serve the site on loopback, load a dungeon of every family in every theme in headless
 // Chromium, check the Help popup shows the game version and credits the wiki for the names, the Selected panel names a
-// monster, a boss and a stuck door (with the door's energy cost) and the map tooltip names them too, open the Your hero
+// monster, a boss, a chest with its contents and a stuck door (with its energy cost), plus detailed tooltips; open the Your hero
 // and Your progress popups, and fail on any page error or console error.
 //
 //   node test/smoke.mjs [-v]
@@ -23,7 +23,8 @@ const NAMED = {
 	cells: [
 		{ x: 9, y: 48, says: [/Brick door/, /Breaking it costs \d+ energy/] },               // object 28, a stuck door
 		{ x: 38, y: 56, says: [/Orc shieldman/, /HP 17 · damage 7 · defence 5/] },           // monster 259
-		{ x: 43, y: 10, says: [/Bone Dragon/, /Drops Emerald tablet shard/, /Name: Nonograms Katana Wiki/] },   // the boss, 267
+		{ x: 43, y: 10, says: [/Bone Dragon/, /Drops Emerald tablet shard/, /Name: Nonograms Katana Wiki/], tooltipSays: [/HP 85/, /Drops Emerald tablet shard/] },   // the boss, 267
+		{ x: 33, y: 35, says: [/Purple chest/, /Holds Meteoric Iron/], tooltipSays: [/Holds Meteoric Iron/] },
 	],
 };
 const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/game-version.json'), 'utf8'));
@@ -82,10 +83,10 @@ async function checkPage(browser, base, label, themeId, theme) {
 	return 1;
 }
 
-/** Select and hover each NAMED cell: the Selected panel must say all of its `says`, the tooltip its name. */
+/** Select and hover each NAMED cell: the Selected panel must say all of its `says`, the tooltip its name and requested details. */
 async function namedCellErrors(page) {
 	const errors = [];
-	for (const { x, y, says } of NAMED.cells) {
+	for (const { x, y, says, tooltipSays = [says[0]] } of NAMED.cells) {
 		const shown = await page.evaluate(({ x, y }) => {
 			const { view } = window.nkd;
 			view.onSelect(view.describe(x, y));
@@ -93,7 +94,7 @@ async function namedCellErrors(page) {
 			return { selected: document.querySelector('#selected-info').textContent, tooltip: document.querySelector('#tooltip').textContent };
 		}, { x, y });
 		if (!says.every((re) => re.test(shown.selected))) errors.push(`Selected panel at ${x},${y}: "${shown.selected.slice(0, 120)}"`);
-		if (!says[0].test(shown.tooltip)) errors.push(`tooltip at ${x},${y}: "${shown.tooltip}"`);
+		if (!tooltipSays.every((re) => re.test(shown.tooltip))) errors.push(`tooltip at ${x},${y}: "${shown.tooltip}"`);
 	}
 	return errors;
 }

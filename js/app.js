@@ -92,8 +92,8 @@ function createMapView() {
 		onSelect: showSelection,
 	});
 	$('#map').addEventListener('mousemove', (e) => {
-		tooltip.style.left = `${e.clientX + 14}px`;
-		tooltip.style.top = `${e.clientY + 14}px`;
+		tooltip.style.left = `${Math.max(8, Math.min(e.clientX + 14, window.innerWidth - tooltip.offsetWidth - 8))}px`;
+		tooltip.style.top = `${Math.max(8, Math.min(e.clientY + 14, window.innerHeight - tooltip.offsetHeight - 8))}px`;
 	});
 	return mapView;
 }
@@ -104,8 +104,16 @@ function showTooltip(tooltip, cell) {
 		return;
 	}
 	const occupied = cell.critter || cell.object;
-	tooltip.textContent = occupied ? `${occupantName(cell, state.level)} · ${cell.x},${cell.y}` : `${tileName(cell.a, cell.b)} · ${cell.x},${cell.y}`;
+	tooltip.textContent = occupied ? `${tooltipSummary(cell)} · ${cell.x},${cell.y}` : `${tileName(cell.a, cell.b)} · ${cell.x},${cell.y}`;
 	tooltip.style.display = 'block';
+}
+
+/** Reuse the Selected panel's details, with plain text and without its attribution line. */
+function tooltipSummary(cell) {
+	const summary = document.createElement('div');
+	summary.innerHTML = occupantHtml(cell, { level: state.level, names: state.names, profile: V.i2 });
+	summary.querySelector('.wiki-credit')?.remove();
+	return Array.from(summary.children, (line) => line.textContent).join(' — ');
 }
 
 /** The ids of the map layers that are on: the player's last choice (localStorage), else the defaults. */

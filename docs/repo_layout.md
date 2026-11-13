@@ -28,7 +28,7 @@ player progress (what changes the map):
 | `js/` | All site code, as ES modules (below). |
 | `data/tables.json` | Numeric game tables the generator and engine read: room shapes, object and creature definitions, items, decoration weights, a new player's profile. Generated; don't edit by hand ([infra.md](infra.md#data-files)). |
 | `data/names.json` | English display names for items, skills and quests. Generated. |
-| `data/catalog.json` | What each creature and object is called (names from the Nonograms Katana Wiki, CC BY-SA 3.0) and the kind the map draws it as. Kept by hand ([infra.md](infra.md#data-files)). |
+| `data/catalog.json` | What each creature and object is called (names from the Nonograms Katana Wiki, CC BY-SA 3.0) and the kind the map draws it as. Includes [item distinctions and contents evidence](display_catalog.md). Kept by hand ([infra.md](infra.md#data-files)). |
 | `data/game-version.json` | The game version everything follows; shown in Help, and kept equal to the README's table by `test/version.mjs`. |
 | `lib/utils/` | Git submodule [brandenleong1/utils](https://github.com/brandenleong1/utils): layout CSS, themes, popups, cookies. |
 | `test/` | Test suites and fixtures ([testing.md](testing.md)). |

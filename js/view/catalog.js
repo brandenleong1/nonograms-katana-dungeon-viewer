@@ -136,6 +136,11 @@ export function objectNameSource(obj) {
 	return CATALOG.objects[obj.id]?.source ?? null;
 }
 
+/** An item label, distinguishing quest copies, sizes, materials and map variants. */
+export function itemName(id, names = {}) {
+	return CATALOG.items?.[id] ?? names.items?.[id] ?? `item ${id}`;
+}
+
 /** The catalog entries themselves, keyed by id: { creatures, objects } (tests and tools). */
 export function catalogEntries() {
 	return { creatures: CATALOG.creatures, objects: CATALOG.objects };
