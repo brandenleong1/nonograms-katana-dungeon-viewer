@@ -9,12 +9,12 @@
 //   paintCreature(g, env, species, scale = 1)   -> draw it (env as in sprites.js: { u, lw })
 
 /** species drawn the same as another (one picture in the game) */
-const SAME_AS = { 276: 210, 277: 212 };
+const SAME_AS = { 276: 210, 277: 212, 278: 234, 279: 236, 285: 224 };
 
 const drawingOf = (id) => DRAW[SAME_AS[id] ?? id];
 
 /** drawn mirrored, so they face right as in the game (their drawings face left) */
-const FACE_RIGHT = new Set([200, 201, 203, 204, 215, 268]);
+const FACE_RIGHT = new Set([200, 201, 203, 204, 215, 228, 268]);
 
 export const hasCreature = (id) => !!drawingOf(+id);
 
@@ -118,9 +118,9 @@ function pen(g, u, lw, flip = false) {
 			g.beginPath(); g.arc(H(x), X(y), X(r), 0, Math.PI * 2); g.fill();
 			g.globalCompositeOperation = 'source-over';
 		},
-		/** big chibi eyes: white, dark iris looking a little to the right on screen, highlight up and to the left */
-		eyes(x, y, gap, r, iris = '#2a1f1a') {
-			const d = flip ? -1 : 1;
+		/** big chibi eyes: white, dark iris looking a little to the right on screen (left with look = -1), highlight up and to the left */
+		eyes(x, y, gap, r, iris = '#2a1f1a', look = 1) {
+			const d = (flip ? -1 : 1) * look;
 			for (const s of [-1, 1]) {
 				P.dot(x + s * gap, y, r, '#fbf7f0');
 				P.dot(x + s * gap + d * r * 0.15, y + r * 0.15, r * 0.62, iris);
@@ -180,6 +180,30 @@ function skull(P, x, y, r, bone, eye = null) {
 /** a curved blade (sickle, cutlass, glaive) from (x0, y0) bending through (cx, cy) to (x1, y1) */
 function curvedBlade(P, x0, y0, cx, cy, x1, y1, width) {
 	P.shape((p) => { p.m(x0, y0); p.q(cx, cy, x1, y1); p.q(cx * 0.85 + x0 * 0.15 + width * 0.3, cy * 0.85 + y0 * 0.15 + width, x0 + width * 0.4, y0 + width * 0.3); }, '#dfe4ec', Math.min(x0, x1), Math.max(x0, x1));
+}
+
+/** a straight sword with its hilt at (x, y), pointing at angle a (0 = right, positive = down), blade length len, width w */
+function sword(P, x, y, a, len, w = 1.6, blade = '#dfe4ec') {
+	const dx = Math.cos(a), dy = Math.sin(a), nx = -dy, ny = dx;
+	const at = (t, o) => [x + dx * t + nx * o, y + dy * t + ny * o];
+	P.line([at(-2.4, 0), at(0, 0)], '#4a2a1a', 0.9);
+	P.poly([at(0.3, -w * 0.5), at(len - w * 1.1, -w * 0.5), at(len, w * 0.2), at(len - w * 1.6, w * 0.5), at(0.3, w * 0.5)], blade);
+	P.thin([at(0.9, -w * 0.05), at(len - w * 1.6, -w * 0.05)], shade(blade, -0.3), 0.25);
+	P.line([at(0, -w * 1.2), at(0, w * 1.2)], '#c9a24a', 0.7);
+}
+
+/** a double-bitted axe: the haft from (x0, y0) to its head at (x1, y1), two crescent blades either side of it */
+function doubleAxe(P, x0, y0, x1, y1, size = 1) {
+	const L = Math.hypot(x1 - x0, y1 - y0), dx = (x1 - x0) / L, dy = (y1 - y0) / L, nx = -dy, ny = dx;
+	const at = (t, o) => [x1 + dx * t * size + nx * o * size, y1 + dy * t * size + ny * o * size];
+	P.line([[x0, y0], at(1.6, 0)], '#6a4a2a', 1.1);
+	for (const side of [-1, 1]) {
+		const pts = [at(1.3, side * 0.7), at(3.2, side * 3.6), at(0, side * 5.4), at(-3.2, side * 3.6), at(-1.3, side * 0.7)];
+		const xs = pts.map((q) => q[0]);
+		P.shape((p) => { p.m(...pts[0]); p.l(...pts[1]); p.q(...pts[2], ...pts[3]); p.l(...pts[4]); }, '#8a909a', Math.min(...xs), Math.max(...xs));
+		P.thin([at(2.6, side * 3.4), at(0, side * 4.8), at(-2.6, side * 3.4)], '#dfe4ec', 0.3);
+	}
+	P.dot(...at(0, 0), 0.9 * size, '#5a5f68');
 }
 
 // ---- the creatures -----------------------------------------------------------------------------------------------
@@ -740,5 +764,271 @@ const DRAW = {
 		P.ellipse(-16.3, -8, 1.5, 1.2, '#1a1a12', { line: false });
 		P.glow(-16.3, -8, 2.8, '#6aff7a', 0.7); P.dot(-16.3, -8, 0.6, '#b8ffb8');
 		P.dot(-21.3, -5.4, 0.45, '#2a2618');
+	},
+	// ---- dungeon level 2 (2A-2C) ----
+	// Goblin: a grey-green goblin in purple armour under a pink hood, big ears and nose, a pale curved blade held low.
+	// Drawn facing left; mirrored (FACE_RIGHT).
+	228(P) {
+		P.shadow(10, 4.5);
+		const skin = '#8f9f76', armour = '#5a3f86', hood = '#c8467a';
+		legs(P, '#3e305a', '#2a2238');
+		torso(P, -19, 5, -6, 6.5, armour);
+		for (const y of [-15, -11.5]) P.thin([[-5.5, y], [5.5, y]], shade(armour, -0.4), 0.5);
+		P.line([[-6, -8], [6, -8]], '#7a4a2a', 1.2);
+		P.shape((p) => { p.m(-6, -20); p.q(-8, -14, -6.5, -9); p.l(-3, -12); p.q(0, -17, 6, -20); p.q(9, -16, 9, -9); p.l(11, -13); p.q(11, -22, 4, -23); p.l(-4, -23); }, hood, -8, 11);
+		P.line([[5.5, -16], [8, -11.5]], skin, 1.6);
+		for (const k of [-1, 0, 1]) P.thin([[8, -11.5], [8.6 + k * 0.6, -9.6]], '#3a3a2a', 0.35);
+		P.line([[-5.5, -16], [-8.5, -11]], skin, 1.6);
+		P.line([[-8.6, -10.8], [-9.4, -9]], '#4a3a2a', 1);
+		curvedBlade(P, -9, -9.4, -16, -9, -18, -2, 1.6);
+		for (const sd of [-1, 1]) P.poly([[sd * 5, -26.5], [sd * 11.5, -29.5], [sd * 6, -23.5]], skin);
+		head(P, -25, 6.2, skin);
+		P.eyes(-0.8, -25.6, 2.3, 1.35, '#a8201a', -1);
+		P.poly([[-1.5, -24.3], [-6.2, -21.6], [-1.2, -22.4]], shade(skin, -0.05));
+		P.shape((p) => { p.m(-3.6, -20.8); p.q(-0.5, -18.8, 2.6, -20.6); p.q(-0.5, -19.8, -3.6, -20.8); }, '#3a1a1a', -3.6, 2.6, { line: false });
+		P.shape((p) => { p.m(-6.6, -26); p.q(-7.5, -33, 0, -33.5); p.q(6, -33.5, 9, -29); p.q(11, -26, 12.5, -23); p.q(8, -25.5, 6, -27.5); p.q(0, -30.5, -6.6, -26); }, hood, -7.5, 12.5);
+	},
+	// Harpy: a woman with orange-brown wings spread above her, spiky hair, a feathered skirt, bird legs and a sickle
+	229(P) {
+		P.shadow(10, 4, 1.5, 0.22);
+		const wing = '#c9773a', skin = '#d9955e', feather = '#8a4a24';
+		for (const sd of [-1, 1]) {
+			P.shape((p) => { p.m(sd * 3, -22); p.q(sd * 8, -38, sd * 18, -42); p.l(sd * 16, -37); p.l(sd * 21, -36); p.l(sd * 17, -31.5); p.l(sd * 21, -29); p.l(sd * 16, -26); p.l(sd * 18.5, -22); p.q(sd * 10, -21, sd * 4, -17); }, wing, sd < 0 ? -21 : 3, sd < 0 ? -3 : 21);
+			for (const [x, y] of [[18, -42], [21, -36], [21, -29], [18.5, -22]]) P.thin([[sd * 5, -21], [sd * x * 0.92, y * 0.95]], shade(wing, -0.35), 0.35);
+		}
+		for (const sd of [-1, 1]) {
+			P.line([[sd * 2.4, -8], [sd * 3, -4], [sd * 2.6, -1.6]], '#6a4a2a', 1.1);
+			for (const k of [-1, 0, 1]) P.thin([[sd * 2.6, -1.6], [sd * (2.6 + k * 1.1), -0.2]], '#3a2a1a', 0.45);
+		}
+		P.shape((p) => { p.m(-5, -12); p.l(5, -12); p.l(6.5, -6); p.l(4, -7.5); p.l(2.5, -5); p.l(0, -7); p.l(-2.5, -5); p.l(-4, -7.5); p.l(-6.5, -6); }, feather, -6.5, 6.5);
+		torso(P, -20, 4, -12, 4.6, skin);
+		P.shape((p) => { p.m(-4, -18.5); p.q(0, -17, 4, -18.5); p.l(4, -16); p.q(0, -14.5, -4, -16); }, feather, -4, 4);
+		P.line([[-4, -18], [-7, -13], [-6, -9]], skin, 1.3);
+		P.line([[4, -18], [7, -13.5], [8, -11.5]], skin, 1.3);
+		sword(P, 8.2, -11.2, 1.2, 9.5, 1.4);
+		head(P, -26, 6.2, skin);
+		P.eyes(0, -25.6, 2.3, 1.3, '#5a2a0a');
+		P.mouth(0, -22.2, 0.9);
+		for (const [x0, x1, y1] of [[-6, -9, -31], [-3.5, -5, -35], [0, 0.5, -36], [3.5, 5.5, -35], [6, 9, -31]]) P.poly([[x0 - 1.4, -28], [x1, y1], [x0 + 1.4, -28.5]], '#d9682a');
+		P.shape((p) => { p.m(-6.4, -27); p.q(-5, -32.5, 0, -32.6); p.q(5, -32.5, 6.4, -27); p.q(0, -29, -6.4, -27); }, '#d9682a', -6.4, 6.4);
+	},
+	// Kobold: an orange hood over a snouted face with an open mouth, dark leather, a sickle-dagger in each hand
+	230(P) {
+		P.shadow(10, 4.5);
+		const hood = '#e8892a', fur = '#7a5a48', leather = '#4a3428';
+		for (const sd of [-1, 1]) {
+			P.line([[sd * 2.6, -9], [sd * 4, -5], [sd * 3, -1.8]], fur, 2.2);
+			P.ellipse(sd * 3.6, -1.2, 2.2, 1.3, shade(fur, -0.3));
+		}
+		P.thin([[3, -6], [9, -4], [11, -7]], fur, 0.8);
+		torso(P, -19, 5, -7, 6.5, leather);
+		P.line([[-6, -9], [6, -9]], '#6a4a2a', 1.1);
+		for (const sd of [-1, 1]) {
+			P.line([[sd * 5, -17], [sd * 8.5, -12], [sd * 9, -9.5]], fur, 1.5);
+			P.line([[sd * 9, -9.5], [sd * 9.2, -7.6]], '#3a2a1e', 1);
+			curvedBlade(P, sd * 9.4, -7.8, sd * 14, -9, sd * 13.5, -14, 1.1);
+		}
+		P.shape((p) => { p.m(-8, -19); p.q(-10, -31, 0, -33); p.q(8, -33, 9, -27); p.q(11, -25, 13, -23); p.q(10, -21.5, 8, -19); p.q(0, -16.5, -8, -19); }, hood, -10, 13);
+		P.ellipse(0, -24.5, 5.4, 5.4, '#2a1a10', { line: false });
+		P.ellipse(0, -22.5, 3.6, 3, fur);
+		P.dot(0, -24.3, 0.9, '#1a120a');
+		P.ellipse(0, -21, 2.2, 1.2, '#5a1a14', { line: false });
+		P.poly([[-1.4, -21.9], [-0.8, -21.9], [-1.1, -20.6]], '#f3ece0', { line: false }); P.poly([[1.4, -21.9], [0.8, -21.9], [1.1, -20.6]], '#f3ece0', { line: false });
+		P.glowEyes(0, -26.4, 2.2, 0.6, '#ffd23f');
+	},
+	// Croc zealot: a hunched crocodile warrior facing right in a brown hooded cloak (a small grey horn on the hood), a thick
+	// tail, a pale scaly belly, a long toothy snout, a grey kite shield in front and a broad falchion
+	231(P) {
+		P.shadow(13, 5);
+		const skin = '#5f9a34', belly = '#c9d98a', cloak = '#7a5a3a';
+		P.shape((p) => { p.m(-3, -9); p.q(-11, -8, -14, -3); p.q(-15, 0, -11, 0.5); p.q(-12, -2, -8, -4); p.q(-4, -5.5, -2, -6); }, skin, -15, -2);
+		P.shape((p) => { p.m(-2, -30); p.q(-9, -29, -10, -21); p.q(-11, -12, -10, -5); p.l(-8, -6.5); p.l(-6.5, -4.5); p.l(-5, -6.5); p.l(-3, -5); p.l(-1.5, -7); p.q(-2, -18, 2, -26); }, cloak, -11, 2);
+		for (const x of [-8.5, -5.5]) P.thin([[x + 1.5, -26], [x, -8]], shade(cloak, -0.35), 0.45);
+		for (const sd of [-1, 1]) {
+			P.line([[sd * 3, -9], [sd * 3.6, -5], [sd * 3.2, -2]], skin, 3);
+			P.ellipse(sd * 3.6, -1.2, 2.6, 1.3, shade(skin, -0.3));
+			for (const k of [-1, 0, 1]) P.thin([[sd * 3.6 + k * 0.9, -0.6], [sd * 3.6 + k * 1.1 + 0.6, 0.4]], '#e9e2c8', 0.3);
+		}
+		P.shape((p) => { p.m(-5.5, -21); p.q(0, -23, 6, -21); p.q(7.5, -14, 6, -7.5); p.q(0, -5.5, -5.5, -7.5); p.q(-7, -14, -5.5, -21); }, skin, -7, 7.5);
+		P.shape((p) => { p.m(-2, -20); p.q(1.5, -21, 4.5, -19.5); p.q(5, -13.5, 4, -8.5); p.q(1, -7.4, -2, -8.5); p.q(-3, -14, -2, -20); }, belly, -3, 5, { line: false });
+		for (const y of [-17.5, -15, -12.5, -10]) P.thin([[-2.4, y], [4.6, y]], shade(belly, -0.3), 0.35);
+		P.thin([[-4.5, -20.5], [5.5, -9]], '#6a4424', 0.9);
+		P.shape((p) => { p.m(-3, -21.5); p.q(-1, -27, 3, -29); p.q(8, -30, 9, -27); p.l(7, -21); p.q(2, -19.5, -3, -21.5); }, skin, -3, 9);
+		P.shape((p) => { p.m(6, -29); p.q(12, -29, 16.5, -26.4); p.q(17, -24, 14.5, -23.4); p.q(10, -22.8, 6.5, -23.2); }, skin, 6, 17);
+		P.shape((p) => { p.m(6.5, -23.4); p.q(11, -23, 15, -23.3); p.q(13.5, -21.4, 9, -21.4); p.q(7, -21.6, 6.5, -23.4); }, shade(skin, 0.1), 6.5, 15);
+		for (let x = 7.5; x < 15; x += 1.5) P.poly([[x, -23.4], [x + 0.6, -23.4], [x + 0.3, -22.4]], '#f3ece0', { line: false });
+		P.dot(16, -26.4, 0.4, '#1a2a0a');
+		P.shape((p) => { p.m(-4.5, -21); p.q(-5.5, -32, 2, -32.6); p.q(7.5, -32.8, 8.6, -28.8); p.q(4.5, -30.2, 1.5, -28.6); p.q(-1.5, -26, -1.5, -21); }, cloak, -5.5, 8.6);
+		P.thin([[-2.6, -22], [-1.4, -28.6], [2.4, -30.6], [7.4, -30]], shade(cloak, 0.25), 0.4);
+		P.shape((p) => { p.m(2.4, -32.2); p.q(3.2, -36.5, 6, -37); p.q(4.2, -35, 4.2, -32.2); }, '#5a5f68', 2.4, 6);
+		P.shape((p) => { p.m(-6.2, -21.4); p.q(0, -23.4, 6.4, -21); p.q(5, -17.6, 0, -17.4); p.q(-5, -17.8, -6.2, -21.4); }, cloak, -6.2, 6.4);
+		P.ellipse(6.2, -27.3, 2, 1.6, '#f0dc3a'); P.ellipse(6.6, -27.3, 0.55, 1.1, '#1a1208', { line: false });
+		P.line([[5, -19], [8.5, -15], [10, -12.5]], skin, 2);
+		sword(P, 10.4, -12.6, 0.45, 10.5, 2.6);
+		P.line([[-5, -18.5], [-8, -15]], skin, 2);
+		P.shape((p) => { p.m(-13, -21); p.l(-4.5, -21.5); p.q(-4, -11, -8.6, -5); p.q(-13.4, -11, -13, -21); }, '#9aa6b5', -13.4, -4);
+		P.shape((p) => { p.m(-11, -19); p.l(-6.5, -19.2); p.q(-6.4, -13, -8.6, -9.5); p.q(-11.2, -13, -11, -19); }, '#5a6878', -11.2, -6.4, { line: false });
+		P.gloss(-11, -19, 1.2, 0.6, 0.4);
+	},
+	// Boar shieldman: a bristly boar head facing right with tusks, a round wooden shield in front, an axe in the other hand
+	232(P) {
+		P.shadow(12, 5);
+		const fur = '#6a4a3a', mane = '#2e221c';
+		for (const sd of [-1, 1]) {
+			P.line([[sd * 3, -9], [sd * 3.6, -5], [sd * 3.2, -2]], fur, 2.4);
+			P.ellipse(sd * 3.4, -1.2, 2.2, 1.2, '#2a1e18');
+		}
+		P.line([[5, -10], [14, -18]], '#5a3a22', 1);
+		P.shape((p) => { p.m(12.6, -16.4); p.q(19, -19, 19.5, -12.5); p.q(16.5, -13.5, 14, -13.8); }, '#5a5f68', 12.6, 19.5);
+		torso(P, -20, 6, -6, 7, '#5a4030');
+		P.line([[-6, -9], [6, -9]], '#3a2a1e', 1.2);
+		for (let x = -6; x <= 4; x += 2.2) P.poly([[x, -22], [x + 1.2, -27.5 + Math.abs(x) * 0.2], [x + 2.2, -22]], mane);
+		P.ellipse(3, -24.5, 6.2, 5.4, '#8a6450');
+		P.shape((p) => { p.m(6, -26.5); p.q(11, -26.5, 12.5, -24); p.q(12.5, -21, 9, -20.5); p.q(6.5, -20.5, 6, -22); }, '#8a6450', 6, 12.5);
+		P.ellipse(12, -23.4, 1.4, 1.9, '#c98a78');
+		P.dot(11.8, -24, 0.3, '#3a1a14'); P.dot(11.9, -22.8, 0.3, '#3a1a14');
+		for (const [x, y] of [[8.8, -21], [7.4, -21.3]]) P.shape((p) => { p.m(x, y); p.q(x + 1.6, y - 2.4, x + 0.6, y - 4.4); p.q(x - 0.2, y - 2.4, x - 0.8, y - 0.2); }, '#f3ece0', x - 1, x + 1.6);
+		P.poly([[1, -28.6], [-0.6, -32.4], [3, -29.2]], '#8a6450');
+		P.dot(5.4, -26, 0.9, '#1a120a'); P.dot(5.6, -26.3, 0.3, '#ffe9c0');
+		P.circle(-5, -14, 7.6, '#7a5232');
+		for (const a of [-0.8, 0, 0.8]) P.thin([[-5 + Math.sin(a) * 7, -14 - Math.cos(a) * 7], [-5 + Math.sin(a) * 7, -14 + Math.cos(a) * 7]], shade('#7a5232', -0.35), 0.4);
+		P.circle(-5, -14, 2, '#9aa0aa');
+		P.gloss(-8, -18, 1.8, 0.9, 0.4);
+	},
+	// Gnoll axeman: a spotted hyena head facing right, a mane, a studded leather pauldron, an axe over the shoulder
+	233(P) {
+		P.shadow(11, 4.8);
+		const fur = '#9a7a5a', spot = '#5a4030', leather = '#5a3e2c';
+		P.thin([[-4, -7], [-9, -6], [-11, -9]], fur, 1);
+		for (const sd of [-1, 1]) {
+			P.line([[sd * 2.8, -9], [sd * 4, -5], [sd * 3, -1.8]], fur, 2.2);
+			P.ellipse(sd * 3.6, -1.2, 2.2, 1.3, '#3a2a1e');
+		}
+		torso(P, -20, 5.5, -6, 6.5, leather);
+		P.thin([[-5, -18], [4, -8]], '#3a2818', 0.9);
+		for (const [x, y] of [[-2, -14.5], [1, -11.5]]) P.dot(x, y, 0.45, '#c9b080');
+		P.line([[7, -7], [-8, -32]], '#8a5a2a', 1.2);
+		P.shape((p) => { p.m(-7, -30); p.q(-15, -34, -16, -25.5); p.q(-12.5, -27, -9.5, -26.6); }, '#7a7f8a', -16, -7);
+		P.line([[-5, -17], [-3, -13], [1, -11.5]], fur, 1.6);
+		P.line([[5, -17], [5, -13], [2.5, -10.5]], fur, 1.6);
+		P.ellipse(-4.5, -19.5, 4.2, 3.2, '#4a3428');
+		for (const x of [-6.5, -4.5, -2.5]) P.dot(x, -20.4, 0.5, '#c9b080');
+		for (let x = -5; x <= 2; x += 1.8) P.poly([[x, -23], [x + 0.9, -27.5], [x + 1.8, -23]], spot);
+		P.ellipse(1.5, -25, 5.6, 5, fur);
+		P.shape((p) => { p.m(4.5, -27); p.q(10, -26.5, 11.5, -24); p.q(11, -21.5, 7.5, -21.2); p.q(5, -21.4, 4.5, -22.5); }, fur, 4.5, 11.5);
+		P.dot(11.2, -24.4, 0.8, '#1a120a');
+		P.thin([[6, -22.2], [10.6, -22.4]], '#3a1a10', 0.45);
+		P.poly([[7.4, -22.3], [8, -22.3], [7.7, -21.3]], '#f3ece0', { line: false });
+		for (const [x, y] of [[-1, -27], [2, -22], [-2.5, -23.5]]) P.dot(x, y, 0.7, spot);
+		P.poly([[-1, -28.8], [-1.5, -33], [1.5, -29.4]], fur);
+		P.dot(4.2, -26, 0.9, '#1a120a'); P.dot(4.4, -26.3, 0.3, '#ffe9a0');
+	},
+	// Minotaur (also the 2A boss): a dark brown bull head facing right with big cream horns and a nose ring, a muscular
+	// body, a loincloth, a double-bladed axe held across it
+	234(P) {
+		P.shadow(13, 5);
+		const fur = '#6a4a36', dark = '#3e2a20', horn = '#e9dcc0';
+		P.thin([[-4, -7], [-10, -5], [-12, -8]], fur, 1);
+		for (const sd of [-1, 1]) {
+			P.line([[sd * 3.2, -9], [sd * 4, -5], [sd * 3.4, -2]], dark, 2.8);
+			P.ellipse(sd * 3.6, -1.1, 2.4, 1.3, '#1e1612');
+		}
+		torso(P, -21, 7, -7, 7, fur);
+		P.shape((p) => { p.m(-3.5, -19); p.q(0, -16.5, 3.5, -19); p.q(3, -13, 0, -12); p.q(-3, -13, -3.5, -19); }, shade(fur, 0.12), -3.5, 3.5, { line: false });
+		P.shape((p) => { p.m(-6, -8); p.l(6, -8); p.l(4, -2.5); p.l(-4, -2.5); }, '#8a3a24', -6, 6);
+		doubleAxe(P, -8, -4, 15.5, -18.5, 1.35);
+		P.line([[-7, -19], [-9, -12], [-6, -9]], fur, 2.2);
+		P.line([[7, -19], [8.5, -13], [5.5, -12]], fur, 2.2);
+		P.ellipse(1, -25.5, 6, 5.4, fur);
+		P.shape((p) => { p.m(4, -27.5); p.q(9.5, -27.5, 10.5, -24); p.q(10.5, -20.5, 6.5, -20.5); p.q(4, -20.8, 3.6, -22.5); }, shade(fur, 0.15), 3.6, 10.5);
+		P.dot(9.6, -23.6, 0.45, '#1a120a'); P.dot(9.8, -22.4, 0.45, '#1a120a');
+		P.thin([[9.6, -21.8], [10.6, -21.2], [10.2, -20.4]], '#d9b24a', 0.45);
+		for (const sd of [-1, 1]) P.shape((p) => { p.m(sd * 3 + 1, -29); p.q(sd * 10 + 1, -30, sd * 11 + 1, -37); p.q(sd * 8 + 1, -32.5, sd * 4 + 1, -31.4); }, horn, sd < 0 ? -10 : 4, sd < 0 ? -2 : 12);
+		P.dot(4, -26.2, 0.9, '#1a120a'); P.dot(4.2, -26.5, 0.3, '#ffd0a0');
+		P.thin([[2.6, -27.6], [5, -27.2]], '#2a1a12', 0.5);
+		P.poly([[-4, -27], [-7.5, -26], [-4.4, -25]], shade(fur, -0.1));
+	},
+	// Centauride: a woman's torso on a lion's body, long dark braids, a white top, a halberd held upright; faces right
+	235(P) {
+		P.shadow(16, 5);
+		const lion = '#a8683a', skin = '#8a5a3a', hair = '#2a1a14';
+		P.line([[-11, -11], [-15, -13], [-16, -18], [-14, -20]], lion, 1.1);
+		P.dot(-14, -20.4, 1, '#5a3a24');
+		for (const x of [-9, -5]) P.line([[x, -9], [x - 0.6, -4], [x, -1.4]], shade(lion, -0.15), 2);
+		for (const x of [3, 7]) P.line([[x, -9], [x + 0.6, -4], [x, -1.4]], shade(lion, -0.15), 2);
+		P.ellipse(-2, -11, 10.5, 5, lion);
+		P.gloss(-6, -14, 3, 1.2, 0.4);
+		for (const x of [-7.5, -3.5, 3.5, 7.5]) P.line([[x, -8], [x + (x > 0 ? 0.6 : -0.6), -4], [x, -1.5]], lion, 2);
+		for (const x of [-7.5, -3.5, 3.5, 7.5]) P.ellipse(x, -1.2, 1.6, 1, shade(lion, -0.3));
+		P.line([[11, 0], [12, -42]], '#5a3a22', 0.9);
+		P.shape((p) => { p.m(12.1, -38); p.q(17.5, -39, 18, -33); p.q(15.5, -34.5, 12.2, -34); }, '#9aa0aa', 12, 18);
+		P.poly([[11.6, -42], [12.4, -46], [12.8, -41.8]], '#9aa0aa');
+		torso(P, -22, 3.8, -12, 4.4, skin);
+		P.shape((p) => { p.m(-3.8, -20); p.q(0, -18.6, 3.8, -20); p.l(4, -17); p.q(0, -15.8, -4, -17); }, '#f2efe6', -4, 4);
+		P.line([[-3.8, -14], [3.8, -14]], '#c9a24a', 0.6);
+		P.line([[-3.6, -20.5], [-6, -16], [-4.5, -13]], skin, 1.2);
+		P.line([[3.6, -20.5], [8, -19], [11.5, -21]], skin, 1.2);
+		P.shape((p) => { p.m(-6, -28); p.q(-8, -18, -5.5, -14); p.l(-2, -17); p.q(-3, -22, -3.4, -26); }, hair, -8, -2);
+		head(P, -27, 5.6, skin);
+		P.eyes(0.4, -27, 2, 1.2, '#2a1408');
+		P.mouth(0.4, -23.8, 0.8, '#4a1a10');
+		P.shape((p) => { p.m(-5.8, -27.5); p.q(-5.5, -33.5, 0.5, -33.6); p.q(5.5, -33.4, 5.8, -28.5); p.q(2, -31, -5.8, -27.5); }, hair, -6, 6);
+		for (const [x, y] of [[-6.6, -22], [-6.8, -18.5]]) P.dot(x, y, 0.6, '#c9a24a');
+	},
+	// Fanged beast (also the 2B boss): a hulking orange-furred beast with an animal skull worn on the side of its head, a
+	// dark mane, fangs, a fur loincloth, a double axe; faces right
+	236(P) {
+		P.shadow(14, 5.5);
+		const fur = '#c8603a', mane = '#4a3024', bone = '#ece2c8';
+		for (const sd of [-1, 1]) {
+			P.line([[sd * 4, -8], [sd * 5, -4.5], [sd * 4, -2]], fur, 3);
+			P.ellipse(sd * 4.4, -1.2, 2.6, 1.3, '#4a2a1a');
+		}
+		P.ellipse(0, -14, 9, 8.5, fur);
+		P.shape((p) => { p.m(-3, -19); p.q(1, -21, 5, -19); p.q(5, -12, 1, -10.5); p.q(-3, -12, -3, -19); }, '#e9d7b8', -3, 5, { line: false });
+		P.shape((p) => { p.m(-8, -8); p.l(8, -8); p.l(6.5, -3.5); p.l(4, -5.5); p.l(1.5, -3); p.l(-1, -5.5); p.l(-3.5, -3); p.l(-6, -5.5); p.l(-8.5, -3.5); }, '#5a3a2a', -8.5, 8);
+		P.line([[-8, -18], [-11, -11], [-9, -7]], fur, 2.4);
+		P.line([[8, -18], [11, -12], [12, -8]], fur, 2.4);
+		doubleAxe(P, 12.5, -2, 15.5, -29, 1);
+		P.ellipse(1, -25, 8, 7, mane);
+		for (const [x, y] of [[-6.5, -20], [-7.5, -24], [-6, -29]]) P.poly([[x + 1.5, y - 1], [x - 2.5, y + 0.5], [x + 1.5, y + 1.8]], mane);
+		skull(P, -3, -27, 5.4, bone);
+		// the snarling face below the skull: a pale muzzle, an angry eye under a heavy brow, a dark nose, big fangs
+		P.ellipse(3, -23, 5.4, 4.6, fur);
+		P.shape((p) => { p.m(4.5, -24.5); p.q(10.5, -24.5, 11, -21); p.q(10.5, -17.5, 6.5, -17.8); p.q(3.6, -18.4, 3.6, -21); }, '#f0c890', 3.6, 11);
+		P.ellipse(10.4, -22.6, 1.1, 0.8, '#2a120a', { line: false });
+		P.shape((p) => { p.m(5.2, -19.6); p.q(8, -20.6, 10.6, -19.6); p.q(8, -18.8, 5.2, -19.6); }, '#4a120a', 5.2, 10.6, { line: false });
+		for (const x of [6.4, 9.2]) P.poly([[x - 0.6, -19.6], [x + 0.6, -19.6], [x, -17.4]], '#ffffff');
+		P.dot(5, -24.6, 1.3, '#fff2c8'); P.dot(5.4, -24.6, 0.65, '#2a120a');
+		P.line([[3, -26.6], [7, -25.6]], '#5a2a14', 0.7);
+	},
+	// Naga (2C boss): a four-armed woman with pointed ears and an auburn ponytail on a coiled snake tail: curved swords
+	// raised in the upper hands, straight swords held down and out in the lower ones
+	237(P) {
+		P.shadow(13, 5);
+		const scale = '#a8643a', belly = '#e0b07a', skin = '#d9a06a', hair = '#6a2a1a';
+		P.ellipse(0, -2.6, 11.5, 4.4, scale);
+		P.ellipse(1, -6.6, 9.5, 3.8, scale);
+		P.line([[9, -3], [14, -2], [16, -5]], scale, 2);
+		P.line([[1, -8], [-1, -12], [0, -15]], scale, 6);
+		P.line([[1.6, -8.6], [-0.2, -12], [0.6, -14.6]], belly, 2.2);
+		for (const sd of [-1, 1]) {
+			P.line([[sd * 3.6, -20.5], [sd * 7.5, -16.5], [sd * 9.5, -17.5]], skin, 1.2);
+			curvedBlade(P, sd * 9.6, -17.4, sd * 15, -22, sd * 13, -32, 1.3);
+			P.line([[sd * 9.2, -18.2], [sd * 10.4, -16.6]], '#4a2a1a', 0.7);
+		}
+		torso(P, -21, 3.8, -14, 4.2, skin);
+		P.shape((p) => { p.m(-3.8, -20.5); p.q(0, -19, 3.8, -20.5); p.l(3.9, -17.5); p.q(0, -16.2, -3.9, -17.5); }, '#6a3a20', -3.9, 3.9);
+		// a second pair of arms below the first, each with a sword pointing down and out
+		for (const sd of [-1, 1]) {
+			P.line([[sd * 3.8, -16], [sd * 7, -13], [sd * 8.6, -10.6]], skin, 1.2);
+			sword(P, sd * 8.8, -10.4, sd < 0 ? Math.PI - 0.75 : 0.75, 8.5, 1.3);
+		}
+		P.shape((p) => { p.m(3, -31); p.q(9, -32, 8.5, -22); p.q(7, -26, 4, -28); }, hair, 3, 9);
+		for (const sd of [-1, 1]) P.poly([[sd * 5, -27.5], [sd * 8.5, -30], [sd * 5.4, -26]], skin);
+		head(P, -27, 5.6, skin);
+		P.eyes(0, -27, 2, 1.2, '#2a5a20');
+		P.mouth(0, -23.8, 0.8, '#6a2a1a');
+		P.shape((p) => { p.m(-5.8, -27.5); p.q(-5.5, -33.5, 0, -33.6); p.q(5.5, -33.4, 5.8, -27.5); p.q(1, -30.8, -5.8, -27.5); }, hair, -6, 6);
 	},
 };
