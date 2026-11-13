@@ -552,7 +552,7 @@ install({
 		return !o.a.W && (o.a.P & 2) === 0;
 	},
 
-	/** boolean n(int cell): the cell's object is a creature (qw.e), or rw.l / rw.u, or reeds (84). */
+	/** boolean n(int cell): the cell's object is a creature (qw.e), or rw.l / rw.u, or a mine cart (84). */
 	n_(i) {
 		const o = this.b.k[i];
 		if (!isNull(o)) {

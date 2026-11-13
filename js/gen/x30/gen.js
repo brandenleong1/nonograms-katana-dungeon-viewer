@@ -357,7 +357,7 @@ install({
 		this.b_(bx, by, u, nu, this.H, true);
 	},
 
-	/** Cave cover points collected during corridor carving become reed objects (84). */
+	/** Cave cover points collected during corridor carving become mine carts (84) on the rails. */
 	coverPass() {
 		const cover = this.C;
 		for (let i = 0, n = cover.length; i < n; i++) {

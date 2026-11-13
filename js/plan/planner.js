@@ -3,7 +3,7 @@
 // Movement follows the game's own pathfinder (hw.t):
 //  - 4-directional steps. A tile is walkable if its tile type allows it (zw.u .m: floor, doorway), or if it is
 //    overgrowth (.o: tiles 8/9/10) that has been cleared (b & 32); clearing costs energy.
-//  - Every object blocks its tile except reeds (84). Objects are used from a neighbouring tile ("bump").
+//  - Every object blocks its tile except mine carts (84). Objects are used from a neighbouring tile ("bump").
 //  - Door objects open by condition:
 //      27 sealed door (mental power), 28 stuck door (energy, pw.r)   -> openable at a cost
 //      33 gate -> its lever (32, same h); 29 locked door -> a gold monster's key (167), or one the hero holds;
@@ -29,7 +29,7 @@ const FLOOR = 1, WALL = 2, EXIT = 5, OUTWALL = 7, FLOWERS = 10;
 const CLEARED = 32;            // b & 32: overgrowth cleared, a forest exit unlocked
 const PLATE = 44;              // floor decoration (b & 63): a barrel plate
 const NONOGRAM_CORNER = 12;    // floor decoration (b & 63): the corner of the floor nonogram's clue area
-const HERO = 180, REEDS = 84;
+const HERO = 180, MINE_CART = 84;
 // tileAction's answer for a tile nobody can enter (null: nothing to do there)
 const BLOCKED = Object.freeze({ blocked: true });
 
@@ -163,7 +163,7 @@ class RouteGrid {
 		const flag = this.tileFlag(this.cells[2 * i]);
 		if (!flag.m && !flag.o) return false;
 		const o = this.objAt.get(i);
-		if (o && o.id !== REEDS && !DOORS.has(o.id)) return false;   // objects block, except reeds and doors
+		if (o && o.id !== MINE_CART && !DOORS.has(o.id)) return false;   // objects block, except mine carts and doors
 		return true;
 	}
 
@@ -405,7 +405,7 @@ function tileAction(grid, i, pw) {
 	const terrain = terrainAction(grid, i);
 	if (terrain === BLOCKED) return BLOCKED;
 	const o = grid.objAt.get(i);
-	if (!o || o.id === REEDS) return terrain;
+	if (!o || o.id === MINE_CART) return terrain;
 	return objectAction(o, grid.rw(o.id), pw);
 }
 

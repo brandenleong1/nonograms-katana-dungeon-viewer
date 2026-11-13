@@ -9,6 +9,7 @@
 //
 // Errors fail (exit 1); warnings are printed only. In GitHub Actions they show up as annotations.
 import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 export const AREAS = ['Gen', 'Combat', 'Save', 'Plan', 'Solve', 'View', 'UI', 'Data', 'Tests', 'Tools', 'CI', 'Docs', 'Game'];
 export const QUALIFIERS = ['Parity', 'Fix', 'Feature', 'Performance', 'Refactor', 'Sync'];
@@ -27,7 +28,7 @@ const SENSITIVE = [
 	[/\[[^\]]*(guild\d?\.dat|NonogramsKatana\.zip|\.progress)\]\(/i, 'an attached save file'],
 ];
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) await main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
 
 async function main() {
 	const args = process.argv.slice(2);
