@@ -1,40 +1,40 @@
-// Which parts of each wall cell are wall, following how the game draws walls (c30.D, the wall branch of its cell
-// pass). The game doesn't draw a wall cell as one block: it picks wall pieces by which of the four neighbours continue
-// the wall (a straight piece along x or y, a corner piece per pair of perpendicular neighbours, a T or a crossing as
-// two corner pieces), and each piece fills part of the cell. As a 2 × 2 grid of quarters:
+// How each wall cell is shaped, following how the game picks its wall pieces (c30.D, the wall branch of its cell
+// pass). A wall is a bar through the middle of its cell, not a full block: a centre square WALL_CORE tiles wide, plus
+// an arm from it to the edge of the cell toward each neighbour the wall goes on to, where it meets that neighbour's
+// arm. The edges and corners of the cell that no arm covers are floor. As a 3 × 3 grid with a wide middle:
 //
-//   back quarter  (+x, −y; the top of the diamond on screen): always wall. The cell's run along x and its run
-//                 along y meet here.
-//   left quarter  (−x, −y): wall when the wall goes on to the −x neighbour, or when it only runs along x
-//                 (a +x neighbour and no ±y neighbours).
-//   right quarter (+x, +y): wall when the wall goes on to the +y neighbour, or when it has no ±x neighbour (it runs
-//                 only along y, or stands alone).
-//   front quarter (−x, +y; the bottom of the diamond): never wall. The floor shows there.
+//   straight      a bar through the middle          corner   an L through the centre
+//   T, crossing   the arms of both corners           alone    a bar along y (see below)
 //
-// So a straight wall is the back half of its cell and a corner or a T fills one, two or three quarters. A neighbour
-// continues the wall when it is a wall, an exit, or a doorway other than an opening in forest or cave rock
-// ((b & 24) == 8, ww.w); diagonal neighbours never matter. The game also needs the neighbour to be revealed; this map
-// shows everything.
+// The game draws a straight piece along x when the wall goes on to the −x neighbour, or to the +x one and not to the
+// ±y ones; a straight piece along y when it goes on to neither x neighbour; and a corner piece for each pair of
+// perpendicular neighbours it goes on to (a T or a crossing is two corner pieces). So the arms are the neighbours the
+// wall goes on to, except that a wall going on only along one axis runs through to both edges, and a wall going on
+// nowhere is the straight piece along y.
 //
-// The game draws a wall cell's floor only when the three cells in front of it (−x, +y and the corner between) are
-// revealed, or when one of the two beside it is forest. That is what puts the open quarter at the front: the floor
-// in front of a room's back walls widens the room by half a cell, and walls facing the unexplored outside get no
-// floor. Here "revealed" means "not solid rock". (The game also lowers walls that stand in front of the hero's room,
-// c30.O0; this map has no hero position to do that for.)
+// A neighbour continues the wall when it is a wall, an exit, or a doorway other than an opening in forest or cave rock
+// ((b & 24) == 8, ww.w); pillars, forest and cave rock don't, and diagonal neighbours never matter. The game also needs
+// the neighbour to be revealed; this map shows everything. (The game lowers walls in front of the hero's room,
+// c30.O0; this map has no hero room to do that for.)
 import { TILE } from './catalog.js';
 
-export const WALL_LEFT = 1;     // the left quarter is wall
-export const WALL_RIGHT = 2;    // the right quarter is wall
-export const OPEN_LEFT = 4;     // the left quarter's −x side doesn't touch the next wall (its face shows)
-export const OPEN_RIGHT = 8;    // the right quarter's +y side doesn't touch the next wall
-export const FLOOR_SHOWS = 16;  // the floor shows in the open quarters
+export const ARM_LEFT = 1;     // an arm toward −x
+export const ARM_RIGHT = 2;    // toward +x
+export const ARM_UP = 4;       // toward −y
+export const ARM_DOWN = 8;     // toward +y
+export const OPEN_LEFT = 16;   // the −x arm's end shows: the −x neighbour isn't a wall whose arm meets it
+export const OPEN_DOWN = 32;   // the +y arm's end shows
+
+// The width of the wall bar (the centre square's side), in tiles. In the game's screenshots a wall's top is about a
+// third of a tile across, and its round pillars about three quarters; 0.4 keeps the centre the widest band.
+export const WALL_CORE = 0.4;
 
 /**
  * One byte per cell (index y * w + x): the bits above for TILE.WALL cells, 0 for every other cell. Computed once per
  * level, so drawing reads one byte per wall cell.
  * @param {{ w: number, h: number, cells: ArrayLike<number> }} level  cells: [a, b] per cell (ww.a, ww.b)
  */
-export function wallQuarters({ w, h, cells }) {
+export function wallArms({ w, h, cells }) {
 	const masks = new Uint8Array(w * h);
 	const tile = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? TILE.VOID : cells[2 * (y * w + x)]);
 	const joins = (x, y) => x >= 0 && y >= 0 && x < w && y < h && continuesWall(cells[2 * (y * w + x)], cells[2 * (y * w + x) + 1]);
@@ -42,32 +42,26 @@ export function wallQuarters({ w, h, cells }) {
 		for (let x = 0; x < w; x++) {
 			if (tile(x, y) !== TILE.WALL) continue;
 			const near = { left: joins(x - 1, y), right: joins(x + 1, y), up: joins(x, y - 1), down: joins(x, y + 1) };
-			masks[y * w + x] = quarterBits(near)
+			masks[y * w + x] = armBits(near)
 				| (tile(x - 1, y) === TILE.WALL ? 0 : OPEN_LEFT)
-				| (tile(x, y + 1) === TILE.WALL ? 0 : OPEN_RIGHT)
-				| (floorShows(tile, x, y) ? FLOOR_SHOWS : 0);
+				| (tile(x, y + 1) === TILE.WALL ? 0 : OPEN_DOWN);
 		}
 	}
 	return masks;
 }
 
 /**
- * The quarters a wall with these neighbours fills (WALL_LEFT, WALL_RIGHT; the back quarter always). left/right are
- * the −x/+x neighbours, up/down the −y/+y ones, true when they continue the wall.
+ * The arms of a wall with these neighbours (ARM_* bits). left/right are the −x/+x neighbours, up/down the −y/+y
+ * ones, true when they continue the wall.
  */
-export function quarterBits({ left, right, up, down }) {
-	const leftQuarter = left || (right && !up && !down);
-	const rightQuarter = down || (!left && !right);
-	return (leftQuarter ? WALL_LEFT : 0) | (rightQuarter ? WALL_RIGHT : 0);
+export function armBits({ left, right, up, down }) {
+	const alongX = left || right, alongY = up || down;
+	const onlyX = alongX && !alongY, onlyY = !alongX;   // a lone wall counts as running along y
+	return (left || onlyX ? ARM_LEFT : 0) | (right || onlyX ? ARM_RIGHT : 0)
+		| (up || onlyY ? ARM_UP : 0) | (down || onlyY ? ARM_DOWN : 0);
 }
 
 /** ww.w: walls, exits and doorways join walls; openings in forest or cave rock ((b & 24) == 8) don't */
 function continuesWall(a, b) {
 	return a === TILE.WALL || a === TILE.EXIT || (a === TILE.DOOR && (b & 24) !== 8);
-}
-
-function floorShows(tile, x, y) {
-	const forest = (t) => t === TILE.OUTWALL || t === TILE.OUTDOOR || t === TILE.BUSH;
-	if (forest(tile(x - 1, y)) || forest(tile(x, y + 1))) return true;
-	return tile(x - 1, y) !== TILE.VOID && tile(x, y + 1) !== TILE.VOID && tile(x - 1, y + 1) !== TILE.VOID;
 }
