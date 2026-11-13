@@ -9,7 +9,7 @@
 //             walked trail)
 // The solve runs in js/ui/solve-host.js (a module worker with its own pool), so the page stays responsive.
 import { formatLabel, typeLabel } from '../labels.js';
-import { KINDS, critterKind, objectKind } from '../view/catalog.js';
+import { KINDS, critterKind, critterVariant, objectKind } from '../view/catalog.js';
 import { drawSprite } from '../view/sprites.js';
 import { zw, vj0 as V } from '../gen/statics.js';
 import { SolveClient, CancelError } from './solve-client.js';
@@ -96,7 +96,7 @@ export class SolvePanel {
 	critterName(kind, id) {
 		if (kind === 'spider') return 'your Mechanical spider';
 		if (kind === 'hero') return 'you';
-		const base = { monster: 'Monster', goldmonster: 'Gold monster', miniboss: 'Mini-boss', boss: 'Boss', unique: 'Unique monster', npc: 'Person', shapeshifter: 'Shapeshifter' }[kind] || 'Creature';
+		const base = { monster: 'Monster', goldmonster: 'Gold monster', miniboss: 'Mini-boss', boss: 'Boss', unique: 'Unique monster', familiar: 'Wild familiar', npc: 'Person', shapeshifter: 'Shapeshifter' }[kind] || 'Creature';
 		return `${base} ${id}`;
 	}
 	/** a plan enemy -> its sprite kind (matched to the level's creature of that id nearest to it) */
@@ -107,7 +107,7 @@ export class SolvePanel {
 	}
 	/** a creature's sprite on a small canvas, for the plan list and the player */
 	critterIcon(kind, id, size) {
-		return spriteIcon(kind, { variant: spriteVariant(kind, id), size, theme: this.view.theme });
+		return spriteIcon(kind, { variant: spriteVariant(kind, id, this.state.level), size, theme: this.view.theme });
 	}
 	wordsCtx() {
 		return {
@@ -812,7 +812,7 @@ export class SolvePanel {
 		}
 		for (const en of e.enemies) {
 			const k = this.enemyKind(en);
-			actors.push({ x: en.x, y: en.y, kind: k, variant: spriteVariant(k, en.id), hp: en.hp, hpM: en.hpM, bar: true });
+			actors.push({ x: en.x, y: en.y, kind: k, variant: spriteVariant(k, en.id, this.state.level), hp: en.hp, hpM: en.hpM, bar: true });
 			marks.push({ x: en.x, y: en.y, color: '#e5484d' });
 		}
 		return { actors, marks };
@@ -835,7 +835,7 @@ export class SolvePanel {
 		for (const c of frameCritters(f.cr)) {
 			const kind = this.critterKindOf(c);
 			const foe = c.flags & 1, eng = c.flags & 2;
-			actors.push({ x: c.x, y: c.y, kind, variant: spriteVariant(kind, c.id), hp: c.hp, hpM: c.hpM, bar: !!foe && (!!eng || c.hp < c.hpM) });
+			actors.push({ x: c.x, y: c.y, kind, variant: spriteVariant(kind, c.id, this.state.level), hp: c.hp, hpM: c.hpM, bar: !!foe && (!!eng || c.hp < c.hpM) });
 			if (foe && eng && f.C) marks.push({ x: c.x, y: c.y, color: '#e5484d', size: 0.9 });
 		}
 		const act = r.acts[p];
@@ -1131,8 +1131,8 @@ function nearestCritter(level, e) {
 }
 
 /** monsters are drawn per id (js/view/sprites.js variants); other kinds have one look */
-function spriteVariant(kind, id) {
-	return kind === 'monster' ? String(id) : '';
+function spriteVariant(kind, id, level) {
+	return critterVariant(kind, { id }, level);
 }
 
 /** a creature sprite (js/view/sprites.js) on a small DOM canvas */
