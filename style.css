@@ -22,20 +22,23 @@ body::after {
 	height: 30px;
 }
 
-/* content passing under the icons blurs and fades out, a hint that the page scrolls further right */
+/* content passing under the icons blurs and fades out, a hint that the page scrolls further right; only behind the
+   icons, so the rest of the right edge (the map, on narrow windows) stays clear */
 #bottom-bar::before {
 	content: '';
 	position: fixed;
-	top: 0;
 	right: 0;
 	bottom: 0;
 	width: var(--icon-gutter);
+	height: 130px;
 	z-index: -1;
 	pointer-events: none;
 	background: linear-gradient(to right, transparent, var(--color_bg) 70%);
 	backdrop-filter: blur(3px);
-	-webkit-mask-image: linear-gradient(to right, transparent, #000 45%);
-	mask-image: linear-gradient(to right, transparent, #000 45%);
+	-webkit-mask-image: linear-gradient(to right, transparent, #000 45%), linear-gradient(to bottom, transparent, #000 30%);
+	-webkit-mask-composite: source-in;
+	mask-image: linear-gradient(to right, transparent, #000 45%), linear-gradient(to bottom, transparent, #000 30%);
+	mask-composite: intersect;
 }
 
 /* scrolling boxes fade their content out at the edges instead of cutting it (as in the cards site's console) */
