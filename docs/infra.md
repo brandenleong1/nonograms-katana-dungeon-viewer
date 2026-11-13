@@ -23,6 +23,7 @@ The site needs a current browser:
 | Feature | Used for | Oldest browsers that have it |
 |---|---|---|
 | ES modules, dynamic `import()` | everything | all current browsers |
+| Top-level `await` | the map's names and kinds (`js/view/catalog.js` loads `data/catalog.json`) | Chrome 89, Firefox 89, Safari 15 |
 | Module Web Workers | the solver (`js/ui/solve-host.js`, the worker pool) | Chrome 80, Firefox 114, Safari 15 |
 | `DecompressionStream` | reading the save export (zip, gzip) | Chrome 80, Firefox 113, Safari 16.4 |
 | Canvas 2D | the map | all |
@@ -237,6 +238,15 @@ generator and engine depend on their exact contents, and the parity tests would 
 - `names.json`: short English display names (items, skills, quests) from the game's string resources.
 
 If a table looks wrong, open an issue with the dungeon label and what the game shows.
+
+`data/catalog.json` is kept by hand. The game has no names for its creatures and objects, so this file gives each id
+(creature species `level.critters[].id`, object `level.objects[].id`) the name players know from the
+[Nonograms Katana Wiki](https://nonograms-katana.fandom.com) (CC BY-SA 3.0, see [NOTICE.md](../NOTICE.md)), or a plain
+description of our own, plus the kind the map draws it as (`js/view/catalog.js`). Each entry records its `source`
+(`wiki` or `ours`) and how sure the match is (`confidence`); the file's `about` header says how monsters were matched
+(the wiki's bestiary order is the game's `zw.K` order, then HP, damage, defence and AP at each level). To fix a name,
+edit the entry and update `retrieved` if you took it from the wiki again. `test/catalog.mjs` checks that every id the
+generator places has an entry with a name and a valid kind, and that the kinds still draw the map as before.
 
 ## The oracle (maintainers only)
 

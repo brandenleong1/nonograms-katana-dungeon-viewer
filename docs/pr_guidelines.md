@@ -140,7 +140,7 @@ Better:
 > In rooms where the door sat one tile off the straight line, smashing the wall (1 energy) looked cheaper than the
 > two-step detour. Players saw the route break a wall right beside an open door.
 >
-> The planner now uses the game's movement rule (`hw.t`: every object blocks except reeds; tiles 8–10 only once
+> The planner now uses the game's movement rule (`hw.t`: every object blocks except mine carts; tiles 8–10 only once
 > cleared) and weighs energy against steps. Doors win unless the detour is long.
 >
 > `3C-172582050`, first room. Before: "Smash (1 energy) at 54,41". After: the route goes through the door at 55,41.

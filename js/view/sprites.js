@@ -583,21 +583,22 @@ const PAINTERS = {
 		g.strokeStyle = '#6e2a68'; g.lineWidth = lw * 0.8; g.stroke();
 		gloss(g, -1.2 * u, cy - 2 * u, 0.9 * u, 1.6 * u, 0.8);
 	},
-	cover(g, e) {
+	/** an iron tub on four wheels, open at the top */
+	minecart(g, e) {
 		const { u, lw } = e;
-		const blades = [[-9, 14, -0.3], [-5, 19, -0.15], [-1, 22, 0.05], [3, 18, 0.2], [7, 15, 0.35], [10, 11, 0.5], [-12, 10, -0.5]];
-		for (const [x, h, lean] of blades) {
-			g.beginPath();
-			g.moveTo((x - 1.2) * u, 1 * u);
-			g.quadraticCurveTo((x + lean * 6) * u, -h * 0.5 * u, (x + lean * 10) * u, -h * u);
-			g.quadraticCurveTo((x + lean * 6 + 1) * u, -h * 0.5 * u, (x + 1.2) * u, 1 * u);
-			g.fillStyle = vgrad(g, -h * u, 0, '#a9cf5a', '#4f7d26'); g.fill();
-			g.strokeStyle = 'rgba(40,70,20,0.6)'; g.lineWidth = lw * 0.5; g.stroke();
-		}
-		for (const [x, h] of [[-3, 24], [5, 21]]) {
-			g.strokeStyle = '#6b5a2e'; g.lineWidth = lw; g.beginPath(); g.moveTo(x * u, 0); g.lineTo(x * u, -h * u); g.stroke();
-			g.fillStyle = '#7a4a24'; g.beginPath(); g.ellipse(x * u, -(h - 2) * u, 1.4 * u, 3.2 * u, 0, 0, Math.PI * 2); g.fill();
-		}
+		shadow(g, e, 13, 6.5);
+		const wheel = (X, Y) => {
+			const [x, y] = P(u, X, Y, 2.6);
+			g.beginPath(); g.ellipse(x, y, 2.4 * u, 2.6 * u, 0, 0, Math.PI * 2);
+			g.fillStyle = '#2e3138'; g.fill();
+			g.strokeStyle = '#15171b'; g.lineWidth = lw * 0.8; g.stroke();
+		};
+		wheel(0.18, -0.24); wheel(-0.18, -0.24);   // the far side first, so the tub covers them
+		box(g, e, { ex: 0.26, ey: 0.2, height: 9, z0: 3, color: IRON, top: '#24272d' });
+		wheel(-0.27, 0.12); wheel(-0.27, -0.12); wheel(0.12, 0.21); wheel(-0.12, 0.21);
+		// a lighter rim round the open top
+		const rim = [P(u, -0.26, -0.2, 12), P(u, -0.26, 0.2, 12), P(u, 0.26, 0.2, 12), P(u, 0.26, -0.2, 12)];
+		path(g, rim); g.strokeStyle = shade(IRON, 0.45); g.lineWidth = lw * 1.4; g.stroke();
 	},
 	marker(g, e) {
 		const { u, lw } = e;

@@ -2,8 +2,9 @@
 import { showGameVersion } from './game-version.js';
 import { parseLabel, formatLabel, typeLabel, family } from './labels.js';
 import { IsoView } from './view/iso.js';
-import { KINDS, objectKind, critterKind, familiarRank, tileName, linkGroup } from './view/catalog.js';
+import { KINDS, objectKind, critterKind, tileName, linkGroup } from './view/catalog.js';
 import { partners, allLinks, floorNonogram, LINK_COLORS } from './view/links.js';
+import { occupantHtml, occupantName } from './ui/occupant.js';
 import { initTables, zw, vj0 as V } from './gen/statics.js';
 import { planRoute, objectives as gameObjectives } from './plan/planner.js';
 import { HeroPanel } from './hero.js';
@@ -41,10 +42,10 @@ const PUZZLE_STOP_LOOK = { glyph: '▦', color: KINDS.puzzledoor.color };
 
 /**
  * The page's state, shared with the solver panel and exposed as `window.nkd.state`: the dungeon shown (level, type,
- * seed) and its route (plan), the generator (null: only the sample fixtures), the new-game profile (fresh), and the
- * Your hero and solver panels.
+ * seed) and its route (plan), the generator (null: only the sample fixtures), the new-game profile (fresh), the
+ * Your hero and solver panels, and the item, skill and quest names (data/names.json).
  */
-const state = { level: null, type: 8, seed: 0, generator: null, fresh: null, hero: null, plan: null, solve: null };
+const state = { level: null, type: 8, seed: 0, generator: null, fresh: null, hero: null, plan: null, solve: null, names: {} };
 
 /** The map (IsoView). main() makes it before anything else runs. */
 let view;
@@ -67,6 +68,7 @@ async function main() {
 
 	// Solver column (js/ui/solve-panel.js): solves run in a module worker with its own pool
 	const names = await loadNames();
+	state.names = names;
 	state.solve = new SolvePanel({ view, state, names, root: $('#solve-section'), show: (label) => show(label) });
 	state.solve.bind();
 	window.nkd.solve = state.solve;
@@ -102,7 +104,7 @@ function showTooltip(tooltip, cell) {
 		return;
 	}
 	const occupied = cell.critter || cell.object;
-	tooltip.textContent = occupied ? `${KINDS[cellKind(cell)].label} · ${cell.x},${cell.y}` : `${tileName(cell.a, cell.b)} · ${cell.x},${cell.y}`;
+	tooltip.textContent = occupied ? `${occupantName(cell, state.level)} · ${cell.x},${cell.y}` : `${tileName(cell.a, cell.b)} · ${cell.x},${cell.y}`;
 	tooltip.style.display = 'block';
 }
 
@@ -403,39 +405,8 @@ function baseLinks() {
 
 function cellHtml(cell) {
 	const occupied = cell.critter || cell.object;
-	const occupantPart = occupied ? occupantHtml(cell) : '';
+	const occupantPart = occupied ? occupantHtml(cell, { level: state.level, names: state.names, profile: V.i2 }) : '';
 	return `${occupantPart}<div class="muted">${tileName(cell.a, cell.b)} · ${cell.x},${cell.y}</div>`;
-}
-
-/** A cell's creature or object: what it is, the mental power it takes to open, and what it links to. */
-function occupantHtml(cell) {
-	const isCritter = !!cell.critter;
-	const rec = cell.critter || cell.object;
-	const look = KINDS[cellKind(cell)];
-	const parts = [`<div><span class="glyph" style="color:${look.color}">${look.glyph}</span><b>${look.label}</b> <span class="muted">#${rec.id}</span></div>`];
-	const def = isCritter ? critterDef(rec.id) : objectDef(rec.id);
-	if (isCritter && critterKindOf(rec) === 'shapeshifter') parts.push('<div>Looks like a person, but turns into a monster when you talk to it.</div>');
-	// a familiar's v is its level cap (zw.d by rank), not a mental power cost
-	const familiar = isCritter && critterKindOf(rec) === 'familiar';
-	if (familiar) parts.push(familiarRankHtml(familiarRank(state.level, rec)));
-	if (def && def.v > 0 && !familiar) parts.push(`<div>Needs <b>${def.v}</b> mental power to open.</div>`);
-	if (!isCritter && objectKindOf(rec) === 'stuckdoor' && state.level) parts.push(`<div>Breaking it costs ${breakCost(state.level.type)} energy.</div>`);
-	if (def && def.t) parts.push(`<div class="muted">Counts as an objective.</div>`);
-	const linked = isCritter ? [] : partners(state.level, rec);
-	if (linked.length) parts.push(`<div>Links to ${linked.map(partnerLinkHtml).join(', ')}.</div>`);
-	return parts.join('');
-}
-
-const RANK_NAMES = ['white', 'blue', 'yellow', 'purple'];
-
-/** a wild familiar's rank, named by the colour the game shows it in */
-function familiarRankHtml(rank) {
-	if (rank === null) return '<div class="muted">Its rank is not known for this dungeon.</div>';
-	return `<div>Rank <b>${rank}</b> of 3 (${RANK_NAMES[rank]}).</div>`;
-}
-
-function partnerLinkHtml(p) {
-	return `<a data-x="${p.x}" data-y="${p.y}">${KINDS[objectKindOf(p)].label.toLowerCase()} at ${p.x},${p.y}</a>`;
 }
 
 // ---- objectives --------------------------------------------------------------------------
@@ -457,16 +428,16 @@ function objectives(level) {
 function objectiveEntry(objective) {
 	if (objective.kind === 'exitlock') {
 		const { x, y } = objective.at;
-		return { rec: { id: -1, x, y, exitlock: true }, look: EXIT_LOCK_LOOK };
+		return { rec: { id: -1, x, y, exitlock: true }, look: EXIT_LOCK_LOOK, name: EXIT_LOCK_LOOK.label };
 	}
 	const kind = objective.kind === 'critter' ? critterKindOf(objective.rec) : objectKindOf(objective.rec);
-	return { rec: objective.rec, look: KINDS[kind] };
+	return { rec: objective.rec, look: KINDS[kind], name: recName(objective.rec) };
 }
 
-function objectiveRow({ rec, look }) {
+function objectiveRow({ rec, look, name }) {
 	const row = document.createElement('div');
 	row.className = 'row';
-	row.innerHTML = `<span><span class="glyph" style="color:${look.color}">${look.glyph}</span>${look.label}</span><span class="muted">${rec.x},${rec.y}</span>`;
+	row.innerHTML = `<span><span class="glyph" style="color:${look.color}">${look.glyph}</span>${esc(name)}</span><span class="muted">${rec.x},${rec.y}</span>`;
 	row.onclick = () => {
 		view.centerOn(rec.x, rec.y);
 		view.selected = rec;
@@ -545,15 +516,10 @@ function outlineOnly(box, row) {
 }
 
 function stopLabel(stop) {
-	return stop.label || KINDS[stopKind(stop.rec)].label;
+	return stop.label || esc(recName(stop.rec));
 }
 
 // ---- what things are ---------------------------------------------------------------------
-
-/** Energy to break a stuck door in a dungeon type: its pw.r, as the route planner counts it. */
-function breakCost(type) {
-	return zw.M[type] ? zw.M[type].r : 5;
-}
 
 /** The game's definition of an object (its rw record, zw.Q). */
 function objectDef(id) {
@@ -573,14 +539,18 @@ function critterKindOf(rec) {
 	return critterKind(rec, critterDef(rec.id));
 }
 
-/** The kind of what stands on a map cell: its creature, else its object. */
-function cellKind(cell) {
-	return cell.critter ? critterKindOf(cell.critter) : objectKindOf(cell.object);
-}
-
 /** Planner stops hold either a creature (it has a `k`) or an object. */
 function stopKind(rec) {
 	return rec.k !== undefined ? critterKindOf(rec) : objectKindOf(rec);
+}
+
+/** What the Objectives and Route lists call a stop: its name (data/catalog.json), e.g. "Purple chest" or "Bone Dragon". */
+function recName(rec) {
+	return occupantName(rec.k !== undefined ? { critter: rec } : { object: rec }, state.level);
+}
+
+function esc(text) {
+	return String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 }
 
 main();

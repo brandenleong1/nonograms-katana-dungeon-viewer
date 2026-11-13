@@ -1,6 +1,7 @@
 // Browser smoke test: serve the site on loopback, load a dungeon of every family in every theme in headless
-// Chromium, check the Help popup shows the game version and a stuck door its energy cost, open the Your hero and Your
-// progress popups, and fail on any page error or console error.
+// Chromium, check the Help popup shows the game version and credits the wiki for the names, the Selected panel names a
+// monster, a boss and a stuck door (with the door's energy cost) and the map tooltip names them too, open the Your hero
+// and Your progress popups, and fail on any page error or console error.
 //
 //   node test/smoke.mjs [-v]
 //
@@ -16,7 +17,15 @@ import { launchChromium } from '../tools/chromium.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LABELS = ['3C-172582050', 'F1-1026320547', '6A-123456789', 'EB-1325623421'];
 const THEMES = ['Light', 'Dark', 'Dark High Contrast', 'Sepia'];
-const STUCK_DOOR = { label: '3C-172582050', x: 9, y: 48 };   // object 28: the Selected panel gives its energy cost
+// 3C-172582050: what the Selected panel and the map tooltip must say about some cells (names from data/catalog.json)
+const NAMED = {
+	label: '3C-172582050',
+	cells: [
+		{ x: 9, y: 48, says: [/Brick door/, /Breaking it costs \d+ energy/] },               // object 28, a stuck door
+		{ x: 38, y: 56, says: [/Orc shieldman/, /HP 17 · damage 7 · defence 5/] },           // monster 259
+		{ x: 43, y: 10, says: [/Bone Dragon/, /Drops Emerald tablet shard/, /Name: Nonograms Katana Wiki/] },   // the boss, 267
+	],
+};
 const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/game-version.json'), 'utf8'));
 const verbose = process.argv.includes('-v');
 
@@ -51,17 +60,13 @@ async function checkPage(browser, base, label, themeId, theme) {
 		await page.waitForFunction(() => document.querySelector('#game-version b'), null, { timeout: 15000 }).catch(() => {});
 		const shown = await page.evaluate(() => {
 			const { level } = window.nkd.state;
-			return { creatures: level.critters.length, objects: level.objects.length, version: document.querySelector('#game-version')?.textContent || '' };
+			const help = document.querySelector('#popup-help')?.textContent || '';
+			return { creatures: level.critters.length, objects: level.objects.length, version: document.querySelector('#game-version')?.textContent || '', credit: /names: Nonograms\s+Katana Wiki community, CC\s+BY-SA 3\.0/.test(help) };
 		});
 		if (!(shown.creatures > 0 && shown.objects > 0)) errors.push(`empty level: ${JSON.stringify(shown)}`);
 		if (!shown.version.includes(GAME.versionName)) errors.push(`Help popup doesn't show game version ${GAME.versionName}: "${shown.version}"`);
-		if (label === STUCK_DOOR.label) {
-			const said = await page.evaluate(({ x, y }) => {
-				window.nkd.view.onSelect(window.nkd.view.describe(x, y));
-				return document.querySelector('#selected-info').textContent;
-			}, STUCK_DOOR);
-			if (!/Breaking it costs \d+ energy/.test(said)) errors.push(`stuck door at ${STUCK_DOOR.x},${STUCK_DOOR.y}: "${said.slice(0, 80)}"`);
-		}
+		if (!shown.credit) errors.push('Help popup doesn\'t credit the Nonograms Katana Wiki for the names');
+		if (label === NAMED.label) errors.push(...await namedCellErrors(page));
 		await page.evaluate(() => window.nkd.state.hero.open());
 		await page.waitForTimeout(400);
 		await page.evaluate(() => window.nkd.state.hero.openProgress());
@@ -75,6 +80,22 @@ async function checkPage(browser, base, label, themeId, theme) {
 	if (!errors.length) return 0;
 	console.log(`FAIL ${theme} ${label}:\n  ${[...new Set(errors)].join('\n  ')}`);
 	return 1;
+}
+
+/** Select and hover each NAMED cell: the Selected panel must say all of its `says`, the tooltip its name. */
+async function namedCellErrors(page) {
+	const errors = [];
+	for (const { x, y, says } of NAMED.cells) {
+		const shown = await page.evaluate(({ x, y }) => {
+			const { view } = window.nkd;
+			view.onSelect(view.describe(x, y));
+			view.onHover(view.describe(x, y));
+			return { selected: document.querySelector('#selected-info').textContent, tooltip: document.querySelector('#tooltip').textContent };
+		}, { x, y });
+		if (!says.every((re) => re.test(shown.selected))) errors.push(`Selected panel at ${x},${y}: "${shown.selected.slice(0, 120)}"`);
+		if (!says[0].test(shown.tooltip)) errors.push(`tooltip at ${x},${y}: "${shown.tooltip}"`);
+	}
+	return errors;
 }
 
 function fail(message) {

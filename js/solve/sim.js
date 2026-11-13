@@ -24,7 +24,7 @@ export const DIR4 = [[-1, 0], [0, -1], [1, 0], [0, 1]];
 const TELEPORTS = new Set([38, 39, 40, 74, 88, 126]);
 const DOOR_IDS = new Set([27, 28, 29, 33, 35, 53, 60, 73]);
 const HERO_ID = 180;
-const REEDS = 84;          // the one object the hero walks through
+const MINE_CART = 84;      // the one object the hero walks through (into it, to ride it)
 const STAIRS_TILE = 5;
 /** seal MP from here up marks bw.m0 bosses (100000) until their quest is done: no MP opens them */
 const UNSEALABLE = 1000;
@@ -974,8 +974,8 @@ export class Walker {
 		return AGAIN;
 	}
 
-	/** an object other than the hero that stands in the way (everything but reeds) */
-	blocksCell(o) { return o != null && o !== this.h.f && o.a.a !== REEDS; }
+	/** an object other than the hero that stands in the way (everything but a mine cart) */
+	blocksCell(o) { return o != null && o !== this.h.f && o.a.a !== MINE_CART; }
 
 	/** the floor nonogram (c30.u0): dips from the corner (2,2) that toggle exactly the cells that differ */
 	nonogramDips() {

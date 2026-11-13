@@ -8,8 +8,8 @@
 //             script step by step (creatures where the engine has them, HP bars, the instruction as a callout, the
 //             walked trail)
 // The solve runs in js/ui/solve-host.js (a module worker with its own pool), so the page stays responsive.
-import { formatLabel, typeLabel } from '../labels.js';
-import { KINDS, critterKind, critterVariant, objectKind } from '../view/catalog.js';
+import { formatLabel, typeLabel, family } from '../labels.js';
+import { KINDS, critterKind, critterVariant, objectKind, critterName as catalogName, objectName } from '../view/catalog.js';
 import { drawSprite } from '../view/sprites.js';
 import { zw, vj0 as V } from '../gen/statics.js';
 import { SolveClient, CancelError } from './solve-client.js';
@@ -91,11 +91,19 @@ export class SolvePanel {
 	// ---- names ----------------------------------------------------------------------------------------------
 	item(id) { return (this.names.items && this.names.items[id]) || `item ${id}`; }
 	skill(index, id) { return (index != null && index >= 0 && this.names.skills && this.names.skills[index]) || SKILL_NAMES_FALLBACK[id] || `skill ${id}`; }
-	objectLabel(id) { return KINDS[objectKind({ id }, zw.Q?.get(id))].label.toLowerCase(); }
+	/** an object's name in the dungeon shown (data/catalog.json), e.g. "purple chest"; its kind if it has none */
+	objectLabel(id) { return this.objectTitle(id).toLowerCase(); }
+	objectTitle(id) {
+		const type = this.state.level ? this.state.level.type : this.state.type;
+		return objectName({ id }, family(type)) ?? KINDS[objectKind({ id }, zw.Q?.get(id))].label;
+	}
 	critterKindOf(rec) { return critterKind(rec, zw.R?.get(rec.id)); }
+	/** a creature's name (data/catalog.json), e.g. "Gnoll shaman"; its kind and id if it has none */
 	critterName(kind, id) {
 		if (kind === 'spider') return 'your Mechanical spider';
 		if (kind === 'hero') return 'you';
+		const name = catalogName({ id });
+		if (name) return name;
 		const base = { monster: 'Monster', goldmonster: 'Gold monster', miniboss: 'Mini-boss', boss: 'Boss', unique: 'Unique monster', familiar: 'Wild familiar', npc: 'Person', shapeshifter: 'Shapeshifter' }[kind] || 'Creature';
 		return `${base} ${id}`;
 	}
@@ -643,7 +651,7 @@ export class SolvePanel {
 		if (s.label) return s.label;
 		if (s.target) {
 			if (s.target.critter) return this.critterName(this.critterKindOf({ id: s.target.id, g: 0, h: 0, k: 2 }), s.target.id);
-			return KINDS[objectKind({ id: s.target.id }, zw.Q?.get(s.target.id))].label;
+			return this.objectTitle(s.target.id);
 		}
 		return { exit: 'Stairs (exit)', nonogram: 'Floor nonogram', barrels: 'Barrel puzzle' }[s.kind] || s.kind;
 	}

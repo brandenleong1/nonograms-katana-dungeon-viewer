@@ -28,6 +28,7 @@ player progress (what changes the map):
 | `js/` | All site code, as ES modules (below). |
 | `data/tables.json` | Numeric game tables the generator and engine read: room shapes, object and creature definitions, items, decoration weights, a new player's profile. Generated; don't edit by hand ([infra.md](infra.md#data-files)). |
 | `data/names.json` | English display names for items, skills and quests. Generated. |
+| `data/catalog.json` | What each creature and object is called (names from the Nonograms Katana Wiki, CC BY-SA 3.0) and the kind the map draws it as. Kept by hand ([infra.md](infra.md#data-files)). |
 | `data/game-version.json` | The game version everything follows; shown in Help, and kept equal to the README's table by `test/version.mjs`. |
 | `lib/utils/` | Git submodule [brandenleong1/utils](https://github.com/brandenleong1/utils): layout CSS, themes, popups, cookies. |
 | `test/` | Test suites and fixtures ([testing.md](testing.md)). |
@@ -89,8 +90,8 @@ Rules and file ownership are in [js/combat/PORTING.md](../js/combat/PORTING.md);
 | `js/save/` | Reads the game's export in the browser: `zip.js` → `envelope.js` (XOR, checksum, gzip) → `guild.js` / `records.js` (the profile) and `dungeon.js` (a dungeon in progress). Entry point: `index.js` `importSave`. |
 | `js/plan/planner.js` | Route planner: weighted shortest paths over the game's movement rules, gates, levers and keys, teleports, then the visiting order (exact up to 16 stops). |
 | `js/solve/` | Solver ([README](../js/solve/README.md)): `robust.js` (Monte Carlo over unknown dice), `exact.js` (search with known dice), `sim.js` (dungeon walk on the engine), `policies.js` and `kite.js` (tactics), `cost.js` (objective), `plan.js` (output for the UI), `worker.js` / `pool.js` (workers). |
-| `js/view/` | Map: `iso.js` (renderer, palettes, solver overlay), `walls.js` (which quarters of each wall cell are wall, the game's rule), `sprites.js` (procedural sprites), `catalog.js` (what each id is), `links.js` (ladder ↔ hatch and similar pairs). |
-| `js/ui/` | Solver column and progress editor: `solve-panel.js`, `solve-client.js` → `solve-host.js` (worker) → `solve-host-main.js`, pool worker adapters, `budgets.js` (presets), `words.js` (plain-language text), `progress-panel.js` (the Your progress editor) and `questlines.js` (its questline sliders: quests grouped by name, and what each part changes). |
+| `js/view/` | Map: `iso.js` (renderer, palettes, solver overlay), `walls.js` (which quarters of each wall cell are wall, the game's rule), `sprites.js` (procedural sprites), `catalog.js` (what each id is: kinds and names, read from `data/catalog.json`), `links.js` (ladder ↔ hatch and similar pairs). |
+| `js/ui/` | Solver column and progress editor: `solve-panel.js`, `solve-client.js` → `solve-host.js` (worker) → `solve-host-main.js`, pool worker adapters, `budgets.js` (presets), `words.js` (plain-language text), `occupant.js` (what the Selected panel and the map tooltip say about a creature or object), `progress-panel.js` (the Your progress editor) and `questlines.js` (its questline sliders: quests grouped by name, and what each part changes). |
 
 ## `test/` and `tools/`
 

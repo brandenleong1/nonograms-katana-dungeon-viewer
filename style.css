@@ -173,6 +173,10 @@ body::after {
 	color: var(--color_txt2);
 }
 
+.info-box .wiki-credit a {
+	color: inherit;
+}
+
 .info-box .glyph {
 	display: inline-block;
 	width: 1.4em;

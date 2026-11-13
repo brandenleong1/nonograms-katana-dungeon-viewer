@@ -1,5 +1,6 @@
-// What things are, for drawing and tooltips. Ids are the game's object (rw) and creature (bw) ids;
-// names are our own descriptions inferred from how the game uses each object.
+// What things are: their names, how the map draws them, and tile names. Ids are the game's object (rw, zw.Q) and
+// creature (bw, zw.R) ids. data/catalog.json is the table of them: each id's name (from the Nonograms Katana Wiki, or
+// our own words) and its kind, which picks the look below.
 
 // kind -> layer, colour, glyph
 export const KINDS = {
@@ -24,8 +25,11 @@ export const KINDS = {
 	trap:      { layer: 'traps',     color: '#ff4747', glyph: '✕', label: 'Trap' },
 	fountain:  { layer: 'loot',      color: '#47ffb3', glyph: '♨', label: 'Fountain' },
 	special:   { layer: 'loot',      color: '#ff9cf5', glyph: '✺', label: 'Cauldron' },
+	// the tombs' goddess statue: using it once gives 10 energy and lights the hero's torch, widening sight from 6 to 10
+	// tiles (actions.js activate, T0_)
 	torchstatue: { layer: 'loot',    color: '#ffb84d', glyph: '♆', label: 'Torch statue (+10 energy, lights your torch)' },
-	cover:     { layer: 'decor',     color: '#6b8e23', glyph: '"', label: 'Reeds (cover)' },
+	// caves: a cart on the rails (boardwalk tiles); whoever rides it, hero or monster, has +4 defence (aw.k, flag 512)
+	minecart:  { layer: 'decor',     color: '#8c919c', glyph: '⊔', label: 'Mine cart (+4 defence for its rider)' },
 	marker:    { layer: 'decor',     color: '#888888', glyph: '·', label: 'Marker' },
 	decor:     { layer: 'decor',     color: '#777777', glyph: '·', label: 'Furnishing' },
 	hero:      { layer: 'always',    color: '#4f9ef8', glyph: '★', label: 'You (start)' },
@@ -40,55 +44,47 @@ export const KINDS = {
 	spider:    { layer: 'monsters',  color: '#47f3ff', glyph: '✱', label: 'Mechanical spider (yours)' },
 };
 
-const OBJECT_KIND = new Map();
-const set = (kind, ...ids) => ids.forEach((i) => OBJECT_KIND.set(i, kind));
-set('chest', 21, 37, 94);
-set('page', 15, 55, 110);
-set('container', 2, 7, 34, 41, 42, 43, 44, 61, 62, 66, 67, 68, 69, 70, 102, 122);
-set('breakable', 3, 4, 26, 104, 105, 106, 12, 13, 20, 107, 108, 109, 121);
-set('ore', 49, 50, 51, 63, 64, 65);
-set('mpdoor', 27);
-set('stuckdoor', 28, 73);
-set('lockdoor', 29);
-set('gate', 33);
-set('lever', 32);
-set('puzzledoor', 35);
-set('barreldoor', 60);
-set('bossgate', 53);
-set('ladder', 40);
-set('hatch', 38, 39, 74);
-set('portal', 88);
-set('teleport', 126);
-set('barrel', 59);
-set('trap', 30);
-set('fountain', 48, 58, 124, 54);
-set('special', 85, 86, 87);
-// the tombs' goddess statue: using it once gives 10 energy and lights the hero's torch, widening sight from 6 to 10
-// tiles (actions.js activate, T0_)
-set('torchstatue', 95);
-set('cover', 84);
-set('marker', 52);
+const CATALOG = await loadCatalog();
+
+/** data/catalog.json: fetched in the browser, read from disk in Node (tests and tools) */
+async function loadCatalog() {
+	const url = new URL('../../data/catalog.json', import.meta.url);
+	if (url.protocol === 'file:') {
+		const fs = await import('node:fs');
+		return JSON.parse(fs.readFileSync(url, 'utf8'));
+	}
+	const response = await fetch(url);
+	if (!response.ok) throw new Error(`data/catalog.json: HTTP ${response.status}`);
+	return response.json();
+}
 
 /** Classify a placed object. rw = its definition from zw.Q (may be undefined). */
 export function objectKind(obj, rw) {
-	const k = OBJECT_KIND.get(obj.id);
-	if (k) return k;
-	if (rw && rw.t) return 'chest';
-	return 'decor';
+	const entry = CATALOG.objects[obj.id];
+	if (entry) return entry.kind;
+	return rw && rw.t ? 'chest' : 'decor';
 }
 
-/** Classify a creature. bw = its definition from zw.R (may be undefined). */
+/** Classify a creature: its species' kind (data/catalog.json), then what this one is tagged with. bw = its zw.R record. */
 export function critterKind(cr, bw) {
-	if (cr.id === 180) return 'hero';
-	if (cr.id === 199) return 'spider';
-	if (cr.id >= 190 && cr.id < 194) return 'familiar';
+	const base = speciesKind(cr.id, bw);
+	if (base === 'hero' || base === 'spider' || base === 'familiar') return base;   // familiars: critters 190..193
 	if (cr.h === 1101 || cr.h === 1103) return 'boss';
 	if (cr.h === 1100) return 'miniboss';
 	// shapeshifters look like people but fight when you talk to them (c30, the NPC talk branch): species with bw.N0
 	// (quests 41 and 57), and wandering merchants tagged 1000 instead of 1001 (x30.P: 12% on 3B-4C, F3, EB and EC once
 	// you have traded 3 times), which vanish and leave a monster (284; 350 in the forest; 649 in the tombs)
-	if (cr.k === 0 || cr.k === 1) return (bw && bw.N0) || cr.h === 1000 ? 'shapeshifter' : 'npc';
+	if (cr.k === 0 || cr.k === 1) return base === 'shapeshifter' || cr.h === 1000 ? 'shapeshifter' : 'npc';
 	if (cr.g === 167) return 'goldmonster';   // drops key 167 for the locked door
+	if (base === 'unique' || base === 'boss') return base;
+	return 'monster';
+}
+
+/** A species' kind before its tags; a species missing from the catalog falls back to its zw.R flags. */
+function speciesKind(id, bw) {
+	const entry = CATALOG.creatures[id];
+	if (entry) return entry.kind;
+	if (bw && bw.N0) return 'shapeshifter';
 	if (bw && bw.l0) return 'unique';
 	if (bw && bw.m0) return 'boss';
 	return 'monster';
@@ -113,6 +109,36 @@ export function critterVariant(kind, cr, level) {
 /** The colour of a creature's dot when zoomed out: a familiar's rank colour, else its kind's. */
 export function critterColor(kind, variant) {
 	return kind === 'familiar' && RANK_COLORS[variant] ? RANK_COLORS[variant] : KINDS[kind].color;
+}
+
+/** A creature's name, e.g. "Cobra"; null for a species the catalog doesn't know. */
+export function critterName(cr) {
+	const entry = CATALOG.creatures[cr.id];
+	return entry ? entry.name : null;
+}
+
+/**
+ * An object's name in a dungeon family ('Dungeon', 'Forest', 'Cave' or 'Tomb', js/labels.js family), e.g. "Purple
+ * chest"; some objects are called something else in some families or with a tag ("Railroad switch"). Null if unknown.
+ */
+export function objectName(obj, family) {
+	const entry = CATALOG.objects[obj.id];
+	if (!entry) return null;
+	return entry.byTag?.[obj.h] ?? entry.byFamily?.[family] ?? entry.name;
+}
+
+/** Where a creature's or an object's name comes from: 'wiki' (the Nonograms Katana Wiki), 'ours', or null if unknown. */
+export function critterNameSource(cr) {
+	return CATALOG.creatures[cr.id]?.source ?? null;
+}
+
+export function objectNameSource(obj) {
+	return CATALOG.objects[obj.id]?.source ?? null;
+}
+
+/** The catalog entries themselves, keyed by id: { creatures, objects } (tests and tools). */
+export function catalogEntries() {
+	return { creatures: CATALOG.creatures, objects: CATALOG.objects };
 }
 
 /** Objects that link to a partner, and how partners are matched. */
