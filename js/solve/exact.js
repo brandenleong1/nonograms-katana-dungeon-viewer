@@ -20,6 +20,7 @@ import { Run, Walker, trimTopUps, mpOk, heroSpecOut, heroOf, isFoe, critterInfo,
 import { makePolicy, labelOf, candidates as defaultCandidates, availOf, usable, BASELINE } from './policies.js';
 import { pricesFor, scoreOutcome, compareExact, dist } from './cost.js';
 import { outcomeOf, entryOut, mpPlanOf, runOptsFor, stopIndexOf, routeLegs, stopOut, countVisit, realNeedOf, mpItemsOf, setRestNeed } from './robust.js';
+import { LookCache } from './lookcache.js';
 import { newFight } from '../combat/driver.js';
 
 /**
@@ -57,7 +58,12 @@ function runOptsOf(o = {}) { return runOptsFor(o, { log: true }); }
 // Worker side: the trajectory copy and play-outs
 
 export class ExactWorker {
-	constructor(cfg) { this.cfg = cfg; this.dead = null; }
+	/** cfg: { problem, runOpts, lookCache: false turns the look-ahead cache off, verifyLookCache: check every hit } */
+	constructor(cfg) {
+		this.cfg = cfg;
+		this.dead = null;
+		this.look = { walks: 0, hits: 0, mismatches: 0 };   // look-ahead walks made / reused (lookcache.js), over all batches
+	}
 
 	init() {
 		const f = exactFight(this.cfg.problem);
@@ -92,6 +98,8 @@ export class ExactWorker {
 	 */
 	evaluate(jobs, ctx) {
 		const out = [];
+		const lookCache = this.cfg.lookCache === false ? null : new LookCache({ from: this.ck.log.length, verify: !!this.cfg.verifyLookCache, stats: this.look });
+		const options = { ext: ctx.ext ?? 1, look: ctx.look ?? 0, maxInputs: ctx.maxInputs, lookCache };
 		for (const j of jobs) {
 			const run = this.resume();
 			setRestNeed(run, ctx.restNeed);
@@ -99,7 +107,7 @@ export class ExactWorker {
 			const bad = j.inp ? !tryInput(run, j.inp) : false;
 			let o = null;
 			if (!bad) {
-				o = outcomeOf(run, ctx.cands[j.c], { ext: ctx.ext ?? 1, look: ctx.look ?? 0, maxInputs: ctx.maxInputs });
+				o = outcomeOf(run, ctx.cands[j.c], options);
 				countFromBefore(o, run.led.since(led0));
 			}
 			out.push({ j, bad, o, sc: o ? scoreOutcome(o, ctx.need, this.prices) : null });
@@ -107,6 +115,9 @@ export class ExactWorker {
 		}
 		return out;
 	}
+
+	/** the look-ahead walks this worker made and reused so far: { walks, hits, mismatches } */
+	lookStats() { return { ...this.look }; }
 }
 
 /** apply a searched input; false when the engine rejects it or it changes nothing */
@@ -267,7 +278,7 @@ export async function solveExact(problem, opts = {}) {
 		run: null, workers: new TrajectoryWorkers(pool), scoutNeeds: null, decisions: 0, jobs: 0,
 	};
 	const { runOpts } = search;
-	const inits = await pool.setupExact({ problem: portableProblem(problem), runOpts });
+	const inits = await pool.setupExact({ problem: portableProblem(problem), runOpts, lookCache: opts.lookCache, verifyLookCache: opts.verifyLookCache });
 	const bad = inits.find((r) => r && r.error);
 	if (bad) return { error: bad.error };
 	// the main trajectory (inline)
@@ -356,18 +367,44 @@ class TrajectoryWorkers {
 	}
 
 	/**
-	 * Jobs dealt round-robin to the workers. The results come back in job order, each with its index (`i`), whichever
-	 * worker played it: the choice between equal play-outs must not depend on how many workers there are.
+	 * Jobs dealt to the workers, results back in job order, each with its index (`i`), whichever worker played it: the
+	 * choice between equal play-outs must not depend on how many workers there are.
 	 */
 	async play(jobs, ctx) {
-		const W = this.pool.size;
-		const dealt = [...Array(W)].map(() => []);
-		jobs.forEach((j, i) => dealt[i % W].push(i));
+		const dealt = dealJobs(jobs, this.pool.size);
 		const parts = await Promise.all(dealt.map((ids, w) => (ids.length ? this.pool.call(w, 'evaluate', ids.map((i) => jobs[i]), ctx) : [])));
 		const results = new Array(jobs.length);
 		parts.forEach((part, w) => part.forEach((r, k) => { r.i = dealt[w][k]; results[r.i] = r; }));
 		return results;
 	}
+}
+
+/**
+ * Which jobs each of `size` workers plays (job indexes). All the jobs of one input go to the same worker: they apply
+ * it and then play on with different policies, so most of them end in the same state and one worker's look-ahead
+ * cache (lookcache.js) serves them all. Inputs go to the least loaded worker in turn; jobs without an input (the
+ * tactics from the encounter start) are dealt one by one.
+ */
+function dealJobs(jobs, size) {
+	const dealt = [...Array(size)].map(() => []);
+	const home = new Map();   // input -> worker
+	for (let i = 0; i < jobs.length; i++) {
+		const input = jobs[i].inp;
+		let w = input ? home.get(input) : undefined;
+		if (w === undefined) {
+			w = leastLoaded(dealt);
+			if (input) home.set(input, w);
+		}
+		dealt[w].push(i);
+	}
+	return dealt;
+}
+
+/** the first worker with the fewest jobs */
+function leastLoaded(dealt) {
+	let best = 0;
+	for (let w = 1; w < dealt.length; w++) if (dealt[w].length < dealt[best].length) best = w;
+	return best;
 }
 
 /**
