@@ -8,6 +8,7 @@
 // Sprites are rendered once per (kind, variant, size bucket, theme) at device-pixel resolution and blitted.
 
 import { RANK_COLORS } from './catalog.js';
+import { hasCreature, paintCreature } from './creatures.js';
 
 const cache = new Map();
 const CACHE_MAX = 600;
@@ -650,12 +651,31 @@ const PAINTERS = {
 	npc(g, e) { robedFigure(g, e, { robe: '#5f8a3e', hood: '#4a6d2f', gem: staffOrb }); },
 	// looks like a person until you talk to it: red, with a red diamond on its staff
 	shapeshifter(g, e) { robedFigure(g, e, { robe: '#b23a3a', hood: '#7e2424', gem: staffDiamond }); },
-	monster(g, e) { creature(g, e, { color: speciesColor(e.variant), r: 10 }); },
+	// creatures with a drawing (js/view/creatures.js) are drawn as themselves, with their role's glow and badge;
+	// the rest as a blob
+	monster(g, e) {
+		if (hasCreature(e.variant)) paintCreature(g, e, e.variant);
+		else creature(g, e, { color: speciesColor(e.variant), r: 10 });
+	},
 	familiar(g, e) { creature(g, e, familiarLook(e.variant)); },
-	goldmonster(g, e) { creature(g, e, { color: '#e6b422', r: 10.5, key: true, aura: 'rgba(255,215,90,0.28)' }); },
-	miniboss(g, e) { creature(g, e, { color: '#e07a2c', r: 12.5, horns: true, teeth: true }); },
-	boss(g, e) { creature(g, e, { color: '#9e2430', r: 15, horns: true, teeth: true, aura: 'rgba(255,60,40,0.35)', eyes: '#ffd23f' }); },
-	unique(g, e) { creature(g, e, { color: '#d4a21c', r: 12.5, crown: true, aura: 'rgba(255,220,80,0.3)' }); },
+	goldmonster(g, e) {
+		if (!hasCreature(e.variant)) return creature(g, e, { color: '#e6b422', r: 10.5, key: true, aura: 'rgba(255,215,90,0.28)' });
+		drawnCreature(g, e, { scale: 1, aura: 'rgba(255,215,90,0.32)' });
+		aboveHead(g, e, () => carriedKey(g, e, { R: 10.5 * e.u }), 26);
+	},
+	miniboss(g, e) {
+		if (!hasCreature(e.variant)) return creature(g, e, { color: '#e07a2c', r: 12.5, horns: true, teeth: true });
+		drawnCreature(g, e, { scale: 1.1, aura: 'rgba(255,140,40,0.28)' });
+	},
+	boss(g, e) {
+		if (!hasCreature(e.variant)) return creature(g, e, { color: '#9e2430', r: 15, horns: true, teeth: true, aura: 'rgba(255,60,40,0.35)', eyes: '#ffd23f' });
+		drawnCreature(g, e, { scale: 1.2, aura: 'rgba(255,60,40,0.35)' });
+	},
+	unique(g, e) {
+		if (!hasCreature(e.variant)) return creature(g, e, { color: '#d4a21c', r: 12.5, crown: true, aura: 'rgba(255,220,80,0.3)' });
+		drawnCreature(g, e, { scale: 1.1, aura: 'rgba(255,220,80,0.32)' });
+		aboveHead(g, e, () => creatureCrown(g, e, { R: 12.5 * e.u }), 28);
+	},
 	spider(g, e) {
 		const { u, lw } = e;
 		shadow(g, e, 12, 6);
@@ -705,6 +725,20 @@ function staffDiamond(g, { u, lw }) {
 	g.fillStyle = hgrad(g, x - 3 * u, x + 3 * u, [[0, '#ff9a9a'], [0.5, '#e02a2a'], [1, '#8a1010']]); g.fill();
 	g.strokeStyle = '#5a0a0a'; g.lineWidth = lw * 0.8; g.stroke();
 	gloss(g, x - 0.9 * u, y - 1.6 * u, 0.6 * u, 1 * u, 0.85);
+}
+
+/** a species drawing with its role's glow behind it */
+function drawnCreature(g, e, { scale, aura }) {
+	glowDisc(g, { x: 0, y: -20 * e.u * scale, r: 24 * e.u * scale, inner: aura, outer: 'rgba(0,0,0,0)' });
+	paintCreature(g, e, e.variant, scale);
+}
+
+/** draw a blob's badge (key, crown) lifted by `lift` u, so it floats above a drawn creature's head */
+function aboveHead(g, e, badge, lift) {
+	g.save();
+	g.translate(0, -lift * e.u);
+	badge();
+	g.restore();
 }
 
 /** a glow over the middle of door face f */

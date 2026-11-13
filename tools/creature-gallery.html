@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<!-- Dev tool: every creature with a drawing (js/view/creatures.js) on a floor tile, at map size and small, by role.
+     http://127.0.0.1:8765/tools/creature-gallery.html?theme=dark -->
+<html><head><meta charset="utf-8"><title>Creature gallery</title>
+<style>body{margin:0;background:#16161a;color:#ddd;font:12px system-ui}body.light{background:#ece9e2;color:#222}canvas{display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+import { drawSprite } from '../js/view/sprites.js';
+const theme = new URLSearchParams(location.search).get('theme') || 'dark';
+if (theme === 'light') document.body.classList.add('light');
+// species, the role it is drawn in, and a label (names: the Nonograms Katana wiki's)
+const entries = [
+	[200, 'monster', 'Giant spider'], [201, 'monster', 'Scorpion'], [202, 'monster', 'Cobra'], [203, 'monster', 'Mantis'],
+	[204, 'monster', 'Centipede'], [205, 'monster', 'Skeleton pikeman'], [206, 'monster', 'Ronin'], [207, 'monster', 'Blue monk'],
+	[208, 'monster', 'Ghoul ninja'], [209, 'monster', 'Banshee'], [210, 'monster', 'Cult priestess'], [211, 'monster', 'Samurai beast'],
+	[212, 'monster', 'Troll'], [215, 'monster', 'Snotling warlord'], [216, 'monster', 'Green slime'], [217, 'monster', 'Nosferatu'],
+	[218, 'monster', 'Hooded cultist'], [219, 'monster', 'Butcher'], [220, 'monster', 'Winged imp'], [221, 'monster', 'Treenemy'],
+	[222, 'monster', 'Gnoll shaman'], [223, 'monster', 'Skeleton pirate'], [224, 'monster', 'Mushroomonster'], [268, 'monster', 'Bone Dragon'],
+	[276, 'boss', '1A boss'], [277, 'boss', '1B boss'], [213, 'boss', '1C boss'], [207, 'goldmonster', 'gold (key)'],
+	[211, 'unique', 'unique'], [999, 'monster', 'no drawing'],
+];
+const dpr = window.devicePixelRatio || 1;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const hw = +(new URLSearchParams(location.search).get('hw') || 50);
+const cols = 10, cell = hw * 3, rowH = hw * 3.5, rows = Math.ceil(entries.length / cols);
+const W = cols * cell, H = rows * rowH + 10;
+cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+const floor = theme === 'light' ? '#e2dbcf' : '#7a7166';
+const tile = (cx, cy, hw) => { ctx.fillStyle = floor; ctx.beginPath(); ctx.moveTo(cx, cy - hw / 2); ctx.lineTo(cx + hw, cy); ctx.lineTo(cx, cy + hw / 2); ctx.lineTo(cx - hw, cy); ctx.closePath(); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.stroke(); };
+entries.forEach(([id, kind, label], i) => {
+	const col = i % cols, row = (i / cols) | 0;
+	const cx = col * cell + cell / 2 - hw * 0.24, cy = row * rowH + hw * 2.4;
+	tile(cx, cy, hw); drawSprite(ctx, kind, cx, cy, hw, { theme, dpr, variant: String(id) });
+	tile(cx + hw, cy + hw * 0.56, 18); drawSprite(ctx, kind, cx + hw, cy + hw * 0.56, 18, { theme, dpr, variant: String(id) });
+	ctx.fillStyle = theme === 'light' ? '#222' : '#ccc'; ctx.fillText(`${id} ${label}`, col * cell + 8, row * rowH + rowH - 7);
+});
+document.title = 'ready';
+</script></body></html>
