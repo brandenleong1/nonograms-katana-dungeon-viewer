@@ -356,12 +356,13 @@ function drawLevel(level, type) {
 	$('#selected-info').textContent = SELECT_HINT;
 }
 
-/** The status line under the label: size, counts, and a badge for the progress the map is built with. */
+/** The status under the label: size and counts, then (a line of its own) the progress the map is built with. */
 function levelStatusHtml(level, type) {
 	const mapProfile = state.hero ? state.hero.effectiveProfile() : null;
 	const basis = mapProfile ? mapProfile.basis : 'new';
-	return `${typeLabel(type)} · ${level.w}×${level.h} · ${level.objects.length} objects · ${level.critters.length} creatures ` +
-		`<span class="profile-badge status-badge${basis === 'save' ? ' on' : basis === 'custom' ? ' custom' : ''}" title="The progress this map is built with (Your hero, Progress)">${mapProfile ? mapProfile.text.toLowerCase() : 'new game'}</span>`;
+	const text = mapProfile ? mapProfile.text : 'New game';
+	return `${typeLabel(type)} · ${level.w}×${level.h} · ${level.objects.length} objects · ${level.critters.length} creatures` +
+		`<div class="map-basis basis-${basis}" title="The progress this map is built with (Your hero, Progress)">Built with: <b>${text}</b></div>`;
 }
 
 /** The Your hero popups and the solver follow the dungeon shown. */
