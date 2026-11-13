@@ -67,12 +67,14 @@ Notes:
 
 ## Screenshots
 
-Every PR gets a **Screenshots** comment, so layout changes can be reviewed from the PR page. On each push,
-`screenshots.yml` takes the same views of `main` and of the PR. That's the map in every theme and dungeon family, Help,
-Your hero, Your progress, and a 640 px window, all with a new game and fixed labels, so no save data is ever in them.
-It keeps the views that look different, compared pixel by pixel. Then `screenshot-comment.yml` posts them in a
-before/after table and edits the same comment on later pushes. If nothing looks different, the comment says so. If
-the run failed, the comment links to it.
+Every PR gets a **Screenshots** comment, so UI changes can be reviewed from the PR page. On each push,
+`screenshots.yml` takes the same 56 views of `main` and of the PR: the map in every theme and dungeon family, windows
+from a phone to a 2560 px screen, rooms zoomed in, clicks on the map and the lists, the hover tooltip, every map layer,
+the solver's settings and a finished plan in each mode, and every popup. They all use a new game and fixed labels, so
+no save data is ever in them ([the list](testing.md#screenshots)). The run keeps the views that look different,
+compared pixel by pixel. Then `screenshot-comment.yml` posts them in a before/after table, in the list's order, and
+edits the same comment on later pushes. A view `main` can't show yet (it needs a control the PR adds) is posted on
+its own as a new view. If nothing looks different, the comment says so. If the run failed, the comment links to it.
 
 - **Where the images live:** the `bot/screenshots` branch, under `auto/pr-<n>/<commit>/`. It isn't part of the site.
   Runs for several PRs can finish at once. Each adds a commit and moves the branch only if no other run moved it
@@ -83,11 +85,13 @@ the run failed, the comment links to it.
   files. The comment workflow runs `tools/screenshot-comment.mjs` from `main` and treats those files as untrusted
   data. It parses and checks the manifest, accepts only regular PNG files of bounded size under strict names, and
   puts nothing from them into the comment but those names.
-- **More images:** the comment covers fixed views. For anything else (a hover state, a solve), add images to the PR
-  description: drag them into the editor on github.com, or push them to `bot/screenshots` under `pr-<n>/` and link
-  `https://raw.githubusercontent.com/<repo>/bot/screenshots/pr-<n>/<file>.png`. The bot leaves `pr-<n>/` alone.
+- **More images:** the comment covers fixed views. For anything else (another dungeon, a longer solve, a state the
+  views don't reach), add images to the PR description: drag them into the editor on github.com, or push them to
+  `bot/screenshots` under `pr-<n>/` and link `https://raw.githubusercontent.com/<repo>/bot/screenshots/pr-<n>/<file>.png`.
+  The bot leaves `pr-<n>/` alone.
 - **Locally:** `node tools/screenshots.mjs --out /tmp/shots` shoots this checkout. Add `--before <main worktree>` to
-  keep only what changed.
+  keep only what changed, and `--only <group>` for a few views ([testing.md](testing.md#screenshots)).
+- **Time:** most of the job is shooting both checkouts on its 4-core runner, three pages at a time: about 3 minutes.
 
 ## The PR bot
 
