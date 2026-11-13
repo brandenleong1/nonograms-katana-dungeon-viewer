@@ -91,6 +91,26 @@ const t0 = performance.now();
 	check('walker: checkpoint resumes identically', k1 === k2, `${k1} vs ${k2}`);
 }
 
+// ---- walker: keys in the pack open locked doors 29 once their gold monsters are dead (c30.m0: any key, one per door) ----
+{
+	const objectiveStops = (w) => w.legs.filter((L) => L.kind === 'objective').map((L) => (L.rec ? `${L.rec.id}@${L.rec.x},${L.rec.y}` : L.label)).sort();
+	const replanWithKeys = (keys) => {
+		resetStatics(tables);
+		const run = S.Run.start({ level: 21, gear: 4, kit2: true }, { type: 12, seed: 344057351, xseed: 1 });
+		const h = run.fight.h, w = run.walker;
+		const before = objectiveStops(w);
+		const gold = h.o.filter((m) => m.g === 167);
+		for (const m of gold) h.j_(m, false);   // dead: the engine takes a critter off the level (hw.j)
+		if (keys) h.f.D.b_(167, keys);
+		w.replan();
+		return { before, after: objectiveStops(w), gold: gold.length };
+	};
+	const all = replanWithKeys(2), one = replanWithKeys(1);
+	const lost = (r) => r.before.filter((s) => !r.after.includes(s)).join(' ');
+	check('walker: a re-plan with the gold monsters dead keeps the objectives behind locked doors 29 when the keys are in the pack', all.gold === 2 && all.after.length === all.before.length, `lost ${lost(all) || 'none'}`);
+	check('walker: one key opens one locked door 29', one.after.length === one.before.length - 1, `lost ${lost(one) || 'none'}`);
+}
+
 // ---- wiki: first strike against a lone 2-AP melee foe (243, type 10) ----
 {
 	resetStatics(tables);

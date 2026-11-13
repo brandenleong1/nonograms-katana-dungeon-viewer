@@ -6,7 +6,7 @@
 //  - Every object blocks its tile except mine carts (84). Objects are used from a neighbouring tile ("bump").
 //  - Door objects open by condition:
 //      27 sealed door (mental power), 28 stuck door (energy, pw.r)   -> openable at a cost
-//      33 gate -> its lever (32, same h); 29 locked door -> the gold monster's key (167);
+//      33 gate -> its lever (32, same h); 29 locked door -> a gold monster's key (167), or one the hero holds;
 //      35 / 60 puzzle doors -> floor nonogram / barrels on plates; 53 boss gate -> the mini-boss (key 222)
 //  - Ladders 40 <-> hatches 38/39, portals 88 <-> teleporters 126 (same h) move you to the partner.
 //  - Monsters in the way are fought (a penalty, not a wall).
@@ -38,16 +38,17 @@ const BLOCKED = Object.freeze({ blocked: true });
  *
  * Options: the game's tables (`rw` object definitions, `bw` creature definitions, `pwOf(type)` dungeon definitions,
  * nonogram `patterns`, tile walk flags `tiles`), `endAtExit` (finish at the stairs), the step price of one point of
- * energy and mental power (`epCost`, `mpCost`), and up to how many stops the order is exact (`exactLimit`).
+ * energy and mental power (`epCost`, `mpCost`), up to how many stops the order is exact (`exactLimit`), and from a
+ * live state the keys (167) already in the hero's pack (`heldKeys`; 0 for a label's fresh dungeon).
  *
  * Returns `{ legs, route, steps, mp, ep, exact, unreachable, unknownGates, puzzle, debug }`: `route` is the tiles
  * walked (`{ jump: true }` before a ladder or portal hop), each leg covers `route[from + 1 .. to]`.
  */
-export function planRoute(level, { rw, bw = null, pwOf, patterns, tiles = null, endAtExit = false, epCost = EP_COST, mpCost = MP_COST, exactLimit = EXACT_LIMIT }) {
+export function planRoute(level, { rw, bw = null, pwOf, patterns, tiles = null, endAtExit = false, epCost = EP_COST, mpCost = MP_COST, exactLimit = EXACT_LIMIT, heldKeys = 0 }) {
 	const pw = pwOf(level.type);
 	const grid = new RouteGrid(level, { rw, tiles });
 	const puzzle = patterns ? nonogramWalk(level, patterns) : null;
-	const locks = doorLocks(grid, puzzle);
+	const locks = doorLocks(grid, puzzle, heldKeys);
 	// a gate with no known requirement stays shut (marked in the result)
 	const unknownGates = locks.gates.filter((g) => !g.req.length);
 	const teleports = teleportLinks(grid);
@@ -234,10 +235,11 @@ class RouteGrid {
  * mask is its index in `gates`.
  */
 class Locks {
-	constructor(grid, puzzle) {
+	constructor(grid, puzzle, heldKeys) {
 		const { objects, critters } = grid.level;
 		this.grid = grid;
 		this.puzzle = puzzle;
+		this.keyedDoors = keyedDoors(grid.level, heldKeys);
 		this.gates = [];
 		this.gateOf = new Int8Array(grid.cellCount).fill(-1);
 		this.openers = [];
@@ -255,6 +257,8 @@ class Locks {
 			const g = this.addGate(cell, { obj: o, kind: 'gate', label: 'Gate' });
 			for (const l of this.levers.filter((l) => l.h === o.h)) this.require(g, `lever${l.h}-${l.x},${l.y}`, () => this.bumpStop('lever', l, 'Pull the lever'));
 		} else if (o.id === 29) {
+			// a key already held opens it as it is bumped (c30.m0): no gate, a plain door
+			if (this.keyedDoors.has(o)) return;
 			const g = this.addGate(cell, { obj: o, kind: 'lock', label: 'Locked door' });
 			for (const m of this.goldMonsters) this.require(g, `gold${m.x},${m.y}`, () => this.bumpStop('gold', m, 'Defeat the gold monster (key)'));
 		} else if (o.id === 35) {
@@ -309,10 +313,22 @@ class Locks {
 	}
 }
 
-function doorLocks(grid, puzzle) {
-	const locks = new Locks(grid, puzzle);
+function doorLocks(grid, puzzle, heldKeys) {
+	const locks = new Locks(grid, puzzle, heldKeys);
 	for (const o of grid.level.objects) locks.addDoor(o);
 	return locks;
+}
+
+/**
+ * The locked doors (29) the hero's held keys open: in the game (c30.m0) any key 167 opens any door 29 and is used up
+ * by it, so `heldKeys` of them -- the ones nearest the hero (Manhattan), which the walk most likely reaches first.
+ */
+function keyedDoors(level, heldKeys) {
+	if (!(heldKeys > 0)) return new Set();
+	const hero = level.critters.find((c) => c.id === HERO);
+	const away = (o) => Math.abs(o.x - hero.x) + Math.abs(o.y - hero.y);
+	const doors = level.objects.filter((o) => o.id === 29).sort((a, b) => away(a) - away(b));
+	return new Set(doors.slice(0, heldKeys));
 }
 
 function lockForestExits(grid, locks, enter) {
