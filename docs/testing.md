@@ -21,6 +21,7 @@ npm test        # = node tools/run-tests.mjs: every standalone suite in test/
 | `test/catalog.mjs` | `data/catalog.json`: every creature and object in about 770 generated dungeons (new game and progress states) has an entry with a name and a kind the map draws, and every id is drawn as before the table existed, except object 84 (the caves' mine cart, drawn as reeds before). Also the level's wild familiars and mine-cart riders. | ~9 s |
 | `test/questlines.mjs` | The Your progress questlines: every quest the generator reads is on a slider, every position round-trips through a profile, and part 3 of Once Upon a Forest brings 3C's mini-boss. | ~1 s |
 | `test/solve.mjs` | Solver: resource ledger, route walker, the wiki's first-strike rule, robust and exact solves on small budgets, MP top-ups (including mid-fight), the plan schema, the worker pool. Use `--quick` to skip the slow cases and `--no-workers` to skip the pool. | ~1 min |
+| `test/exact-workers.mjs` | Exact mode gives the same plan with 2, 4 and 8 workers as with the inline pool (`1A-1429008869`, small search). | ~20 s |
 
 `npm test` must pass before a pull request is merged.
 

@@ -355,13 +355,18 @@ class TrajectoryWorkers {
 		await Promise.all([...Array(this.pool.size).keys()].map((w) => this.pool.call(w, 'sync', inputs, wk, tops)));
 	}
 
-	/** jobs dealt round-robin to the workers; results in worker order */
+	/**
+	 * Jobs dealt round-robin to the workers. The results come back in job order, each with its index (`i`), whichever
+	 * worker played it: the choice between equal play-outs must not depend on how many workers there are.
+	 */
 	async play(jobs, ctx) {
 		const W = this.pool.size;
-		const per = [...Array(W)].map(() => []);
-		jobs.forEach((j, i) => per[i % W].push(j));
-		const parts = await Promise.all(per.map((js, w) => (js.length ? this.pool.call(w, 'evaluate', js, ctx) : [])));
-		return parts.flat();
+		const dealt = [...Array(W)].map(() => []);
+		jobs.forEach((j, i) => dealt[i % W].push(i));
+		const parts = await Promise.all(dealt.map((ids, w) => (ids.length ? this.pool.call(w, 'evaluate', ids.map((i) => jobs[i]), ctx) : [])));
+		const results = new Array(jobs.length);
+		parts.forEach((part, w) => part.forEach((r, k) => { r.i = dealt[w][k]; results[r.i] = r; }));
+		return results;
 	}
 }
 
@@ -435,7 +440,7 @@ async function searchInputs(search, { ctx, base, ranked, maxDecisions }) {
 		decisions++;
 		const good = res.filter((r) => !r.bad && r.o).sort(compareJobs);
 		if (!good.length) break;
-		if (compareJobs(good[0], best) < 0) improved++;
+		if (comparePlayouts(good[0], best) < 0) improved++;
 		best = good[0];
 		finish = best.j.c;
 		run.apply(best.j.inp);
@@ -464,11 +469,16 @@ function recordEncounterEnd(enc, run, led0, found) {
 	enc.cost = { items: lc.items(), byId: lc.itemsById(), mp: lc.mp, hpLost: lc.hp, epLost: lc.ep, dead: run.fight.h.f.u_() };
 }
 
-/** play-outs by the exact objective (no outcome last), then fewer inputs */
-function compareJobs(a, b) {
-	if (!a.o) return 1;
-	if (!b.o) return -1;
+/** play-outs by the exact objective (no outcome last), then fewer inputs; 0: equal */
+function comparePlayouts(a, b) {
+	if (!a.o !== !b.o) return a.o ? -1 : 1;
+	if (!a.o) return 0;
 	return compareExact(a.sc, b.sc) || (a.o.inputs - b.o.inputs);
+}
+
+/** comparePlayouts, equal ones by job index: a total order within a batch, the same whichever worker played what */
+function compareJobs(a, b) {
+	return comparePlayouts(a, b) || (a.i - b.i);
 }
 
 /** the trajectory's MP top-ups, trimmed to what the player has to solve for, each with its stop and encounter */
