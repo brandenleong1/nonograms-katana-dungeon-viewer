@@ -3,7 +3,7 @@
 // damage and defence at this dungeon's level, their seal, and what they drop. People: their quest, or what they give.
 // Wild familiars: what they look like and their rank. Objects: what opening or breaking them costs, and what they
 // link to.
-import { KINDS, objectKind, critterKind, critterName, objectName, familiarRank, critterNameSource, objectNameSource } from '../view/catalog.js';
+import { KINDS, objectKind, critterKind, critterName, objectName, familiarRank, critterNameSource, objectNameSource, itemName as catalogItemName } from '../view/catalog.js';
 import { partners } from '../view/links.js';
 import { family } from '../labels.js';
 import { zw } from '../gen/statics.js';
@@ -193,7 +193,8 @@ function objectHtml(obj, ctx) {
 	const kind = objectKindOf(obj);
 	const look = KINDS[kind];
 	const parts = [headHtml(look, objectName(obj, family(ctx.level.type)) ?? look.label, obj.id)];
-	if (def && def.v > 0) parts.push(`<div>Needs <b>${def.v}</b> mental power to open.</div>`);
+	if (def && def.v > 0 && !obj.f) parts.push(`<div>Needs <b>${def.v}</b> mental power to open.</div>`);
+	parts.push(...objectContents(obj, def, ctx));
 	if (kind === 'stuckdoor') parts.push(`<div>Breaking it costs ${breakCost(ctx.level.type)} energy.</div>`);
 	// c30 movement: stepping in picks the cart up (flag 512); it rolls with its rider along the boardwalk (ww.o, floor
 	// 18 / 19: the caves' rails) and stays behind where the rider steps off it
@@ -203,6 +204,26 @@ function objectHtml(obj, ctx) {
 	if (linked.length) parts.push(`<div>Links to ${linked.map((p) => partnerLinkHtml(p, ctx.level)).join(', ')}.</div>`);
 	if (objectNameSource(obj) === 'wiki') parts.push(wikiCreditHtml('object'));
 	return parts.join('');
+}
+
+/** Placed contents (qw.b), and c30.A / P0 hidden creatures; reading these must never roll dice. */
+function objectContents(obj, def, ctx) {
+	if (obj.e) return ['<div>Already collected or used.</div>'];
+	const lines = [];
+	const loot = carried(obj, def);
+	if (loot > 0) lines.push(`<div>Holds ${itemHtml(loot, ctx)}.</div>`);
+	else if (def && (def.x || def.i || def.m)) lines.push('<div>Empty.</div>');
+	const chance = mimicChance(obj, zw.M[ctx.level.type]);
+	if (chance) lines.push(`<div>${chance}% chance of a hidden creature; it carries these contents.</div>`);
+	if (obj.id === 54) lines.push('<div>50% chance of a Garganbee appearing.</div>');
+	if (obj.id === 95) lines.push('<div>Restores 10 energy and lights your torch.</div>');
+	return lines;
+}
+
+/** Hidden-creature probabilities from c30.A and c30.P0; no combat-dice prediction. */
+export function mimicChance(obj, dungeon) {
+	if ([3, 26, 104, 105, 106, 94].includes(obj.id)) return 20;
+	return obj.id === 2 && (dungeon?.E || dungeon?.F) ? 8 : 0;
 }
 
 /** Energy to break a stuck door in a dungeon type: its pw.r, as the route planner counts it. */
@@ -237,7 +258,7 @@ function objectKindOf(obj) {
 }
 
 function itemName(id, { names }) {
-	return (names.items && names.items[id]) || `item ${id}`;
+	return catalogItemName(id, names);
 }
 
 /** "<b>Thread</b>", or "<b>Key</b> for the jade door" */
