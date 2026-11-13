@@ -1,7 +1,11 @@
 // Isometric dungeon renderer (canvas 2D), using the game's projection (c30.C0):
 //   screen x = (x + y) * HW,  screen y = (y - x) * HH   — +x goes up-right, +y goes down-right.
+// Walls are drawn the game's way (c30.D): each wall cell is 2 × 2 quarters. The back quarter (+x, -y) is always wall,
+// the left one (-x, -y) when the wall goes on toward -x (or runs only along x), the right one (+x, +y) when it goes on
+// toward +y (or has no x neighbour), and the front one never. Exact rule and sources: walls.js.
 import { KINDS, TILE, objectKind, critterKind, critterVariant, critterColor, isHiddenTrap, isPressurePlate } from './catalog.js';
 import { drawSprite } from './sprites.js';
+import { wallQuarters, WALL_LEFT, WALL_RIGHT, OPEN_LEFT, OPEN_RIGHT, FLOOR_SHOWS } from './walls.js';
 
 const HW = 32;   // half tile width at scale 1
 const HH = 16;   // half tile height at scale 1
@@ -58,6 +62,7 @@ export class IsoView {
 		for (const o of level.objects) this.objAt.set(o.y * level.w + o.x, o);
 		this.critAt = new Map();
 		for (const c of level.critters) this.critAt.set(c.y * level.w + c.x, c);
+		this.walls = wallQuarters(level);
 		this.selected = null;
 		this.highlights = [];
 		this.links = [];
@@ -88,7 +93,7 @@ export class IsoView {
 	 */
 	setSolveOverlay(o) {
 		this.solve = { ...this.solve, ...o };
-		if ('actors' in o) this.solve.actAt = this.level && o.actors ? actorsByCell(o.actors, this.level.w) : new Map();
+		if ('actors' in o) this.solve.actAt = this.level && o.actors ? actorsByCell(o.actors, this.level.w) : null;
 		this.redraw();
 	}
 	clearSolveOverlay() { this.solve = emptySolve(); this.redraw(); }
@@ -210,14 +215,14 @@ export class IsoView {
 		const outerWall = { top: pal.out, left: shade(pal.out, -0.25), right: shade(pal.out, -0.4) };
 		const standsAlone = () => false;
 		return {
-			hw, hh, wh, pal,
+			hw, hh, wh, pal, wall,
 			showDecor: this.layers.has('decor') && s > 0.35,
 			showTraps: this.layers.has('traps'),
 			showPuzzles: this.layers.has('puzzles'),
+			// a full block hides a face only behind a full block at least as tall: quarter walls leave gaps
 			blocks: {
-				[TILE.WALL]: { hw, hh, height: wh, faces: wall, joins: isWallTile },
-				[TILE.OUTWALL]: { hw, hh, height: wh * 1.2, faces: outerWall, joins: isWallTile },
-				[TILE.EXIT]: { hw, hh, height: wh, faces: STAIRS, joins: isWallTile },
+				[TILE.OUTWALL]: { hw, hh, height: wh * 1.2, faces: outerWall, joins: isOuterWall },
+				[TILE.EXIT]: { hw, hh, height: wh, faces: STAIRS, joins: isFullBlock },
 				[TILE.PILLAR]: { hw: hw * 0.45, hh: hh * 0.45, height: wh * 1.3, faces: wall, joins: standsAlone },
 			},
 		};
@@ -284,6 +289,21 @@ export class IsoView {
 		ctx.fill();
 	}
 
+	/**
+	 * A wall cell the way the game draws it (walls.js): quarter blocks, on the room floor where the floor shows. Every
+	 * wall has its back quarter; the left and right quarters are optional and the front quarter is always open.
+	 */
+	_quarterWall(ctx, cell, frame) {
+		const m = this.walls[cell.i];
+		if (m & FLOOR_SHOWS) {
+			ctx.fillStyle = frame.pal.room;
+			this._diamond(ctx, cell.cx, cell.cy, frame.hw, frame.hh);
+			ctx.fill();
+		}
+		quarterFaces(ctx, cell, frame, m);
+		quarterTop(ctx, cell, frame, m);
+	}
+
 	_tile(ctx, cell, frame) {
 		const { cx, cy, a, b } = cell;
 		const { hw, hh } = frame;
@@ -291,6 +311,8 @@ export class IsoView {
 			case TILE.VOID:
 				return;
 			case TILE.WALL:
+				this._quarterWall(ctx, cell, frame);
+				return;
 			case TILE.OUTWALL:
 			case TILE.EXIT:
 				this._block(ctx, cell, frame.blocks[a]);
@@ -347,23 +369,40 @@ export class IsoView {
 			return;
 		}
 		const sprite = { cx: cell.cx, cy: cell.cy, hw: frame.hw, selected: this.selected === o, variant: '' };
-		if (isWallTile(this._cellA(o.x, o.y))) this._mountOnWall(o, sprite, frame.hh);
+		if (isWallTile(cell.a)) this._mountOnWall(o, sprite, frame.hh);
 		else sprite.variant = this._objectVariant(o, kind);
+		if (isDoorKind(kind)) this._alignDoor(o, sprite, frame.hh);
 		this._badge(ctx, kind, sprite);
 	}
 
-	/** wall-mounted objects (ladders etc.) sit on the wall face that looks into their room */
+	/** wall-mounted objects (ladders etc.) hang on the wall face that looks into their room */
 	_mountOnWall(o, sprite, hh) {
-		if (isWalkableTile(this._cellA(o.x, o.y + 1))) {
-			sprite.cx += sprite.hw * 0.5; sprite.cy += hh * 0.5; sprite.variant = 'x';
-		} else if (isWalkableTile(this._cellA(o.x - 1, o.y))) {
-			sprite.cx -= sprite.hw * 0.5; sprite.cy += hh * 0.5; sprite.variant = 'y';
-		}
+		const facing = isWalkableTile(this._cellA(o.x, o.y + 1)) ? 'x' : isWalkableTile(this._cellA(o.x - 1, o.y)) ? 'y' : '';
+		if (!facing) return;
+		const i = o.y * this.level.w + o.x;
+		const [fx, fy] = faceMiddle(this.level.cells[2 * i] === TILE.WALL ? this.walls[i] : null, facing);
+		sprite.cx += sprite.hw * fx;
+		sprite.cy += hh * fy;
+		sprite.variant = facing;
+	}
+
+	/**
+	 * A door between quarter walls stands in their line: a quarter tile back from the cell centre, toward -y in a wall
+	 * along x and toward +x in a wall along y (walls.js). Doors between full blocks (forest, cave rock) stay centred.
+	 */
+	_alignDoor(o, sprite, hh) {
+		const alongX = sprite.variant === 'x';
+		const flanked = alongX
+			? this._cellA(o.x - 1, o.y) === TILE.WALL || this._cellA(o.x + 1, o.y) === TILE.WALL
+			: this._cellA(o.x, o.y - 1) === TILE.WALL || this._cellA(o.x, o.y + 1) === TILE.WALL;
+		if (!flanked) return;
+		sprite.cx += sprite.hw * (alongX ? -0.25 : 0.25);
+		sprite.cy -= hh * 0.25;
 	}
 
 	/** door leaves follow their wall (walls left/right in x: the leaf spans the x axis); fountain 58 restores MP */
 	_objectVariant(o, kind) {
-		if (KINDS[kind].layer === 'doors' && kind !== 'lever') return isWallTile(this._cellA(o.x - 1, o.y)) || isWallTile(this._cellA(o.x + 1, o.y)) ? 'x' : 'y';
+		if (isDoorKind(kind)) return isWallTile(this._cellA(o.x - 1, o.y)) || isWallTile(this._cellA(o.x + 1, o.y)) ? 'x' : 'y';
 		if (kind === 'fountain' && o.id === 58) return 'mp';
 		return '';
 	}
@@ -756,7 +795,68 @@ function actorsByCell(actors, w) {
 }
 
 const isWallTile = (t) => t === TILE.WALL || t === TILE.OUTWALL || t === TILE.PILLAR;
+const isDoorKind = (kind) => KINDS[kind].layer === 'doors' && kind !== 'lever';
+const isOuterWall = (t) => t === TILE.OUTWALL;
+const isFullBlock = (t) => t === TILE.OUTWALL || t === TILE.EXIT;
 const isWalkableTile = (t) => t === TILE.FLOOR || t === TILE.DOOR || t === TILE.OUTDOOR;
+
+// Quarter walls (IsoView._quarterWall). Points are offsets from the cell centre (cx, cy) on the floor; a quarter is
+// half a tile wide (qw = hw / 2) and half a tile high (qh = hh / 2). The back quarter's corners are (0, -hh),
+// (qw, -qh), (0, 0) and (-qw, -qh); the left quarter's left corner is (-hw, 0), the right quarter's right corner
+// (hw, 0). Hot path: every fill is one small shape (canvases fill those fastest; one path of many shapes was slower),
+// side faces that line up are drawn as one, and nothing is allocated.
+
+/** the side faces that show: toward -x in the left colour, toward +y in the right colour */
+function quarterFaces(ctx, { cx, cy }, { hw, hh, wh, wall }, m) {
+	const left = m & WALL_LEFT, right = m & WALL_RIGHT;
+	const qw = hw / 2, qh = hh / 2;
+	// toward -x: the left quarter's side unless the wall at x - 1 hides it; the back quarter's where the left quarter
+	// is open, in line with the right quarter's
+	const leftSide = left && (m & OPEN_LEFT);
+	if (leftSide || !left || right) ctx.fillStyle = wall.left;
+	if (leftSide) wallFace(ctx, cx - hw, cy, cx - qw, cy + qh, wh);
+	if (!left || right) wallFace(ctx, left ? cx : cx - qw, left ? cy : cy - qh, right ? cx + qw : cx, right ? cy + qh : cy, wh);
+	// toward +y: the right quarter's side unless the wall at y + 1 hides it; the back quarter's where the right quarter
+	// is open, in line with the left quarter's
+	const rightSide = right && (m & OPEN_RIGHT);
+	if (rightSide || !right || left) ctx.fillStyle = wall.right;
+	if (rightSide) wallFace(ctx, cx + qw, cy + qh, cx + hw, cy, wh);
+	if (!right || left) wallFace(ctx, left ? cx - qw : cx, left ? cy + qh : cy, right ? cx : cx + qw, right ? cy : cy - qh, wh);
+}
+
+/** the top: around the back quarter, out over the right and left quarters when they are wall */
+function quarterTop(ctx, { cx, cy }, { hw, hh, wh, wall }, m) {
+	const left = m & WALL_LEFT, right = m & WALL_RIGHT;
+	const qw = hw / 2, qh = hh / 2, ty = cy - wh;
+	ctx.fillStyle = wall.top;
+	ctx.beginPath();
+	ctx.moveTo(cx, ty - hh);
+	if (right) { ctx.lineTo(cx + hw, ty); ctx.lineTo(cx + qw, ty + qh); } else ctx.lineTo(cx + qw, ty - qh);
+	if (!left === !right) ctx.lineTo(cx, ty);   // with one side quarter the centre is on a straight edge
+	if (left) { ctx.lineTo(cx - qw, ty + qh); ctx.lineTo(cx - hw, ty); } else ctx.lineTo(cx - qw, ty - qh);
+	ctx.fill();
+}
+
+/** fills a vertical face `height` tall standing on the floor edge (x0, y0)-(x1, y1) */
+function wallFace(ctx, x0, y0, x1, y1, height) {
+	ctx.beginPath();
+	ctx.moveTo(x0, y0 - height);
+	ctx.lineTo(x1, y1 - height);
+	ctx.lineTo(x1, y1);
+	ctx.lineTo(x0, y0);
+	ctx.fill();
+}
+
+/**
+ * Where a sprite hanging on a wall stands: the bottom middle of the face it hangs on, in half tile sizes (x in hw, y
+ * in hh) from the cell centre. facing 'x' is the face looking toward +y, 'y' the one toward -x. mask: the cell's
+ * quarters (walls.js), or null for a full block. On a straight quarter wall that is the cell centre.
+ */
+function faceMiddle(mask, facing) {
+	if (mask === null) return facing === 'x' ? [0.5, 0.5] : [-0.5, 0.5];
+	if (facing === 'x') return mask & WALL_LEFT ? [0, 0] : mask & WALL_RIGHT ? [0.75, 0.25] : [0.25, -0.25];
+	return mask & WALL_RIGHT ? [0, 0] : mask & WALL_LEFT ? [-0.75, 0.25] : [-0.25, -0.25];
+}
 
 /** fill colour of a walkable tile; pressure plates and nonogram floors stand out with the puzzles layer */
 function groundColor(a, b, { pal, showPuzzles }) {

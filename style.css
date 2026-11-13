@@ -1,5 +1,51 @@
 body {
 	column-gap: 24px;
+	--icon-gutter: 56px;
+}
+
+/* a gutter for the help / settings icons (#bottom-bar), as the last column: scrolled all the way right, nothing
+   sits under them (a column, not padding, so it stays after the others when they are wider than the window) */
+body::after {
+	content: '';
+	flex: 0 0 calc(var(--icon-gutter) - 24px);
+}
+
+/* the help / settings icons, stacked in the gutter at the bottom right */
+#bottom-bar {
+	width: auto;
+	height: auto;
+	flex-direction: column;
+	row-gap: 14px;
+}
+
+#bottom-bar > * {
+	height: 30px;
+}
+
+/* content passing under the icons blurs and fades out, a hint that the page scrolls further right */
+#bottom-bar::before {
+	content: '';
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	width: var(--icon-gutter);
+	z-index: -1;
+	pointer-events: none;
+	background: linear-gradient(to right, transparent, var(--color_bg) 70%);
+	backdrop-filter: blur(3px);
+	-webkit-mask-image: linear-gradient(to right, transparent, #000 45%);
+	mask-image: linear-gradient(to right, transparent, #000 45%);
+}
+
+/* scrolling boxes fade their content out at the edges instead of cutting it (as in the cards site's console) */
+.scroll-list,
+.solve-scroll {
+	--fade: 14px;
+	padding-top: var(--fade);
+	padding-bottom: var(--fade);
+	-webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
+	mask-image: linear-gradient(to bottom, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
 }
 
 .vertical-section {
@@ -332,6 +378,13 @@ body {
 	width: auto;
 }
 
+/* Your hero: a line between subcategories (equipment, companions, skills, familiars, ...) */
+.hero-col .sub-head {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid color-mix(in srgb, var(--color_txt2) 35%, transparent);
+}
+
 .hero-list {
 	position: relative;
 	max-height: 52vh;
@@ -410,20 +463,15 @@ body.solver-hidden #solve-section {
 	display: none;
 }
 
-body.solver-hidden #info-section {
-	padding-bottom: 46px;   /* now the last column: clear of the fixed help / settings icons */
-}
-
 #solver-btn.off {
 	opacity: 0.55;
 }
 
 /* ---- Solver (js/ui/solve-panel.js) ------------------------------------------------------------- */
 #solve-section {
-	width: 330px;
-	min-width: 330px;
+	width: 390px;
+	min-width: 390px;
 	row-gap: 6px;
-	padding-bottom: 46px;   /* clear of the fixed help / settings icons */
 	box-sizing: border-box;
 }
 
@@ -929,13 +977,18 @@ table.cmp tr.muted td {
 	outline: none;
 }
 
-.status-badge {
-	display: inline-block;
-	margin-left: 4px;
-	padding: 1px 7px;
-	font-size: 72%;
-	letter-spacing: 0.5px;
-	vertical-align: 1px;
+/* under the dungeon's size and counts: the progress the map is built with, as plain text */
+.map-basis {
+	margin-top: 2px;
+	color: var(--color_txt2);
+}
+
+.map-basis.basis-save b {
+	color: var(--color_btn);
+}
+
+.map-basis.basis-custom b {
+	color: var(--color_link);
 }
 
 #popup-progress {

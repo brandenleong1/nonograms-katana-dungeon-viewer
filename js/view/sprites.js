@@ -24,8 +24,6 @@ export function drawSprite(ctx, kind, cx, cy, hw, { selected = false, theme = 'd
 	ctx.drawImage(spr.canvas, cx - spr.ax * k, cy - spr.ay * k, spr.canvas.width * k, spr.canvas.height * k);
 }
 
-export const hasSprite = (kind) => kind in PAINTERS;
-
 /** sprites are drawn at quarter-octave sizes from 8 to 256 device px, so zooming reuses cached renders */
 function sizeBucket(devicePx) {
 	return Math.min(256, Math.max(8, Math.round(2 ** (Math.round(Math.log2(devicePx) * 4) / 4))));
@@ -201,7 +199,7 @@ function eye(g, e, { x, y, r, iris, sclera }) {
 }
 
 // ---- door helpers -----------------------------------------------------------------------------------
-const WOOD = '#8a5a32', WOOD_D = '#6b4325', STONE = '#8e8a94', IRON = '#5d6470';
+const WOOD = '#8a5a32', STONE = '#8e8a94', IRON = '#5d6470';
 
 /** Door in a doorway. axis = wall direction ('x' or 'y'). Returns face mapping for details. */
 function doorBase(g, e, axis, leaf, { arch = STONE, height = 30 } = {}) {
@@ -548,6 +546,31 @@ const PAINTERS = {
 		g.fillStyle = 'rgba(255,255,255,0.8)';
 		for (const [x, y] of [[-5, -9], [4, -10], [1, -7.5]]) { g.beginPath(); g.ellipse(x * u, y * u, 1.6 * u, 0.6 * u, 0, 0, Math.PI * 2); g.fill(); }
 	},
+	torchstatue(g, e) {
+		const { u, lw } = e;
+		shadow(g, e, 14, 7);
+		box(g, e, { ex: 0.22, ey: 0.22, height: 6, color: '#a89a7c' });
+		const stone = '#d8c39a';
+		// robed figure: a tapering gown, shoulders and head
+		path(g, [[-7 * u, -6 * u], [-4.5 * u, -26 * u], [4.5 * u, -26 * u], [7 * u, -6 * u]]);
+		g.fillStyle = hgrad(g, -7 * u, 7 * u, [[0, shade(stone, 0.15)], [0.45, stone], [1, shade(stone, -0.35)]]); g.fill();
+		g.strokeStyle = ink(stone); g.lineWidth = lw; g.stroke();
+		g.fillStyle = shade(stone, 0.05); g.beginPath(); g.arc(0, -30 * u, 4 * u, 0, Math.PI * 2); g.fill(); g.stroke();
+		// raised arm and torch
+		g.strokeStyle = shade(stone, -0.1); g.lineWidth = lw * 2.6;
+		g.beginPath(); g.moveTo(3.5 * u, -24 * u); g.lineTo(7 * u, -33 * u); g.stroke();
+		g.strokeStyle = '#6b4a2b'; g.lineWidth = lw * 1.8;
+		g.beginPath(); g.moveTo(7 * u, -30 * u); g.lineTo(8 * u, -39 * u); g.stroke();
+		const fx = 8 * u, fy = -42 * u;
+		glowDisc(g, { x: fx, y: fy, r: 14 * u, inner: 'rgba(255,190,80,0.6)', outer: 'rgba(255,140,40,0)' });
+		g.beginPath(); g.moveTo(fx, fy - 7 * u);
+		g.quadraticCurveTo(fx + 4 * u, fy - 1 * u, fx + 2.5 * u, fy + 2.5 * u);
+		g.quadraticCurveTo(fx, fy + 4 * u, fx - 2.5 * u, fy + 2.5 * u);
+		g.quadraticCurveTo(fx - 4 * u, fy - 1 * u, fx, fy - 7 * u);
+		g.fillStyle = hgrad(g, fx - 4 * u, fx + 4 * u, [[0, '#ffe9a0'], [0.5, '#ffb030'], [1, '#e0601a']]); g.fill();
+		g.fillStyle = 'rgba(255,250,220,0.9)'; g.beginPath(); g.ellipse(fx, fy + 0.5 * u, 1.2 * u, 2 * u, 0, 0, Math.PI * 2); g.fill();
+		gloss(g, -2.5 * u, -20 * u, 1 * u, 3.5 * u, 0.3);
+	},
 	special(g, e) {
 		const { u, lw } = e;
 		shadow(g, e, 14, 7);
@@ -624,22 +647,9 @@ const PAINTERS = {
 		g.strokeStyle = '#eef2f8'; g.lineWidth = lw * 1.3; g.beginPath(); g.moveTo(7.5 * u, -10 * u); g.lineTo(12.5 * u, -27 * u); g.stroke();
 		g.strokeStyle = '#8a6a2a'; g.lineWidth = lw * 1.8; g.beginPath(); g.moveTo(5 * u, -11.5 * u); g.lineTo(10 * u, -10 * u); g.stroke();
 	},
-	npc(g, e) {
-		const { u, lw } = e;
-		shadow(g, e, 10, 5);
-		const robe = '#5f8a3e', hood = '#4a6d2f', skin = '#eec29b';
-		g.beginPath(); g.moveTo(-7.5 * u, 0); g.quadraticCurveTo(-8 * u, -14 * u, -4.5 * u, -21 * u); g.lineTo(4.5 * u, -21 * u); g.quadraticCurveTo(8 * u, -14 * u, 7.5 * u, 0); g.quadraticCurveTo(0, 2 * u, -7.5 * u, 0); g.closePath();
-		g.fillStyle = hgrad(g, -8 * u, 8 * u, [[0, shade(robe, 0.25)], [0.45, robe], [1, shade(robe, -0.4)]]); g.fill(); g.strokeStyle = ink(robe); g.lineWidth = lw; g.stroke();
-		g.strokeStyle = '#d9c27a'; g.lineWidth = lw * 1.2; g.beginPath(); g.moveTo(-6 * u, -12 * u); g.quadraticCurveTo(0, -10 * u, 6 * u, -12 * u); g.stroke();
-		g.fillStyle = skin; g.beginPath(); g.arc(0, -24.5 * u, 4.2 * u, 0, Math.PI * 2); g.fill();
-		g.beginPath(); g.arc(0, -25 * u, 6 * u, Math.PI * 0.85, Math.PI * 2.15); g.quadraticCurveTo(4 * u, -21 * u, 3 * u, -20 * u); g.lineTo(-3 * u, -20 * u); g.quadraticCurveTo(-4 * u, -21 * u, -5.6 * u, -22.4 * u); g.closePath();
-		g.fillStyle = hgrad(g, -6 * u, 6 * u, [[0, shade(hood, 0.2)], [1, shade(hood, -0.4)]]); g.fill(); g.strokeStyle = ink(hood); g.lineWidth = lw * 0.8; g.stroke();
-		g.fillStyle = skin; g.beginPath(); g.ellipse(0.5 * u, -23.8 * u, 3 * u, 3.2 * u, 0, 0, Math.PI * 2); g.fill();
-		g.fillStyle = '#2a2a33'; g.beginPath(); g.arc(1.8 * u, -24 * u, 0.6 * u, 0, Math.PI * 2); g.arc(-0.8 * u, -24 * u, 0.6 * u, 0, Math.PI * 2); g.fill();
-		g.strokeStyle = '#7a5a34'; g.lineWidth = lw * 1.8; g.beginPath(); g.moveTo(9 * u, 0); g.lineTo(9 * u, -30 * u); g.stroke();
-		g.fillStyle = '#9fe3ff'; g.beginPath(); g.arc(9 * u, -31 * u, 2 * u, 0, Math.PI * 2); g.fill();
-		gloss(g, 8.4 * u, -31.6 * u, 0.6 * u, 0.6 * u, 0.9);
-	},
+	npc(g, e) { robedFigure(g, e, { robe: '#5f8a3e', hood: '#4a6d2f', gem: staffOrb }); },
+	// looks like a person until you talk to it: red, with a red diamond on its staff
+	shapeshifter(g, e) { robedFigure(g, e, { robe: '#b23a3a', hood: '#7e2424', gem: staffDiamond }); },
 	monster(g, e) { creature(g, e, { color: speciesColor(e.variant), r: 10 }); },
 	familiar(g, e) { creature(g, e, familiarLook(e.variant)); },
 	goldmonster(g, e) { creature(g, e, { color: '#e6b422', r: 10.5, key: true, aura: 'rgba(255,215,90,0.28)' }); },
@@ -665,6 +675,37 @@ const PAINTERS = {
 		g.fillStyle = '#c9ffff'; g.beginPath(); g.arc(0, -9 * u, 1.7 * u, 0, Math.PI * 2); g.fill();
 	},
 };
+
+/** a hooded figure with a staff; look: { robe, hood (colours), gem (draws the staff's top) } */
+function robedFigure(g, e, { robe, hood, gem }) {
+	const { u, lw } = e;
+	shadow(g, e, 10, 5);
+	const skin = '#eec29b';
+	g.beginPath(); g.moveTo(-7.5 * u, 0); g.quadraticCurveTo(-8 * u, -14 * u, -4.5 * u, -21 * u); g.lineTo(4.5 * u, -21 * u); g.quadraticCurveTo(8 * u, -14 * u, 7.5 * u, 0); g.quadraticCurveTo(0, 2 * u, -7.5 * u, 0); g.closePath();
+	g.fillStyle = hgrad(g, -8 * u, 8 * u, [[0, shade(robe, 0.25)], [0.45, robe], [1, shade(robe, -0.4)]]); g.fill(); g.strokeStyle = ink(robe); g.lineWidth = lw; g.stroke();
+	g.strokeStyle = '#d9c27a'; g.lineWidth = lw * 1.2; g.beginPath(); g.moveTo(-6 * u, -12 * u); g.quadraticCurveTo(0, -10 * u, 6 * u, -12 * u); g.stroke();
+	g.fillStyle = skin; g.beginPath(); g.arc(0, -24.5 * u, 4.2 * u, 0, Math.PI * 2); g.fill();
+	g.beginPath(); g.arc(0, -25 * u, 6 * u, Math.PI * 0.85, Math.PI * 2.15); g.quadraticCurveTo(4 * u, -21 * u, 3 * u, -20 * u); g.lineTo(-3 * u, -20 * u); g.quadraticCurveTo(-4 * u, -21 * u, -5.6 * u, -22.4 * u); g.closePath();
+	g.fillStyle = hgrad(g, -6 * u, 6 * u, [[0, shade(hood, 0.2)], [1, shade(hood, -0.4)]]); g.fill(); g.strokeStyle = ink(hood); g.lineWidth = lw * 0.8; g.stroke();
+	g.fillStyle = skin; g.beginPath(); g.ellipse(0.5 * u, -23.8 * u, 3 * u, 3.2 * u, 0, 0, Math.PI * 2); g.fill();
+	g.fillStyle = '#2a2a33'; g.beginPath(); g.arc(1.8 * u, -24 * u, 0.6 * u, 0, Math.PI * 2); g.arc(-0.8 * u, -24 * u, 0.6 * u, 0, Math.PI * 2); g.fill();
+	g.strokeStyle = '#7a5a34'; g.lineWidth = lw * 1.8; g.beginPath(); g.moveTo(9 * u, 0); g.lineTo(9 * u, -30 * u); g.stroke();
+	gem(g, e);
+}
+
+function staffOrb(g, { u }) {
+	g.fillStyle = '#9fe3ff'; g.beginPath(); g.arc(9 * u, -31 * u, 2 * u, 0, Math.PI * 2); g.fill();
+	gloss(g, 8.4 * u, -31.6 * u, 0.6 * u, 0.6 * u, 0.9);
+}
+
+function staffDiamond(g, { u, lw }) {
+	const x = 9 * u, y = -33 * u;
+	glowDisc(g, { x, y, r: 7 * u, inner: 'rgba(255,70,70,0.5)', outer: 'rgba(255,40,40,0)' });
+	path(g, [[x, y - 4.5 * u], [x + 3 * u, y], [x, y + 4.5 * u], [x - 3 * u, y]]);
+	g.fillStyle = hgrad(g, x - 3 * u, x + 3 * u, [[0, '#ff9a9a'], [0.5, '#e02a2a'], [1, '#8a1010']]); g.fill();
+	g.strokeStyle = '#5a0a0a'; g.lineWidth = lw * 0.8; g.stroke();
+	gloss(g, x - 0.9 * u, y - 1.6 * u, 0.6 * u, 1 * u, 0.85);
+}
 
 /** a glow over the middle of door face f */
 function glow(g, e, f, color) {

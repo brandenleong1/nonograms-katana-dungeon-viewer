@@ -89,7 +89,7 @@ Rules and file ownership are in [js/combat/PORTING.md](../js/combat/PORTING.md);
 | `js/save/` | Reads the game's export in the browser: `zip.js` → `envelope.js` (XOR, checksum, gzip) → `guild.js` / `records.js` (the profile) and `dungeon.js` (a dungeon in progress). Entry point: `index.js` `importSave`. |
 | `js/plan/planner.js` | Route planner: weighted shortest paths over the game's movement rules, gates, levers and keys, teleports, then the visiting order (exact up to 16 stops). |
 | `js/solve/` | Solver ([README](../js/solve/README.md)): `robust.js` (Monte Carlo over unknown dice), `exact.js` (search with known dice), `sim.js` (dungeon walk on the engine), `policies.js` and `kite.js` (tactics), `cost.js` (objective), `plan.js` (output for the UI), `worker.js` / `pool.js` (workers). |
-| `js/view/` | Map: `iso.js` (renderer, palettes, solver overlay), `sprites.js` (procedural sprites), `catalog.js` (what each id is), `links.js` (ladder ↔ hatch and similar pairs). |
+| `js/view/` | Map: `iso.js` (renderer, palettes, solver overlay), `walls.js` (which quarters of each wall cell are wall, the game's rule), `sprites.js` (procedural sprites), `catalog.js` (what each id is), `links.js` (ladder ↔ hatch and similar pairs). |
 | `js/ui/` | Solver column and progress editor: `solve-panel.js`, `solve-client.js` → `solve-host.js` (worker) → `solve-host-main.js`, pool worker adapters, `budgets.js` (presets), `words.js` (plain-language text), `progress-panel.js` (the Your progress editor) and `questlines.js` (its questline sliders: quests grouped by name, and what each part changes). |
 
 ## `test/` and `tools/`

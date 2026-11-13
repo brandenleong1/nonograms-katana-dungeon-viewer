@@ -23,7 +23,8 @@ export const KINDS = {
 	barrel:    { layer: 'puzzles',   color: '#a0522d', glyph: '●', label: 'Barrel (push onto plates)' },
 	trap:      { layer: 'traps',     color: '#ff4747', glyph: '✕', label: 'Trap' },
 	fountain:  { layer: 'loot',      color: '#47ffb3', glyph: '♨', label: 'Fountain' },
-	special:   { layer: 'loot',      color: '#ff9cf5', glyph: '✺', label: 'Shrine / cauldron' },
+	special:   { layer: 'loot',      color: '#ff9cf5', glyph: '✺', label: 'Cauldron' },
+	torchstatue: { layer: 'loot',    color: '#ffb84d', glyph: '♆', label: 'Torch statue (+10 energy, lights your torch)' },
 	cover:     { layer: 'decor',     color: '#6b8e23', glyph: '"', label: 'Reeds (cover)' },
 	marker:    { layer: 'decor',     color: '#888888', glyph: '·', label: 'Marker' },
 	decor:     { layer: 'decor',     color: '#777777', glyph: '·', label: 'Furnishing' },
@@ -35,6 +36,7 @@ export const KINDS = {
 	unique:    { layer: 'monsters',  color: '#ffd700', glyph: '♛', label: 'Unique monster' },
 	npc:       { layer: 'monsters',  color: '#b9ff47', glyph: '☺', label: 'NPC' },
 	familiar:  { layer: 'monsters',  color: '#cfd8e3', glyph: '♞', label: 'Wild familiar' },
+	shapeshifter: { layer: 'monsters', color: '#ff4d4d', glyph: '◆', label: 'Shapeshifter' },
 	spider:    { layer: 'monsters',  color: '#47f3ff', glyph: '✱', label: 'Mechanical spider (yours)' },
 };
 
@@ -60,7 +62,10 @@ set('teleport', 126);
 set('barrel', 59);
 set('trap', 30);
 set('fountain', 48, 58, 124, 54);
-set('special', 85, 86, 87, 95);
+set('special', 85, 86, 87);
+// the tombs' goddess statue: using it once gives 10 energy and lights the hero's torch, widening sight from 6 to 10
+// tiles (actions.js activate, T0_)
+set('torchstatue', 95);
 set('cover', 84);
 set('marker', 52);
 
@@ -79,7 +84,10 @@ export function critterKind(cr, bw) {
 	if (cr.id >= 190 && cr.id < 194) return 'familiar';
 	if (cr.h === 1101 || cr.h === 1103) return 'boss';
 	if (cr.h === 1100) return 'miniboss';
-	if (cr.k === 0 || cr.k === 1) return 'npc';
+	// shapeshifters look like people but fight when you talk to them (c30, the NPC talk branch): species with bw.N0
+	// (quests 41 and 57), and wandering merchants tagged 1000 instead of 1001 (x30.P: 12% on 3B-4C, F3, EB and EC once
+	// you have traded 3 times), which vanish and leave a monster (284; 350 in the forest; 649 in the tombs)
+	if (cr.k === 0 || cr.k === 1) return (bw && bw.N0) || cr.h === 1000 ? 'shapeshifter' : 'npc';
 	if (cr.g === 167) return 'goldmonster';   // drops key 167 for the locked door
 	if (bw && bw.l0) return 'unique';
 	if (bw && bw.m0) return 'boss';

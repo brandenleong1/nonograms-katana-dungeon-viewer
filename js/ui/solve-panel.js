@@ -96,7 +96,7 @@ export class SolvePanel {
 	critterName(kind, id) {
 		if (kind === 'spider') return 'your Mechanical spider';
 		if (kind === 'hero') return 'you';
-		const base = { monster: 'Monster', goldmonster: 'Gold monster', miniboss: 'Mini-boss', boss: 'Boss', unique: 'Unique monster', familiar: 'Wild familiar', npc: 'Person' }[kind] || 'Creature';
+		const base = { monster: 'Monster', goldmonster: 'Gold monster', miniboss: 'Mini-boss', boss: 'Boss', unique: 'Unique monster', familiar: 'Wild familiar', npc: 'Person', shapeshifter: 'Shapeshifter' }[kind] || 'Creature';
 		return `${base} ${id}`;
 	}
 	/** a plan enemy -> its sprite kind (matched to the level's creature of that id nearest to it) */

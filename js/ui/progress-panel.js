@@ -314,7 +314,7 @@ export class ProgressPanel {
 			${this.checkHtml({ key: 'bstep:4:1', label: `${building(4)}: step 2 done`, on: V.o[4].h0_(2), path: ['buildings', 4, 'C0', 1], title: 'More finds in F3 and F4' })}
 			${this.numHtml({ key: 'stat:b:115', label: `${item(115)}s found`, value: V.N.b.j_(115), path: ['stats', 'b', 115], max: 999, note: 'none (and 20 F4 dungeons cleared): a special NPC is likelier in F3 and F4' })}
 			${this.numHtml({ key: 'stat:f:18', label: 'F4 dungeons cleared', value: V.N.f_(18), path: ['stats', 'f', 18], max: 9999 })}
-			${this.numHtml({ key: 'stat:x', label: 'Trades with merchants', value: V.N.x | 0, path: ['stats', 'x'], max: 9999, note: '3 or more: one more dice roll in 3A–4B, F3, EB and EC' })}
+			${this.numHtml({ key: 'stat:x', label: 'Trades with merchants', value: V.N.x | 0, path: ['stats', 'x'], max: 9999, note: '3 or more: in 3B–4C, F3, EB and EC the merchant may be a fake (12%) that turns into a monster' })}
 		</div>`;
 	}
 
