@@ -3,7 +3,7 @@
 // Walls are drawn the game's way (c30.D): each wall cell is 2 × 2 quarters. The back quarter (+x, -y) is always wall,
 // the left one (-x, -y) when the wall goes on toward -x (or runs only along x), the right one (+x, +y) when it goes on
 // toward +y (or has no x neighbour), and the front one never. Exact rule and sources: walls.js.
-import { KINDS, TILE, objectKind, critterKind, isHiddenTrap, isPressurePlate } from './catalog.js';
+import { KINDS, TILE, objectKind, critterKind, critterVariant, critterColor, isHiddenTrap, isPressurePlate } from './catalog.js';
 import { drawSprite } from './sprites.js';
 import { wallQuarters, WALL_LEFT, WALL_RIGHT, OPEN_LEFT, OPEN_RIGHT, FLOOR_SHOWS } from './walls.js';
 
@@ -345,8 +345,9 @@ export class IsoView {
 	/** a sprite standing on the tile centred at (cx, cy), or a plain dot when zoomed out too far to read one */
 	_badge(ctx, kind, { cx, cy, hw, selected = false, variant = '' }) {
 		if (hw < 7) {
-			ctx.fillStyle = selected ? (this.theme === 'light' ? '#111' : '#fff') : KINDS[kind].color;
+			ctx.fillStyle = selected ? (this.theme === 'light' ? '#111' : '#fff') : critterColor(kind, variant);
 			fillCircle(ctx, cx, cy, Math.max(1.6, hw * 0.55));
+			if (kind === 'familiar') familiarRing(ctx, cx, cy, Math.max(1.6, hw * 0.55));
 			return;
 		}
 		drawSprite(ctx, kind, cx, cy, hw, { selected, theme: this.theme, dpr: this.dpr, variant });
@@ -409,13 +410,14 @@ export class IsoView {
 	_critter(ctx, c, cell, frame) {
 		const kind = critterKind(c, this.info.bw(c.id));
 		if (!this.layers.has(KINDS[kind].layer)) return;
-		this._badge(ctx, kind, { cx: cell.cx, cy: cell.cy, hw: frame.hw, selected: this.selected === c, variant: kind === 'monster' ? String(c.id) : '' });
+		this._badge(ctx, kind, { cx: cell.cx, cy: cell.cy, hw: frame.hw, selected: this.selected === c, variant: critterVariant(kind, c, this.level) });
 	}
 
 	_actor(ctx, actor, { cx, cy }, hw) {
 		if (hw < 7) {
-			ctx.fillStyle = actor.hero ? '#4f9ef8' : (KINDS[actor.kind] || KINDS.monster).color;
+			ctx.fillStyle = actor.hero ? '#4f9ef8' : KINDS[actor.kind] ? critterColor(actor.kind, actor.variant) : KINDS.monster.color;
 			fillCircle(ctx, cx, cy, Math.max(2, hw * 0.6));
+			if (actor.kind === 'familiar') familiarRing(ctx, cx, cy, Math.max(2, hw * 0.6));
 			return;
 		}
 		drawSprite(ctx, actor.kind, cx, cy, hw, { theme: this.theme, dpr: this.dpr, variant: actor.variant || '' });
@@ -889,6 +891,16 @@ function trapCross(ctx, { cx, cy }, { hw, hh }) {
 	ctx.moveTo(cx - hw * 0.4, cy - hh * 0.4); ctx.lineTo(cx + hw * 0.4, cy + hh * 0.4);
 	ctx.moveTo(cx + hw * 0.4, cy - hh * 0.4); ctx.lineTo(cx - hw * 0.4, cy + hh * 0.4);
 	ctx.stroke();
+}
+
+/** a white ring with a dark edge around a wild familiar's dot, so it can't be mistaken for a monster's */
+function familiarRing(ctx, x, y, r) {
+	ctx.save();
+	ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1;
+	ctx.beginPath(); ctx.arc(x, y, r + 3, 0, Math.PI * 2); ctx.stroke();
+	ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.6;
+	ctx.beginPath(); ctx.arc(x, y, r + 1.8, 0, Math.PI * 2); ctx.stroke();
+	ctx.restore();
 }
 
 function fillCircle(ctx, x, y, r) {
