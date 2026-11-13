@@ -17,6 +17,8 @@ npm test        # = node tools/run-tests.mjs: every standalone suite in test/
 |---|---|---|
 | `test/run.mjs` | The generator against the 10 sample dungeons in `test/fixtures/`: every cell, object, creature, room and the final random-number states. | ~2 s |
 | `test/version.mjs` | `data/game-version.json` and the README's Game version table agree. | instant |
+| `test/details.mjs` | Object contents, collected/unsealed states, hidden-creature warnings, distinct item labels and retained catalog behavior. | ~1 s |
+| `test/catalog.mjs` | `data/catalog.json`: every creature and object in about 770 generated dungeons (new game and progress states) has an entry with a name and a kind the map draws, and every id is drawn as before the table existed, except object 84 (the caves' mine cart, drawn as reeds before). Also the level's wild familiars and mine-cart riders. | ~9 s |
 | `test/questlines.mjs` | The Your progress questlines: every quest the generator reads is on a slider, every position round-trips through a profile, and part 3 of Once Upon a Forest brings 3C's mini-boss. | ~1 s |
 | `test/solve.mjs` | Solver: resource ledger, route walker, the wiki's first-strike rule, robust and exact solves on small budgets, MP top-ups (including mid-fight), the plan schema, the worker pool. Use `--quick` to skip the slow cases and `--no-workers` to skip the pool. | ~1 min |
 
@@ -44,6 +46,10 @@ npm run test:smoke                                              # = node test/sm
 tomb) in each of the four themes, in headless Chromium. On every page:
 
 - the map is built (objects and creatures present);
+- on 3C-172582050, the Selected panel and the map tooltip name a monster, the boss and a stuck door, with the
+  monster's stats, the boss's drop and the door's energy cost, and the panel credits the wiki for the name;
+- the purple chest at 33,35 shows its Meteoric Iron contents in the panel and tooltip;
+- the Help popup credits the Nonograms Katana Wiki for the names;
 - the Your hero and Your progress popups open;
 - nothing raises a page error or logs a console error.
 

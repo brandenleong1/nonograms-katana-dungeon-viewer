@@ -176,6 +176,10 @@ body::after {
 	color: var(--color_txt2);
 }
 
+.info-box .wiki-credit a {
+	color: inherit;
+}
+
 .info-box .glyph {
 	display: inline-block;
 	width: 1.4em;
@@ -193,7 +197,9 @@ body::after {
 	border: 1px solid var(--color_toast_border);
 	display: none;
 	z-index: 10;
-	white-space: nowrap;
+	white-space: normal;
+	max-width: min(360px, calc(100vw - 32px));
+	overflow-wrap: anywhere;
 }
 
 .info-box .row {

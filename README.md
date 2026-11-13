@@ -63,6 +63,7 @@ npm run serve        # python3 -m http.server 8000 --bind 127.0.0.1
 |---|---|
 | `js/gen/` | Port of the game's dungeon generator. It is bit-exact: same random numbers, same rooms, same objects. See `js/gen/PORTING.md`. `progress-spec.js`: player progress as data (the oracle's `--progress` format); `progress-reads.js`: what generation reads from it and what each read changes. |
 | `data/tables.json` | Numeric game tables the generator reads (room sizes, object/monster definitions, decoration weights, a new player's progress). |
+| `data/catalog.json` | What every creature and object is called (the game has no names for them; these come from the Nonograms Katana Wiki) and how the map draws it. |
 | `js/view/` | Isometric canvas renderer (the game's projection: 2:1 diamonds, +x up-right, +y down-right) and the object catalogue. |
 | `js/plan/planner.js` | Route planner. It does BFS on the tile grid with teleports and gates. The visiting order is solved exactly (Held–Karp) for up to 16 stops; larger maps use a search. |
 | `js/save/` | Reads the game's export in the browser (zip, the guild.dat envelope, the player profile). |
@@ -99,6 +100,13 @@ The MIT License does not cover the game. *Nonograms Katana* belongs to its devel
 skill names (`data/names.json`), its numeric tables (`data/tables.json`), and the dungeon generation and combat rules
 that `js/gen/` and `js/combat/` reproduce. They are here only so the site can show dungeons exactly as the game builds
 them. The game's art, sounds and app are not included, and all graphics are drawn procedurally.
+
+The creature and object names in `data/catalog.json` come from the
+[Nonograms Katana Wiki](https://nonograms-katana.fandom.com), whose text is licensed under
+[CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/). That file is shared under the same licence, separately
+from the MIT-licensed code (see [NOTICE.md](NOTICE.md)).
+
+See [display catalog additions](docs/display_catalog.md) for contents, hidden-creature warnings and item distinctions.
 
 This is an unofficial fan project. It is not affiliated with or endorsed by the developer of Nonograms Katana. If you
 are the developer and would like anything changed or removed, please open an issue and it will be taken down.

@@ -418,7 +418,7 @@ install({
 					break;
 				}
 				spawn: {
-					// 355 prefers the room's cave reed markers (type 84)
+					// 355 prefers the room's mine carts (type 84)
 					if (m.a === 355 && room.G != null && room.G.length !== 0) {
 						while (room.G.length !== 0) {
 							const G = room.G;

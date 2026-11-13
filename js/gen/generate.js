@@ -50,5 +50,7 @@ export function toLevel(hw, gen, type, seed) {
 		rooms: gen.n.map((r) => ({ x: r.a, y: r.b, w: r.c, h: r.d, id: r.e, v: r.v, w_: r.w, x_: r.x })),
 		// wild familiars: critter 190 + i is companion i (hw.I), with its look (bw id) and rank 0..3
 		companions: (hw.p ?? []).map((c) => ({ id: c.a.a, rank: c.d })),
+		// creatures that start in a mine cart (aw flag 512: placed on a cart, hw.K, or on a rail tile, x30.x0): +4 defence
+		cartRiders: hw.o.filter((c) => c.s_(512)).map((c) => ({ x: c.b.a, y: c.b.b })),
 	};
 }
