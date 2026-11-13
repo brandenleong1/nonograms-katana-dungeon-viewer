@@ -14,6 +14,44 @@ import { drawSprite } from '../view/sprites.js';
 import { zw, vj0 as V } from '../gen/statics.js';
 import { SolveClient, CancelError } from './solve-client.js';
 import { BUDGETS, BUDGET_LABELS, workerCount } from './budgets.js';
+
+/**
+ * The solver's options in players' words: a short hover title, and for Mode and Search a description of the chosen
+ * option in a box under their rows (hover text is slow and never shows on phones). The time is shown next to Solve.
+ */
+const OPTION_HELP = {
+	mode: {
+		robust: {
+			title: 'Random dice: plays each fight many times',
+			desc: 'the game rolls truly random dice once you enter, so it plays each fight many times with random rolls '
+				+ 'and picks the tactic that does best on average.',
+		},
+		exact: {
+			title: 'Plan from a save made in the dungeon: a tap-by-tap script',
+			desc: 'plans from a save made inside this dungeon (Settings → Export while in it), which holds the dice: you '
+				+ 'get a tap-by-tap script. One different tap changes every roll after it.',
+		},
+	},
+	heroSrc: {
+		profile: { title: 'The hero picked in Your hero, with its own gear, skills, pack and mental power' },
+		manual: { title: 'A made-up hero: choose a level, gear and kit' },
+	},
+	exactSrc: {
+		save: { title: 'Play on from the state in your save, with the game\'s own dice' },
+		xseed: { title: 'This label with a made-up dice seed' },
+	},
+};
+
+/** the help for a search depth in this mode: how many runs (robust) or moves per fight (exact) it tries */
+function searchHelp(mode, depth) {
+	const b = BUDGETS[mode][depth];
+	if (mode === 'exact') {
+		const more = { normal: 'Good for a first look.', thorough: 'Finds a better line more often.', exhaustive: 'The deepest search, and the slowest.' }[depth] || '';
+		return { title: `Searches up to ${b.maxDecisions} moves per fight`, desc: `beyond every tactic, searches up to ${b.maxDecisions} of your moves per fight. ${more}` };
+	}
+	const more = { normal: 'Good for a first look.', thorough: 'Steadier numbers.', exhaustive: 'The most reliable numbers, and the slowest.' }[depth] || '';
+	return { title: `Plays the dungeon ${b.N} times`, desc: `plays the dungeon ${b.N} times, testing each fight's tactic on at least ${b.nMin} rolls. ${more}` };
+}
 import { instruction, effects, tacticWords, topUpText, pct, num } from './words.js';
 
 const KEY = 'nkd-solve';
@@ -183,10 +221,11 @@ export class SolvePanel {
 		const exact = c.mode === 'exact';
 		const useSave = this.useSave();
 		return `
-			<div class="solve-row"><span class="solve-key">Mode</span>${this.seg('mode', [['robust', 'Robust', 'Monte Carlo over the unknown dice: works from the label alone'], ['exact', 'Exact', 'Known dice (a save made in the dungeon, or an xseed): a tap-by-tap script']], 'Solver mode')}</div>
-			<div class="solve-row"><span class="solve-key">Search</span>${this.seg('budget', Object.entries(BUDGET_LABELS).map(([k, t]) => [k, t, `Takes about ${durText(BUDGETS[c.mode][k].budgetMs)}`]), 'Search depth')}</div>
+			<div class="solve-row"><span class="solve-key">Mode</span>${this.seg('mode', [['robust', 'Robust', OPTION_HELP.mode.robust.title], ['exact', 'Exact', OPTION_HELP.mode.exact.title]], 'Solver mode')}</div>
+			<div class="solve-row"><span class="solve-key">Search</span>${this.seg('budget', Object.entries(BUDGET_LABELS).map(([k, t]) => [k, t, searchHelp(c.mode, k).title]), 'Search depth')}</div>
+			${this.optionHelpHtml()}
 			${exact ? `<div class="solve-sub">${this.exactSourceHtml()}</div>` : ''}
-			${useSave ? '' : `<div class="solve-row"><span class="solve-key">Hero</span>${this.seg('heroSrc', [['profile', 'Your hero', 'The hero chosen in Your hero, with the pack and mental power the game gives it'], ['manual', 'What-if', 'A made-up hero: level, gear, kit, skills']], 'Hero')}</div>`}
+			${useSave ? '' : `<div class="solve-row"><span class="solve-key">Hero</span>${this.seg('heroSrc', [['profile', 'Your hero', OPTION_HELP.heroSrc.profile.title], ['manual', 'What-if', OPTION_HELP.heroSrc.manual.title]], 'Hero')}</div>`}
 			<div class="solve-sub">${this.heroHtml()}</div>
 			<div class="layer-row solve-check" id="sv-mpitems" role="checkbox" tabindex="0" aria-checked="${!!c.useItemsForMp}" title="Off: the plan never spends items on mental power; it asks you to solve puzzles for it instead (in a dungeon, puzzle MP goes straight to the hero, up to its max)."><div class="checkbox${c.useItemsForMp ? ' selected' : ''}"></div><span>Use items for mental power</span></div>
 			${this.runRowHtml()}
@@ -198,16 +237,17 @@ export class SolvePanel {
 		const c = this.cfg;
 		const sd = this.saveDungeon();
 		const xseedRow = `<div class="solve-line"><label for="sv-xseed">Dice seed (xseed)</label> <input type="number" id="sv-xseed" value="${esc(c.xseed)}" /></div>`;
-		if (!sd) return `<div class="solve-note">${this.noSaveDungeonText()}</div>${xseedRow}${this.xseedNote()}`;
+		const why = sd ? '' : this.noSaveDungeonText();
+		if (!sd) return `${why ? `<div class="solve-note">${why}</div>` : ''}${xseedRow}${this.xseedNote()}`;
 		const label = formatLabel(sd.type, sd.seed);
-		return `${this.seg('exactSrc', [['save', 'Saved dungeon', `Solve ${label} on from the state in your save`], ['xseed', 'Experiment', 'This label with a made-up dice seed']], 'Exact source')}
+		return `${this.seg('exactSrc', [['save', 'Saved dungeon', OPTION_HELP.exactSrc.save.title], ['xseed', 'Experiment', OPTION_HELP.exactSrc.xseed.title]], 'Exact source')}
 					${c.exactSrc === 'save' ? `<div class="solve-line">Your save is inside <b>${label}</b>; the solver plays on from there with the game's own dice.</div>` : xseedRow + this.xseedNote()}`;
 	}
 
-	/** why exact mode can't use the save's own dice */
+	/** why exact mode can't use the imported save's own dice ('' with no save imported) */
 	noSaveDungeonText() {
 		const H = this.heroPanel();
-		if (!(H && H.profile)) return 'Exact mode follows your real dice rolls, which only a save exported inside a dungeon contains (Settings → Export while in the dungeon).';
+		if (!(H && H.profile)) return '';   // no save yet: the mode's description says where the dice come from
 		if (H.dungeon && H.dungeon.kind === 'ew') return 'Your save holds an autonomous run (the hero is exploring alone), which has no fight to solve.';
 		return 'Your save was made in town: no dungeon is in progress, so the dice (the combat RNG state) are not in it. Enter the dungeon in the game, export again (Settings → Export) and import that file to solve your real run.';
 	}
@@ -271,6 +311,16 @@ export class SolvePanel {
 		this.cfg[key] = value;
 		this.save();
 		this.renderControls();
+	}
+
+	/** The box under the Search row: what the chosen Mode and Search depth do. Both rows sit above it, so pressing a
+	 * button never moves the buttons. */
+	optionHelpHtml() {
+		const c = this.cfg;
+		const mode = OPTION_HELP.mode[c.mode];
+		const depth = BUDGETS[c.mode][c.budget] ? searchHelp(c.mode, c.budget) : null;
+		const line = (name, help) => `<div><b>${esc(name)}:</b> ${esc(help.desc)}</div>`;
+		return `<div class="solve-note solve-help" id="solve-help">${mode ? line(c.mode === 'exact' ? 'Exact' : 'Robust', mode) : ''}${depth ? line(BUDGET_LABELS[c.budget], depth) : ''}</div>`;
 	}
 
 	/** typing in a field saves the settings without re-rendering (that would drop the focus) */
