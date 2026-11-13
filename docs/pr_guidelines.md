@@ -72,7 +72,7 @@ description isn't copied into the commit; the commit links to it, so write it fo
 | Context | What was wrong or missing, why, and how the change addresses it. See [Writing a good Context](#writing-a-good-context). |
 | Changes | Bullets, each starting with a past-tense verb (Added, Changed, Fixed, Removed, Moved). Say what changed and where, e.g. "Fixed the door cost in `planRoute` for stuck doors." Don't start a bullet with a file name. |
 | Testing | Bullets, each starting with a past-tense verb. Name the tests you added, and show they fail without the change and pass with it. List what else you ran, with results, e.g. "Ran `npm test`: 10/10 and 35/35 pass." Put solver evaluations and before/after numbers here. For `[Gen]` / `[Combat]` changes, say whether the oracle suites were run or are left for a maintainer. |
-| Screenshots | The Screenshots bot posts before and after of the fixed views on every PR. Add images of anything it doesn't cover (interactions, a solve), or write "See the Screenshots comment". Delete the section for changes with nothing to see. |
+| Screenshots | The Screenshots bot posts before and after of the fixed views on every PR. Add images of anything it doesn't cover (another dungeon, a longer solve), or write "See the Screenshots comment". Delete the section for changes with nothing to see. |
 | Issue | `Fixes #123`, if there is one. |
 
 **Keep personal and sensitive detail out.** PRs are public and linked from the git history for good.
