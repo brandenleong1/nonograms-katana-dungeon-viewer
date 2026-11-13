@@ -10,6 +10,7 @@ import { planRoute, objectives as gameObjectives } from './plan/planner.js';
 import { HeroPanel, hasKeptSave } from './hero.js';
 import { SolvePanel } from './ui/solve-panel.js';
 import { confirmPopup } from './ui/confirm-popup.js';
+import { LootPanel } from './ui/loot-panel.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -66,6 +67,7 @@ const state = { level: null, type: 8, seed: 0, generator: null, fresh: null, her
 
 /** The map (IsoView). main() makes it before anything else runs. */
 let view;
+let loot;
 
 async function main() {
 	view = createMapView();
@@ -87,6 +89,8 @@ async function main() {
 	// Solver column (js/ui/solve-panel.js): solves run in a module worker with its own pool
 	const names = await loadNames();
 	state.names = names;
+	loot = new LootPanel(view);
+	loot.bind();
 	state.solve = new SolvePanel({ view, state, names, root: $('#solve-section'), show: (label) => show(label) });
 	state.solve.bind();
 	window.nkd.solve = state.solve;
@@ -155,16 +159,17 @@ function renderLayerList(layersOn) {
 }
 
 function layerRow(layer, layersOn) {
-	const row = document.createElement('div');
+	const row = document.createElement('label');
 	row.className = 'layer-row';
-	const checkbox = document.createElement('div');
-	checkbox.className = 'checkbox' + (layersOn.has(layer.id) ? ' selected' : '');
+	const checkbox = document.createElement('input');
+	checkbox.type = 'checkbox';
+	checkbox.checked = layersOn.has(layer.id);
 	row.append(checkbox);
 	const label = document.createElement('span');
 	label.innerHTML = `<span class="swatch" style="background:${layer.color}"></span> ${layer.label}${layer.spoiler ? ' <span class="spoiler">(spoiler)</span>' : ''}`;
 	row.append(label);
-	row.onclick = () => {
-		if (checkbox.classList.toggle('selected')) layersOn.add(layer.id);
+	checkbox.onchange = () => {
+		if (checkbox.checked) layersOn.add(layer.id);
 		else layersOn.delete(layer.id);
 		layersChanged(layer, layersOn);
 	};
@@ -430,6 +435,7 @@ function drawLevel(level, type) {
 	view.setLevel(level, { family: family(type), rw: objectDef, bw: critterDef });
 	view.setPuzzle(floorNonogram(level, zw.O));
 	view.setLinks(baseLinks(), []);
+	loot.setDungeon({ level, names: state.names, profile: V.i2 });
 	renderObjectives(level);
 	renderRoute(level);
 	$('#selected-info').textContent = SELECT_HINT;

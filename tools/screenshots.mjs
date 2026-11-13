@@ -75,6 +75,11 @@ const SOLVE_TIMEOUT_MS = 300000;
  * page is ready. The comment lists them in this order.
  */
 const VIEWS = [
+	// loot: two selected items in every theme, a narrow popup, and their map highlights
+	...THEMES.map((theme) => view(`loot-${theme}`, { theme, steps: openPopup('loot') })),
+	view('loot-narrow', { size: SIZES.narrow, steps: openPopup('loot') }),
+	view('loot-map-light', { steps: [...openPopup('loot'), closePopup('loot')] }),
+
 	// map: the default view in every theme, and every dungeon family in light and dark (their palettes differ)
 	...THEMES.map((theme) => view(`map-3c-${theme}`, { theme })),
 	...['f1', '6a', 'eb'].flatMap((family) => ['light', 'dark'].map((theme) => view(`map-${family}-${theme}`, { label: LABELS[family], theme }))),
@@ -232,6 +237,10 @@ function openPopup(which) {
 		hero: click('#hero-open-btn'),
 		progress: click('#progress-open-btn'),
 		settings: click('#settings'),
+		loot: (page) => page.evaluate(() => {
+			for (const box of [...document.querySelectorAll('#loot-list input')].slice(0, 2)) box.click();
+			return Popup.popup(document.querySelector('#popup-loot'));
+		}),
 	}[which];
 	const steps = [open, waitForPopup(which)];
 	// the questline cards fold their parts away: unfold the first, to show what each part changes

@@ -39,6 +39,7 @@
 
 			<div class="content-header-2">Show on map</div>
 			<div class="content-container-vertical layer-list" id="layer-list"></div>
+			<button class="button-positive-2" id="loot-open-btn" type="button" title="Choose items to highlight on the map">Loot</button>
 
 			<div class="content-header-2">View</div>
 			<div class="content-container-horizontal view-row">
@@ -160,6 +161,16 @@
 				in this browser.
 			</div>
 			<div class="progress-body" id="progress-body"></div>
+		</div>
+		<div class="popup" id="popup-loot">
+			<div class="content-header">Highlight loot</div>
+			<div class="privacy-note">Check any number of items to ring every place that holds them. Counts are places, not quantities. Includes gifts and trades; hidden creatures carry their container's contents.</div>
+			<div class="loot-toolbar">
+				<label>Sort <select class="button-positive-2" id="loot-sort"><option value="name">Alphabetical (A–Z)</option><option value="reverse-name">Alphabetical (Z–A)</option><option value="fewest">Fewest places first</option><option value="most">Most places first</option></select></label>
+				<button class="button-positive-2" id="loot-clear" type="button">Clear selections</button>
+			</div>
+			<div id="loot-summary" role="status"></div>
+			<div id="loot-list"></div>
 		</div>
 		<div class="popup" id="popup-settings">
 			<div class="content-header">Settings</div>

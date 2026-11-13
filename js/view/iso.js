@@ -41,6 +41,7 @@ export class IsoView {
 		this.hover = null;      // {x, y}
 		this.selected = null;   // object/critter record
 		this.highlights = [];   // [{x, y, color}]
+		this.lootHighlights = [];
 		this.links = [];        // [[a, b, color]] tile pairs to connect
 		this.route = null;      // [{x, y} | {jump: true}]
 		this.routeLeg = null;   // {from, to} indexes into route
@@ -64,6 +65,7 @@ export class IsoView {
 		this.walls = wallArms(level);
 		this.selected = null;
 		this.highlights = [];
+		this.lootHighlights = [];
 		this.links = [];
 		this.route = null;
 		this.solve = emptySolve();
@@ -98,6 +100,7 @@ export class IsoView {
 	setRoute(route, leg = null) { this.route = route; this.routeLeg = leg; this.redraw(); }
 	setPuzzle(puzzle) { this.puzzle = puzzle; this.redraw(); }
 	setLinks(links, highlights) { this.links = links; this.highlights = highlights; this.redraw(); }
+	setLootHighlights(places) { this.lootHighlights = places; this.redraw(); }
 
 	/**
 	 * The solver's overlay (js/ui/solve-panel.js), merged into the current one:
@@ -450,6 +453,7 @@ export class IsoView {
 		if (this.route && this.route.length > 1 && this.layers.has('route') && !this.solve.hideRoute) this._route(ctx, frame);
 		this._linkArcs(ctx, frame);
 		this._highlights(ctx, frame);
+		this._lootRings(ctx, frame);
 		this._solveOverlay(ctx, frame);
 		if (this.hover) this._hoverOutline(ctx, frame);
 	}
@@ -502,6 +506,16 @@ export class IsoView {
 			const [cx, cy] = this.project(x, y);
 			ctx.strokeStyle = color; ctx.lineWidth = Math.max(2, hw * 0.12);
 			this._diamond(ctx, cx, cy, hw * 1.15, hh * 1.15); ctx.stroke();
+		}
+	}
+
+	_lootRings(ctx, { hw, hh }) {
+		for (const { x, y } of this.lootHighlights) {
+			const [cx, cy] = this.project(x, y);
+			ctx.beginPath();
+			ctx.ellipse(cx, cy, hw * 1.2, hh * 1.3, 0, 0, Math.PI * 2);
+			ctx.strokeStyle = '#332000'; ctx.lineWidth = Math.max(5, hw * 0.22); ctx.stroke();
+			ctx.strokeStyle = '#ffad24'; ctx.lineWidth = Math.max(3, hw * 0.13); ctx.stroke();
 		}
 	}
 

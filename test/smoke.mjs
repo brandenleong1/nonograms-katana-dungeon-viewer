@@ -106,6 +106,8 @@ async function checkPage(browser, base, label, themeId, theme) {
 		if (!shown.credit) errors.push('Help popup doesn\'t credit the Nonograms Katana Wiki for the names');
 		if (label === NAMED.label) errors.push(...await namedCellErrors(page));
 		if (label === NAMED.label) errors.push(...await markAllErrors(page));
+		await checkLayers(page);
+		await checkLoot(page);
 		await page.evaluate(() => window.nkd.state.hero.open());
 		await page.waitForTimeout(400);
 		await page.evaluate(() => window.nkd.state.hero.openProgress());
@@ -542,6 +544,42 @@ async function progressTextErrors(page) {
 	if (shown.here.join() !== '1,3C,← here,this dungeon, the one on the map,location') errors.push(`quest NPC grid "here" mark: ${shown.here.join()}`);
 	if (shown.inGame !== 3 || !shown.heading) errors.push(`items, buildings, and counts: ${shown.inGame} "In the game:" notes, heading ${shown.heading}`);
 	return errors;
+}
+
+async function checkLayers(page) {
+	const row = page.locator('#layer-list label').filter({ hasText: 'Monsters and people' });
+	const box = row.locator('input');
+	await row.locator('span').first().click();
+	if (await box.isChecked() || await page.evaluate(() => window.nkd.view.layers.has('monsters'))) throw new Error('Clicking a layer label did not hide its map layer');
+	if (await page.evaluate(() => JSON.parse(localStorage.getItem('nkd-layers')).includes('monsters'))) throw new Error('Layer choice was not saved');
+	await box.focus();
+	await box.press('Space');
+	if (!await box.isChecked() || !await page.evaluate(() => window.nkd.view.layers.has('monsters'))) throw new Error('Space did not restore the map layer');
+	if (!await page.evaluate(() => JSON.parse(localStorage.getItem('nkd-layers')).includes('monsters'))) throw new Error('Keyboard layer choice was not saved');
+}
+
+async function checkLoot(page) {
+	await page.click('#loot-open-btn');
+	const boxes = page.locator('#loot-list input');
+	if (await boxes.count() < 2) throw new Error('Loot checklist is missing');
+	const names = await page.locator('#loot-list b').allTextContents();
+	if (names.some((name, i) => i && names[i - 1].localeCompare(name) > 0)) throw new Error('Loot is not alphabetical by default');
+	await boxes.nth(0).check();
+	await boxes.nth(1).check();
+	const chosen = await page.evaluate(() => JSON.parse(localStorage.getItem('nkd-loot')));
+	const rings = await page.evaluate(() => window.nkd.view.lootHighlights.length);
+	if (!rings || chosen.length !== 2) throw new Error('Multiple loot selections did not highlight places');
+	await page.selectOption('#loot-sort', 'reverse-name');
+	const reversed = await page.locator('#loot-list b').allTextContents();
+	if (JSON.stringify(reversed) !== JSON.stringify([...names].reverse())) throw new Error('Reverse alphabetical loot sort failed');
+	if (await page.locator('#loot-list input:checked').count() !== 2) throw new Error('Sorting lost loot selections');
+	await page.evaluate(() => window.nkd.view.onSelect(window.nkd.view.describe(33, 35)));
+	if (await page.evaluate(() => window.nkd.view.lootHighlights.length) !== rings) throw new Error('Tile selection cleared loot rings');
+	await page.evaluate(() => window.nkd.show('3C-172582050'));
+	if (await page.evaluate(() => localStorage.getItem('nkd-loot')) !== JSON.stringify(chosen)) throw new Error('Changing maps lost loot selections');
+	await page.click('#loot-clear');
+	if (await page.evaluate(() => window.nkd.view.lootHighlights.length)) throw new Error('Clear did not remove loot rings');
+	await page.evaluate(() => { document.activeElement.blur(); document.querySelector('#popup-loot').parentNode.click(); });
 }
 
 function fail(message) {
