@@ -538,6 +538,13 @@ body.solver-hidden #solve-section {
 	background-color: var(--color_bg2);
 }
 
+/* the solver's Mode and Search descriptions: one line each */
+.solve-help {
+	display: flex;
+	flex-direction: column;
+	row-gap: 4px;
+}
+
 .solve-note.warn {
 	outline: 1px solid var(--color_red);
 	outline-offset: -1px;
