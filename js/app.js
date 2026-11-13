@@ -9,6 +9,7 @@ import { initTables, zw, vj0 as V } from './gen/statics.js';
 import { planRoute, objectives as gameObjectives } from './plan/planner.js';
 import { HeroPanel } from './hero.js';
 import { SolvePanel } from './ui/solve-panel.js';
+import { SheetTabs } from './ui/sheet-tabs.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -35,7 +36,8 @@ const EFFORT = {
 
 const MAP_BG = { light: '#ece9e2', sepia: '#e6dbc3', dark: '#0b0b0d', contrast: '#000000' };
 const DEFAULT_LABEL = '3C-172582050';
-const SELECT_HINT = 'Click a tile, object or monster.';
+// touch screens tap rather than click
+const SELECT_HINT = matchMedia('(hover: none)').matches ? 'Tap a tile, object or monster on the map to see what it is.' : 'Click a tile, object or monster.';
 const HERO_ID = 180;
 const EXIT_LOCK_LOOK = { color: KINDS.lockdoor.color, glyph: '⚿', label: 'Unlock the exit (mini-boss key)' };
 const PUZZLE_STOP_LOOK = { glyph: '▦', color: KINDS.puzzledoor.color };
@@ -51,11 +53,13 @@ const state = { level: null, type: 8, seed: 0, generator: null, fresh: null, her
 let view;
 
 async function main() {
-	view = createMapView();
+	const sheet = new SheetTabs($('#sheet-tabs'));   // phones and tablets: one panel at a time
+	sheet.bind();
+	view = createMapView(sheet);
 	const layersOn = savedLayers();
 	renderLayerList(layersOn);
 	view.setLayers(layersOn);
-	window.nkd = { view, state, show };   // console/debug handle
+	window.nkd = { view, state, show, sheet };   // console/debug handle
 	followPageTheme();
 
 	await loadGameData();
@@ -84,14 +88,25 @@ async function main() {
 
 // ---- page setup --------------------------------------------------------------------------
 
-/** The map, with a tooltip that follows the mouse and names what is under it. */
-function createMapView() {
+/**
+ * The map, with a tooltip that follows the mouse and names what is under it. A finger or pen shows the same tooltip
+ * where it touches, as a tap is a hover and a click at once; it stays with the touched cell when the map is dragged or
+ * zoomed, and until the next touch. A click or tap shows the cell in Selected, which on phones means the Info tab of
+ * the sheet.
+ */
+function createMapView(sheet) {
 	const tooltip = $('#tooltip');
 	const mapView = new IsoView($('#map'), {
 		onHover: (cell) => showTooltip(tooltip, cell),
-		onSelect: showSelection,
+		onPress: (cell, where) => showTouchTooltip(tooltip, cell, where),
+		onPressMove: (where) => moveTouchTooltip(tooltip, where),
+		onSelect: (cell) => {
+			showSelection(cell);
+			sheet.reveal('info');
+		},
 	});
 	$('#map').addEventListener('mousemove', (e) => {
+		if (tooltip.dataset.placedAt) return;   // the mouse events a touch or pen sends: the touch placed it
 		tooltip.style.left = `${Math.max(8, Math.min(e.clientX + 14, window.innerWidth - tooltip.offsetWidth - 8))}px`;
 		tooltip.style.top = `${Math.max(8, Math.min(e.clientY + 14, window.innerHeight - tooltip.offsetHeight - 8))}px`;
 	});
@@ -106,6 +121,75 @@ function showTooltip(tooltip, cell) {
 	const occupied = cell.critter || cell.object;
 	tooltip.textContent = occupied ? `${tooltipSummary(cell)} · ${cell.x},${cell.y}` : `${tileName(cell.a, cell.b)} · ${cell.x},${cell.y}`;
 	tooltip.style.display = 'block';
+}
+
+const TOUCH_GAP = 28;      // px between the touch and the tooltip: clear of the fingertip
+const TOUCH_MARGIN = 6;   // px the tooltip keeps from the edges of the map
+const TOUCH_SIDES = ['above', 'right', 'left', 'below'];
+
+/**
+ * The touch tooltip's size and the side of the touch it is on. It is measured once for each thing it names, not
+ * every frame the map moves, and the side is kept while it still fits, so a drag does not flip it about.
+ */
+const touchTip = { width: 0, height: 0, side: 'above', transform: '' };
+
+/** The tooltip for a finger or pen touching at `where` ({ x, y, bounds }), or hidden for a null cell. */
+function showTouchTooltip(tooltip, cell, where) {
+	if (!cell) {
+		tooltip.style.display = 'none';
+		tooltip.style.transform = '';
+		delete tooltip.dataset.placedAt;
+		return;
+	}
+	tooltip.dataset.placedAt = 'touch';
+	// the box sits at the corner and is moved by transform, which costs no layout while the map is dragged
+	tooltip.style.left = '0px';
+	tooltip.style.top = '0px';
+	tooltip.style.transform = '';
+	showTooltip(tooltip, cell);
+	Object.assign(touchTip, { width: tooltip.offsetWidth, height: tooltip.offsetHeight, side: 'above', transform: '' });
+	placeBesideTouch(tooltip, where);
+}
+
+/** The map moved (or zoomed): the tooltip stays with its cell, and waits while the cell is off the map (`where` null). */
+function moveTouchTooltip(tooltip, where) {
+	if (!where) {
+		if (tooltip.style.display !== 'none') tooltip.style.display = 'none';
+		return;
+	}
+	if (tooltip.style.display !== 'block') tooltip.style.display = 'block';
+	placeBesideTouch(tooltip, where);
+}
+
+/**
+ * Where the mouse's tooltip goes (beside the pointer) would be under the hand, so: above the touch, else to its
+ * right, else to its left, else below it, the first that fits inside the map, the side it was on first; kept inside
+ * the map either way.
+ */
+function placeBesideTouch(tooltip, { x, y, bounds }) {
+	const { width, height } = touchTip;
+	const room = { left: bounds.left + TOUCH_MARGIN, top: bounds.top + TOUCH_MARGIN, right: bounds.right - TOUCH_MARGIN, bottom: bounds.bottom - TOUCH_MARGIN };
+	const across = clamp(x - width / 2, room.left, room.right - width);
+	const along = clamp(y - height / 2, room.top, room.bottom - height);
+	const spots = {
+		above: { left: across, top: y - TOUCH_GAP - height },
+		right: { left: x + TOUCH_GAP, top: along },
+		left: { left: x - TOUCH_GAP - width, top: along },
+		below: { left: across, top: y + TOUCH_GAP },
+	};
+	const fits = (spot) => spot.left >= room.left && spot.top >= room.top && spot.left + width <= room.right && spot.top + height <= room.bottom;
+	const side = [touchTip.side, ...TOUCH_SIDES].find((name) => fits(spots[name]));
+	if (side) touchTip.side = side;
+	const spot = side ? spots[side] : { left: across, top: clamp(spots.above.top, room.top, room.bottom - height) };
+	const transform = `translate(${Math.round(spot.left)}px, ${Math.round(spot.top)}px)`;
+	if (transform === touchTip.transform) return;
+	tooltip.style.transform = transform;
+	touchTip.transform = transform;
+}
+
+/** `value` held between `low` and `high` (`low` wins if the range is empty) */
+function clamp(value, low, high) {
+	return Math.max(low, Math.min(value, high));
 }
 
 /** Reuse the Selected panel's details, with plain text and without its attribution line. */

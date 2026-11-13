@@ -77,7 +77,8 @@ node tools/solve.mjs --help   # solver from the command line
 - Comments explain *why*. Ported code cites the Java method it mirrors.
 - **UI text is plain language for players.** Say "combat dice", not "RNG"; "mental power", not "MP" on first use.
 - **UI changes:** check all four themes (Light, Dark, Dark High Contrast, Sepia), with Light as the default, plus a
-  narrow screen. Map colours come from `js/view/iso.js` palettes and the theme CSS variables. Check with
+  phone, standing up and on its side (the phone layout is at the end of `style.css`; wider windows must not change).
+  Map colours come from `js/view/iso.js` palettes and the theme CSS variables. Check with
   `node tools/screenshots.mjs --before <main worktree> --out /tmp/shots`. The Screenshots bot comments on the PR with the
   fixed views. For other images in a PR description, push them to `bot/screenshots` under `pr-<n>/` and link the raw
   URL ([docs/infra.md](docs/infra.md#screenshots)); never images taken with a real save.

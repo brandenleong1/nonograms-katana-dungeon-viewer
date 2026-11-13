@@ -62,6 +62,26 @@ body::after {
 	width: 300px;
 }
 
+.label-box {
+	row-gap: 10px;
+	justify-content: flex-start;
+}
+
+.label-buttons {
+	column-gap: 15px;
+}
+
+/* the phone and tablet layout's sheet (at the end of this file): wide screens show its tabs' panels as columns, so
+   the groups that make up a panel are no boxes of their own there, and the tabs and popup close buttons are hidden */
+.sheet-group {
+	display: contents;
+}
+
+#sheet-tabs,
+.popup-close {
+	display: none;
+}
+
 #label-input {
 	min-width: 0;
 	width: 260px;
@@ -122,6 +142,11 @@ body::after {
 	background-color: var(--map_bg, #0b0b0d);
 	touch-action: none;
 	cursor: grab;
+	/* a touch shows the tooltip (js/view/iso.js), not the browser's menu, text selection or flash */
+	-webkit-touch-callout: none;
+	-webkit-user-select: none;
+	user-select: none;
+	-webkit-tap-highlight-color: transparent;
 }
 
 #map:active {
@@ -1362,5 +1387,482 @@ table.cmp tr.muted td {
 	}
 	.pg-col {
 		align-self: stretch;
+	}
+}
+
+/* ---- Phones and tablets: the map, with a tabbed sheet under it (beside it in landscape) ------------------------- */
+/* The four columns need about 1,600 px beside a usable map. Below 1,000 px (every phone, even in landscape, and
+   tablets standing up) they can't fit, so the page shows the map and one panel at a time (js/ui/sheet-tabs.js).
+   Touch screens up to 1,400 px wide (every iPad and most Android tablets, either way round) get it too: scrolling a
+   page sideways is awkward by touch. Wider desktop windows keep the columns, and scroll sideways when narrow. */
+@media (max-width: 999.98px), (pointer: coarse) and (max-width: 1400px) {
+	html {
+		width: auto;
+		overflow: hidden;   /* the sheet's panels scroll; the page doesn't */
+		overscroll-behavior: none;
+		touch-action: manipulation;   /* two quick taps (the script's step buttons) don't zoom the page */
+	}
+
+	body {
+		display: grid;
+		grid-template-columns: minmax(0, 18rem) auto 1fr;   /* the label box grows first, up to 18rem */
+		grid-template-rows: auto 42% auto auto minmax(0, 1fr);
+		grid-template-areas:
+			'label find icons'
+			'map map map'
+			'tabs tabs tabs'
+			'status status status'
+			'sheet sheet sheet';
+		gap: 0 8px;
+		box-sizing: border-box;
+		width: auto;
+		min-width: 0;
+		height: 100vh;
+		height: 100dvh;   /* the height left by the browser's own bars */
+		margin: 0;
+		padding: 6px 8px 0;
+		overflow: hidden;
+		font-size: 17px;
+		letter-spacing: 0.5px;
+	}
+
+	/* the sections are no boxes of their own: their parts go into the grid's areas */
+	#input-section,
+	.label-box,
+	#info-section {
+		display: contents;
+	}
+
+	body::after,
+	#bottom-bar::before,
+	#input-section > .content-header,
+	.label-hint,
+	#map-caption,
+	#solver-btn,
+	#panel-route > .content-header-2:first-child,
+	#solve-section > .content-header-2:first-child {
+		display: none;   /* the tabs name the panels; the Solver tab replaces the button that hides the column */
+	}
+
+	/* ---- the top bar: label, Show and Random, Help and Settings ---- */
+	#label-input {
+		grid-area: label;
+		align-self: center;
+		box-sizing: border-box;
+		width: auto;
+		min-width: 0;
+		height: 40px;
+		padding: 0 6px;
+		font-size: 16px;   /* iOS zooms the page into text fields set smaller than 16 px */
+		letter-spacing: 0;
+	}
+
+	.label-buttons {
+		grid-area: find;
+		align-items: center;
+		column-gap: 8px;
+	}
+
+	.label-buttons .button-positive-2 {
+		display: flex;
+		align-items: center;
+		box-sizing: border-box;
+		height: 40px;
+		padding: 0 9px;
+		outline-offset: -2px;
+		font-size: 15px;
+	}
+
+	#bottom-bar {
+		grid-area: icons;
+		justify-self: end;
+		position: static;
+		align-items: center;
+		flex-direction: row;
+		width: auto;
+		height: 40px;
+		column-gap: 0;
+	}
+
+	#bottom-bar > * {
+		height: 26px;
+		padding: 7px;   /* 40 px to tap */
+	}
+
+	/* ---- the map ---- */
+	#map-section {
+		grid-area: map;
+		min-width: 0;
+		height: auto;
+		margin: 6px 0 2px;
+	}
+
+	#map {
+		flex: 1 1 0;
+		min-height: 0;
+		height: auto;
+	}
+
+	/* ---- the tabs, and the label's line above the Dungeon panel ---- */
+	#sheet-tabs {
+		grid-area: tabs;
+		display: flex;
+		border-bottom: 1px solid color-mix(in srgb, var(--color_txt2) 35%, transparent);
+	}
+
+	#sheet-tabs [role='tab'] {
+		flex: 1 1 0;
+		min-width: 0;
+		min-height: 44px;
+		padding: 0 4px;
+		border: none;
+		border-bottom: 3px solid transparent;
+		background: none;
+		color: var(--color_txt2);
+		font: inherit;
+		font-size: 14px;
+		letter-spacing: 1.5px;
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+
+	#sheet-tabs [role='tab'][aria-selected='true'] {
+		color: var(--color_btn);
+		border-bottom-color: var(--color_btn);
+	}
+
+	#sheet-tabs [role='tab']:focus-visible {
+		outline: 3px solid var(--color_btn_hover);
+		outline-offset: -3px;
+	}
+
+	/* something new on a tab that isn't shown (a tap on the map while the Solver is open) */
+	#sheet-tabs [role='tab'].flagged::after {
+		content: '';
+		display: inline-block;
+		width: 8px;
+		height: 8px;
+		margin-left: 5px;
+		vertical-align: 2px;
+		border-radius: 50%;
+		background-color: var(--color_link);
+	}
+
+	#label-status {
+		grid-area: status;
+		justify-self: center;
+		min-height: 0;
+		max-width: none;
+		padding: 6px 4px 0;
+	}
+
+	body:not([data-sheet='dungeon']) #label-status:not(.error) {
+		display: none;   /* a bad label shows whatever the tab */
+	}
+
+	/* ---- the panels: one at a time, each scrolling by itself, its content fading out at the edges ---- */
+	#panel-dungeon,
+	#panel-info,
+	#panel-route,
+	#solve-section {
+		--fade: 14px;
+		grid-area: sheet;
+		display: none;
+		flex-direction: column;
+		align-items: center;
+		justify-content: flex-start;
+		row-gap: 8px;
+		box-sizing: border-box;
+		width: auto;
+		min-width: 0;
+		height: auto;
+		min-height: 0;
+		padding: var(--fade) max(4px, (100% - 640px) / 2) calc(var(--fade) + env(safe-area-inset-bottom));   /* lines of a readable length on tablets */
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		-webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
+		mask-image: linear-gradient(to bottom, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
+	}
+
+	body[data-sheet='dungeon'] #panel-dungeon,
+	body[data-sheet='info'] #panel-info,
+	body[data-sheet='route'] #panel-route,
+	body[data-sheet='solver'] #solve-section {
+		display: flex;
+	}
+
+	#panel-dungeon .content-container-vertical {
+		min-width: 0;
+	}
+
+	.sheet-group .content-header-2,
+	#solve-section .content-header-2 {
+		font-size: 16px;
+		line-height: 30px;
+	}
+
+	/* the lists that scroll in their columns grow instead: the panel scrolls */
+	#info-section .scroll-list,
+	#solve-section .solve-scroll {
+		flex: none;
+		max-height: none;
+		overflow: visible;
+		padding-top: 0;
+		padding-bottom: 0;
+		-webkit-mask-image: none;
+		mask-image: none;
+	}
+
+	#info-section .scroll-list {
+		min-height: 0;
+	}
+
+	#solve-section .solve-result {
+		flex: none;
+	}
+
+	.layer-list {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+		align-self: stretch;
+		row-gap: 0;
+		column-gap: 16px;
+		padding: 0 6px;
+	}
+
+	/* ---- 40 px or more to tap ---- */
+	.view-btn {
+		width: 44px;
+		height: 44px;
+		min-width: 44px;
+	}
+
+	.layer-row,
+	#objective-list .row,
+	#route-info .row,
+	.hero-list .row,
+	.topup-row,
+	.enc-head {
+		box-sizing: border-box;
+		min-height: 40px;
+		align-items: center;
+	}
+
+	.stop-row {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		box-sizing: border-box;
+		min-height: 40px;
+	}
+
+	.profile-row .button-positive-2,
+	.solve-run .button-positive-2,
+	.seg .seg-btn,
+	.pg-toolbar .pg-reset,
+	.drop-zone .button-positive-2,
+	#hero-forget {
+		display: flex;
+		align-items: center;
+		box-sizing: border-box;
+		min-height: 40px;
+	}
+
+	.pg-bar-seg {
+		height: 40px;
+	}
+
+	#effort-select,
+	.manual-grid input,
+	.manual-grid select,
+	.solve-line input[type=number],
+	.pg-num input,
+	.pg-where select {
+		box-sizing: border-box;
+		min-height: 40px;
+		font-size: 16px;   /* as #label-input: no zoom when focused */
+	}
+
+	/* links in running text: taller to tap, without moving the lines (vertical padding doesn't, on inline boxes) */
+	.info-box a,
+	.solve-controls a,
+	.solve-result a,
+	.popup a {
+		padding: 10px 0;
+	}
+
+	.enc-cmp summary,
+	.pg-parts > summary {
+		padding: 10px 0;
+	}
+
+	#theme-btn {
+		padding: 8px 10px;
+	}
+
+	/* the tooltip is the mouse's (same font, colours and text), narrower: it stays with a touched cell when the map is
+	   dragged (js/app.js moveTouchTooltip), and a box as wide as the map (main's is 376 px, with its padding, in a
+	   374 px map) could not slide sideways with it */
+	#tooltip {
+		box-sizing: border-box;
+		max-width: min(360px, 64vw);
+	}
+
+	/* the script player's slider: a bigger thumb, and the whole 40 px row takes a tap */
+	.player input[type=range] {
+		height: 40px;
+	}
+
+	.player input[type=range]::-webkit-slider-thumb {
+		width: 26px;
+		height: 26px;
+		margin-top: -7px;
+		border-radius: 13px;
+	}
+
+	/* ---- popups: the whole screen, scrolling inside, with a close button that stays at the top ---- */
+	.popup-bounding {
+		inset: 0;
+		width: auto;
+		height: auto;
+	}
+
+	.popup,
+	#popup-hero,
+	#popup-progress {
+		box-sizing: border-box;
+		width: 100%;
+		height: 100%;
+		max-width: none;
+		max-height: none;
+		margin: 0;
+		padding: 0 14px calc(24px + env(safe-area-inset-bottom));
+		row-gap: 14px;
+		border-radius: 0;
+		overscroll-behavior: contain;
+	}
+
+	.popup-close {
+		position: sticky;
+		top: 6px;
+		z-index: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex: none;
+		align-self: flex-end;
+		width: 44px;
+		height: 44px;
+		margin: 6px -6px -58px 0;   /* beside the title: 44 px high plus the 14 px gap */
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background-color: var(--color_bg2);
+		color: var(--color_txt);
+		cursor: pointer;
+	}
+
+	.popup-close:focus-visible {
+		outline: 3px solid var(--color_btn_hover);
+	}
+
+	.popup > .content-header {
+		align-self: stretch;
+		padding: 0 48px;
+		font-size: 24px;
+		line-height: 44px;
+		text-align: center;
+	}
+
+	.popup .content-text {
+		padding: 0 4px;
+		line-height: 1.55em;
+		text-align: left;
+		white-space: normal;
+	}
+
+	.hero-footer {
+		flex-wrap: wrap;
+		justify-content: center;
+		row-gap: 10px;
+	}
+
+	.drop-zone .button-positive-2 {
+		white-space: nowrap;
+	}
+
+	/* ---- landscape: the map takes the whole height on the left, the bar and the sheet are on the right ---- */
+	@media (orientation: landscape) {
+		body {
+			/* the label box takes a fifth of what the buttons leave: 130 px on a phone, 200 px on a tablet. Being
+			   flexible, it also keeps the sheet's content from widening the button columns (and squeezing the map) */
+			grid-template-columns: minmax(0, 3.5fr) minmax(0, 1fr) auto auto;
+			grid-template-rows: auto auto auto minmax(0, 1fr);
+			grid-template-areas:
+				'map label find icons'
+				'map tabs tabs tabs'
+				'map status status status'
+				'map sheet sheet sheet';
+			column-gap: 10px;
+		}
+
+		#map-section {
+			margin: 0 0 8px;
+		}
+
+		#sheet-tabs {
+			margin-top: 4px;
+		}
+	}
+
+	/* small phones (360 px): room for a whole label */
+	@media (max-width: 374px) {
+		#label-input {
+			padding: 0 4px;
+		}
+
+		.label-buttons {
+			column-gap: 6px;
+		}
+
+		.label-buttons .button-positive-2 {
+			padding: 0 6px;
+		}
+	}
+
+	/* tablets standing up: more of the screen for the map */
+	@media (orientation: portrait) and (min-width: 600px) {
+		body {
+			grid-template-rows: auto 52% auto auto minmax(0, 1fr);
+		}
+	}
+}
+
+/* touch screens: a tapped button keeps its hover look until the next tap elsewhere; show buttons as they are */
+@media (hover: none) {
+	.button-positive-2:hover {
+		color: var(--color_btn);
+		outline-color: var(--color_btn);
+	}
+
+	.button-positive-2.selected:hover {
+		color: var(--color_bg);
+		background-color: var(--color_btn);
+	}
+
+	.checkbox:hover {
+		color: var(--color_btn);
+		outline-color: var(--color_btn);
+	}
+
+	#bottom-bar > *:hover {
+		filter: var(--color_svg);
+	}
+}
+
+/* the script player's keyboard keys, where the screen is the keyboard */
+@media (pointer: coarse) {
+	.pl-keys {
+		display: none;
 	}
 }

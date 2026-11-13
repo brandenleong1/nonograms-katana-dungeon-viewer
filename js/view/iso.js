@@ -8,6 +8,7 @@ import { wallArms, WALL_CORE, ARM_LEFT, ARM_RIGHT, ARM_UP, ARM_DOWN, OPEN_LEFT, 
 
 const HW = 32;   // half tile width at scale 1
 const HH = 16;   // half tile height at scale 1
+const OFF_MAP_PX = 16;   // how far past the map's edge a touched cell may drift before its tooltip waits for it
 
 const PALETTES = {
 	dark: {
@@ -27,18 +28,30 @@ const LIQUID = { 1: '#2f6fb3', 2: '#2f6fb3', 3: '#8fd3ff', 4: '#2f6fb3', 5: '#2b
 const STAIRS = { top: '#ffd84a', left: '#c9a227', right: '#a6841c' };
 
 export class IsoView {
-	constructor(canvas, { onHover = () => {}, onSelect = () => {} } = {}) {
+	/**
+	 * Callbacks: onHover(cell | null) as the mouse moves over cells; onSelect(cell) for a click or tap;
+	 * onPress(cell, where) when a finger or pen goes down: a touch is a hover and a click at once, so this is
+	 * onHover for it, and the tooltip stays up after the finger lifts, and moves with the map when it is dragged or
+	 * zoomed; onPress(null, null) takes it away again (see hidePress). `where` is { x, y, bounds }: client px of the
+	 * touch point, and the map's client rectangle. onPressMove(where | null) follows once a frame the map is drawn
+	 * (null while the pressed cell is off the map).
+	 */
+	constructor(canvas, { onHover = () => {}, onSelect = () => {}, onPress = () => {}, onPressMove = () => {} } = {}) {
 		this.canvas = canvas;
 		this.ctx = canvas.getContext('2d');
 		this.onHover = onHover;
 		this.onSelect = onSelect;
+		this.onPress = onPress;
+		this.onPressMove = onPressMove;
+		this.pressUp = false;   // a touch's tooltip is showing (it stays after the finger lifts)
+		this.pressAt = null;    // { x, y, dx, dy, scale }: the touched cell, the touch's px from its centre, the zoom then
 		this.level = null;
 		this.layers = new Set(['loot', 'doors', 'links', 'monsters', 'puzzles', 'always']);
 		this.wallHeight = 14;
 		this.scale = 1;
 		this.ox = 0;
 		this.oy = 0;
-		this.hover = null;      // {x, y}
+		this.hover = null;      // {x, y}: the cell under the mouse, or the one a finger or pen last touched (while its tooltip is up)
 		this.selected = null;   // object/critter record
 		this.highlights = [];   // [{x, y, color}]
 		this.links = [];        // [[a, b, color]] tile pairs to connect
@@ -62,6 +75,7 @@ export class IsoView {
 		this.critAt = new Map();
 		for (const c of level.critters) this.critAt.set(c.y * level.w + c.x, c);
 		this.walls = wallArms(level);
+		this.hidePress();
 		this.selected = null;
 		this.highlights = [];
 		this.links = [];
@@ -186,6 +200,7 @@ export class IsoView {
 		const dpr = window.devicePixelRatio || 1;
 		this.cssW = Math.max(r.width, 50);
 		this.cssH = Math.max(r.height, 50);
+		this.hidePress();   // the map moved under the tooltip (a turned phone)
 		this.canvas.width = Math.round(this.cssW * dpr);
 		this.canvas.height = Math.round(this.cssH * dpr);
 		this.dpr = dpr;
@@ -200,6 +215,7 @@ export class IsoView {
 		const frame = this._frame();
 		this._drawCells(ctx, frame);
 		this._overlays(ctx, frame);
+		if (this.pressUp) this.onPressMove(this._pressWhere());   // the tooltip follows the cell it names
 	}
 
 	/**
@@ -650,13 +666,22 @@ export class IsoView {
 	// ---- input -----------------------------------------------------------------------------
 	_bindInput() {
 		const c = this.canvas;
-		const gesture = { pointers: new Map(), drag: null, moved: false, pinch: null };
+		const gesture = { pointers: new Map(), drag: null, moved: false, pinch: null, pointerType: 'mouse' };
 		c.addEventListener('pointerdown', (e) => this._pointerDown(gesture, e));
 		c.addEventListener('pointermove', (e) => this._pointerMove(gesture, e));
 		const up = (e) => this._pointerUp(gesture, e);
 		c.addEventListener('pointerup', up);
 		c.addEventListener('pointercancel', up);
-		c.addEventListener('pointerleave', () => { this.hover = null; this.onHover(null); this.redraw(); });
+		// a long press would open the browser's context menu or select text; a right click keeps its menu
+		c.addEventListener('contextmenu', (e) => { if (gesture.pointerType !== 'mouse') e.preventDefault(); });
+		// a touch's tooltip has no mouse-leave: touching or typing anywhere else, or a hidden tab, takes it away
+		document.addEventListener('pointerdown', (e) => { if (e.target !== c) this.hidePress(); }, true);
+		document.addEventListener('keydown', () => this.hidePress(), true);
+		document.addEventListener('visibilitychange', () => { if (document.hidden) this.hidePress(); });
+		c.addEventListener('pointerleave', (e) => {
+			if (e.pointerType !== 'mouse') return;   // a lifted finger or pen leaves too: the tapped cell keeps its outline
+			this.hover = null; this.onHover(null); this.redraw();
+		});
 		c.addEventListener('wheel', (e) => {
 			e.preventDefault();
 			const [x, y] = this._canvasPoint(e);
@@ -669,11 +694,17 @@ export class IsoView {
 		this.canvas.setPointerCapture(e.pointerId);
 		const { pointers } = gesture;
 		pointers.set(e.pointerId, this._canvasPoint(e));
-		if (pointers.size === 1) { gesture.drag = { p: this._canvasPoint(e), ox: this.ox, oy: this.oy }; gesture.moved = false; }
+		if (pointers.size === 1) {
+			this._startDrag(gesture, this._canvasPoint(e), tapSlop(e));
+			gesture.moved = false;
+			gesture.pointerType = e.pointerType;
+			this._press(e);
+		}
 		if (pointers.size === 2) {
 			const [a, b] = [...pointers.values()];
 			gesture.pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), scale: this.scale };
 			gesture.drag = null;
+			gesture.moved = true;   // two fingers never make a tap
 		}
 	}
 
@@ -682,7 +713,7 @@ export class IsoView {
 		if (gesture.pointers.has(e.pointerId)) gesture.pointers.set(e.pointerId, p);
 		if (gesture.pinch && gesture.pointers.size === 2) { this._pinchZoom(gesture); return; }
 		if (gesture.drag) { this._dragPan(gesture, p); return; }
-		this._hoverAt(p);
+		if (e.pointerType === 'mouse') this._hoverAt(p);   // a pen above the screen hovers nothing: it presses like a finger
 	}
 
 	_pinchZoom(gesture) {
@@ -696,18 +727,71 @@ export class IsoView {
 	_dragPan(gesture, p) {
 		const { drag } = gesture;
 		const dx = p[0] - drag.p[0], dy = p[1] - drag.p[1];
-		if (Math.abs(dx) + Math.abs(dy) > 4) gesture.moved = true;
+		if (Math.abs(dx) + Math.abs(dy) > drag.slop) gesture.moved = true;
 		if (!gesture.moved) return;
 		this.ox = drag.ox + dx; this.oy = drag.oy + dy; this.redraw();
 	}
 
+	/** a click or tap if the pointer hardly moved; after a pinch, the finger still down pans on */
 	_pointerUp(gesture, e) {
 		const { pointers } = gesture;
-		const wasClick = gesture.drag && !gesture.moved && pointers.size === 1;
+		const wasClick = e.type === 'pointerup' && gesture.drag && !gesture.moved && pointers.size === 1;
+		if (e.type === 'pointercancel') this.hidePress();
 		pointers.delete(e.pointerId);
+		if (gesture.pinch && pointers.size === 1) this._startDrag(gesture, [...pointers.values()][0], 0);
 		if (pointers.size < 2) gesture.pinch = null;
 		if (wasClick) this._clickAt(this._canvasPoint(e));
 		if (pointers.size === 0) gesture.drag = null;
+	}
+
+	// ---- touch: a tap is a hover and a click at once ----------------------------------------------------------
+
+	/**
+	 * A finger or pen going down shows what the mouse's hover would (a mouse hovers instead), at once. The tooltip is
+	 * tied to the touched cell, not the finger: it stays after the finger lifts and moves with the map when that is
+	 * dragged or zoomed (onPressMove, from draw). The next touch moves it to the cell under it, and hidePress takes it
+	 * away.
+	 */
+	_press(e) {
+		if (e.pointerType === 'mouse') return;
+		const p = this._canvasPoint(e);
+		const t = this._cellAt(p);
+		if (!t) { this.hidePress(); return; }
+		const [cx, cy] = this.project(t.x, t.y);
+		this.pressAt = { x: t.x, y: t.y, dx: p[0] - cx, dy: p[1] - cy, scale: this.scale };
+		this.pressUp = true;
+		this.hover = t;
+		this.onPress(this.describe(t.x, t.y), this._pressWhere());
+		this.redraw();
+	}
+
+	/**
+	 * Where the touch point is on the page now: the touched cell's centre, plus the touch's distance from it (the
+	 * finger sits on the sprite, above the centre) grown or shrunk with the zoom. null once the cell's centre is off
+	 * the map by more than a few px: the tooltip waits for it to come back.
+	 */
+	_pressWhere() {
+		const { x, y, dx, dy, scale } = this.pressAt;
+		const [cx, cy] = this.project(x, y);
+		if (cx < -OFF_MAP_PX || cx > this.cssW + OFF_MAP_PX || cy < -OFF_MAP_PX || cy > this.cssH + OFF_MAP_PX) return null;
+		const zoom = this.scale / scale;
+		const bounds = this.canvas.getBoundingClientRect();
+		return { x: bounds.left + cx + dx * zoom, y: bounds.top + cy + dy * zoom, bounds };
+	}
+
+	/** take away the tooltip a touch showed (and the outline of its cell); nothing if there is none */
+	hidePress() {
+		if (!this.pressUp) return;
+		this.pressUp = false;
+		this.pressAt = null;
+		this.hover = null;
+		this.onPress(null, null);
+		this.redraw();
+	}
+
+	/** a pan from point p (canvas px) that starts once the pointer moves more than `slop` px */
+	_startDrag(gesture, p, slop) {
+		gesture.drag = { p, ox: this.ox, oy: this.oy, slop };
 	}
 
 	/** an event's position on the canvas (CSS px) */
@@ -730,6 +814,7 @@ export class IsoView {
 	}
 
 	_hoverAt(p) {
+		this.hidePress();   // the mouse moved: its tooltip, not the touch's
 		const t = this._cellAt(p);
 		const same = t && this.hover && t.x === this.hover.x && t.y === this.hover.y;
 		if (same || (!t && !this.hover)) return;
@@ -759,6 +844,9 @@ export class IsoView {
 }
 
 function hhOffset(scale) { return HH * scale * 0.6; }
+
+/** how far (px, |dx| + |dy|) a pointer may move and still click: fingers wobble more than a mouse */
+function tapSlop(e) { return e.pointerType === 'touch' ? 10 : 4; }
 
 function emptySolve() {
 	return { markers: [], actors: null, actAt: null, replace: false, marks: [], callout: null, trail: null, upto: -1, hideRoute: false };

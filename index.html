@@ -18,36 +18,38 @@
 	<body>
 		<div class="content-container-vertical vertical-section" id="input-section">
 			<div class="content-header">Dungeon Viewer</div>
-			<div class="content-container-vertical" style="row-gap: 10px; justify-content: flex-start;">
-				<div class="content-caption">Type the label shown at the top of your dungeon.</div>
-				<input type="text" id="label-input" placeholder="3C-172582050" spellcheck="false" autocomplete="off" />
-				<div class="content-container-horizontal" style="column-gap: 15px;">
+			<div class="content-container-vertical label-box">
+				<div class="content-caption label-hint">Type the label shown at the top of your dungeon.</div>
+				<input type="text" id="label-input" placeholder="3C-172582050" spellcheck="false" autocomplete="off" autocapitalize="characters" enterkeyhint="go" aria-label="Dungeon label" />
+				<div class="content-container-horizontal label-buttons">
 					<div class="button-positive-2" id="show-btn">Show</div>
 					<div class="button-positive-2" id="random-btn" title="A random dungeon of the same kind">Random</div>
 				</div>
 				<div class="content-caption" id="label-status"></div>
 			</div>
 
-			<div class="content-header-2">Your hero</div>
-			<div class="content-container-vertical profile-block" id="profile-block">
-				<div class="content-container-horizontal profile-row">
-					<div class="button-positive-2" id="hero-open-btn" title="Your heroes, their pack and your progress, from the game's export">Import save</div>
-					<div class="button-positive-2" id="progress-open-btn" title="Quests, bosses beaten and finds the map is built with: set them without a save, or try what-ifs">Progress</div>
+			<div class="sheet-group" id="panel-dungeon" role="tabpanel" aria-labelledby="tab-dungeon">
+				<div class="content-header-2">Your hero</div>
+				<div class="content-container-vertical profile-block" id="profile-block">
+					<div class="content-container-horizontal profile-row">
+						<div class="button-positive-2" id="hero-open-btn" title="Your heroes, their pack and your progress, from the game's export">Import save</div>
+						<div class="button-positive-2" id="progress-open-btn" title="Quests, bosses beaten and finds the map is built with: set them without a save, or try what-ifs">Progress</div>
+					</div>
+					<div class="content-caption" id="profile-status">Import your save to see monsters and people as they are for you.</div>
 				</div>
-				<div class="content-caption" id="profile-status">Import your save to see monsters and people as they are for you.</div>
-			</div>
 
-			<div class="content-header-2">Show on map</div>
-			<div class="content-container-vertical layer-list" id="layer-list"></div>
+				<div class="content-header-2">Show on map</div>
+				<div class="content-container-vertical layer-list" id="layer-list"></div>
 
-			<div class="content-header-2">View</div>
-			<div class="content-container-horizontal view-row">
-				<div class="button-positive-2 view-btn" id="zoom-in-btn" title="Zoom in"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M12 5v14M5 12h14'/></svg></div>
-				<div class="button-positive-2 view-btn" id="zoom-out-btn" title="Zoom out"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M5 12h14'/></svg></div>
-				<div class="button-positive-2 view-btn" id="fit-btn" title="Fit map"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'/></svg></div>
-				<div class="button-positive-2 view-btn" id="hero-btn" title="Centre on start"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z'/></svg></div>
-				<div class="button-positive-2 view-btn" id="walls-btn" title="Toggle tall walls"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M3 20h18M5 20V10l7-4 7 4v10M9 20v-6h6v6'/></svg></div>
-				<div class="button-positive-2 view-btn" id="solver-btn" title="Show or hide the solver" role="button" tabindex="0" aria-pressed="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M5 19L19 5M15 5h4v4M5 5l5 5M9 5H5v4M14 14l5 5'/></svg></div>
+				<div class="content-header-2">View</div>
+				<div class="content-container-horizontal view-row">
+					<div class="button-positive-2 view-btn" id="zoom-in-btn" title="Zoom in"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M12 5v14M5 12h14'/></svg></div>
+					<div class="button-positive-2 view-btn" id="zoom-out-btn" title="Zoom out"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M5 12h14'/></svg></div>
+					<div class="button-positive-2 view-btn" id="fit-btn" title="Fit map"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'/></svg></div>
+					<div class="button-positive-2 view-btn" id="hero-btn" title="Centre on start"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z'/></svg></div>
+					<div class="button-positive-2 view-btn" id="walls-btn" title="Toggle tall walls"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M3 20h18M5 20V10l7-4 7 4v10M9 20v-6h6v6'/></svg></div>
+					<div class="button-positive-2 view-btn" id="solver-btn" title="Show or hide the solver" role="button" tabindex="0" aria-pressed="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d='M5 19L19 5M15 5h4v4M5 5l5 5M9 5H5v4M14 14l5 5'/></svg></div>
+				</div>
 			</div>
 		</div>
 
@@ -56,26 +58,38 @@
 			<div class="content-caption" id="map-caption">Drag to move · Scroll or pinch to zoom · Click something to see what it is</div>
 		</div>
 
-		<div class="content-container-vertical vertical-section" id="info-section">
-			<div class="content-header-2">Selected</div>
-			<div class="info-box" id="selected-info">Click a tile, object or monster.</div>
-
-			<div class="content-header-2">Objectives <span id="objective-count"></span></div>
-			<div class="info-box scroll-list" id="objective-list">—</div>
-
-			<div class="content-header-2">Route</div>
-			<div class="content-container-horizontal effort-row">
-				<span>Energy &amp; mental power:</span>
-				<select class="button-positive-2" id="effort-select" title="How hard to avoid spending energy or mental power on doors, seals and undergrowth">
-					<option value="steps">Spend freely</option>
-					<option value="balanced">Balanced</option>
-					<option value="save">Save them</option>
-				</select>
-			</div>
-			<div class="info-box scroll-list" id="route-info">—</div>
+		<!-- phones and tablets: one panel at a time under the map (style.css, js/ui/sheet-tabs.js) -->
+		<div id="sheet-tabs" role="tablist" aria-label="Panels">
+			<button type="button" role="tab" id="tab-dungeon" data-sheet="dungeon" aria-controls="panel-dungeon">Dungeon</button>
+			<button type="button" role="tab" id="tab-info" data-sheet="info" aria-controls="panel-info">Info</button>
+			<button type="button" role="tab" id="tab-route" data-sheet="route" aria-controls="panel-route">Route</button>
+			<button type="button" role="tab" id="tab-solver" data-sheet="solver" aria-controls="solve-section">Solver</button>
 		</div>
 
-		<div class="content-container-vertical vertical-section" id="solve-section">
+		<div class="content-container-vertical vertical-section" id="info-section">
+			<div class="sheet-group" id="panel-info" role="tabpanel" aria-labelledby="tab-info">
+				<div class="content-header-2">Selected</div>
+				<div class="info-box" id="selected-info">Click a tile, object or monster.</div>
+
+				<div class="content-header-2">Objectives <span id="objective-count"></span></div>
+				<div class="info-box scroll-list" id="objective-list">—</div>
+			</div>
+
+			<div class="sheet-group" id="panel-route" role="tabpanel" aria-labelledby="tab-route">
+				<div class="content-header-2">Route</div>
+				<div class="content-container-horizontal effort-row">
+					<span>Energy &amp; mental power:</span>
+					<select class="button-positive-2" id="effort-select" title="How hard to avoid spending energy or mental power on doors, seals and undergrowth">
+						<option value="steps">Spend freely</option>
+						<option value="balanced">Balanced</option>
+						<option value="save">Save them</option>
+					</select>
+				</div>
+				<div class="info-box scroll-list" id="route-info">—</div>
+			</div>
+		</div>
+
+		<div class="content-container-vertical vertical-section" id="solve-section" role="tabpanel" aria-labelledby="tab-solver">
 			<div class="content-header-2">Solver</div>
 			<div class="solve-controls" id="solve-controls"></div>
 			<div class="solve-result" id="solve-result"></div>
@@ -89,6 +103,7 @@
 		</div>
 
 		<div class="popup" id="popup-help">
+			<button type="button" class="popup-close" aria-label="Close"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d='M6 6l12 12M18 6L6 18'/></svg></button>
 			<div class="content-header">Help</div>
 			<div class="content-container-vertical">
 				<div class="content-text">Text styled like <span style="color: var(--color_btn);">this</span> are buttons.</div>
@@ -117,6 +132,7 @@
 			</div>
 		</div>
 		<div class="popup" id="popup-hero">
+			<button type="button" class="popup-close" aria-label="Close"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d='M6 6l12 12M18 6L6 18'/></svg></button>
 			<div class="content-header">Your hero</div>
 			<div class="privacy-note">
 				<b>Your save stays on your device.</b> The file is read here in your browser; nothing is uploaded or sent
@@ -138,6 +154,7 @@
 			<div class="content-container-horizontal hero-body" id="hero-body" style="display: none;"></div>
 		</div>
 		<div class="popup" id="popup-progress">
+			<button type="button" class="popup-close" aria-label="Close"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d='M6 6l12 12M18 6L6 18'/></svg></button>
 			<div class="content-header">Your progress</div>
 			<div class="privacy-note">
 				Monsters, people and bosses in a dungeon depend on what you have done in the game. Set it here without a
@@ -147,6 +164,7 @@
 			<div class="progress-body" id="progress-body"></div>
 		</div>
 		<div class="popup" id="popup-settings">
+			<button type="button" class="popup-close" aria-label="Close"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d='M6 6l12 12M18 6L6 18'/></svg></button>
 			<div class="content-header">Settings</div>
 			<div class="content-text" style="overflow-y: hidden;">
 				<span class="button-positive" id="theme-btn">Change Theme:</span>
