@@ -48,5 +48,7 @@ export function toLevel(hw, gen, type, seed) {
 		objects: hw.n.map(obj),
 		critters: hw.o.map((c) => ({ ...obj(c), k: c.k })),
 		rooms: gen.n.map((r) => ({ x: r.a, y: r.b, w: r.c, h: r.d, id: r.e, v: r.v, w_: r.w, x_: r.x })),
+		// wild familiars: critter 190 + i is companion i (hw.I), with its look (bw id) and rank 0..3
+		companions: (hw.p ?? []).map((c) => ({ id: c.a.a, rank: c.d })),
 	};
 }

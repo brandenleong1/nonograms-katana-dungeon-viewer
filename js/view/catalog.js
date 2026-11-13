@@ -35,6 +35,7 @@ export const KINDS = {
 	miniboss:  { layer: 'monsters',  color: '#ff7a20', glyph: '☠', label: 'Mini-boss' },
 	unique:    { layer: 'monsters',  color: '#ffd700', glyph: '♛', label: 'Unique monster' },
 	npc:       { layer: 'monsters',  color: '#b9ff47', glyph: '☺', label: 'NPC' },
+	familiar:  { layer: 'monsters',  color: '#cfd8e3', glyph: '♞', label: 'Wild familiar' },
 	shapeshifter: { layer: 'monsters', color: '#ff4d4d', glyph: '◆', label: 'Shapeshifter' },
 	spider:    { layer: 'monsters',  color: '#47f3ff', glyph: '✱', label: 'Mechanical spider (yours)' },
 };
@@ -80,6 +81,7 @@ export function objectKind(obj, rw) {
 export function critterKind(cr, bw) {
 	if (cr.id === 180) return 'hero';
 	if (cr.id === 199) return 'spider';
+	if (cr.id >= 190 && cr.id < 194) return 'familiar';
 	if (cr.h === 1101 || cr.h === 1103) return 'boss';
 	if (cr.h === 1100) return 'miniboss';
 	// shapeshifters look like people but fight when you talk to them (c30, the NPC talk branch): species with bw.N0
@@ -90,6 +92,27 @@ export function critterKind(cr, bw) {
 	if (bw && bw.l0) return 'unique';
 	if (bw && bw.m0) return 'boss';
 	return 'monster';
+}
+
+/** The game's familiar rank colours (zw.f): white, blue, yellow and purple for ranks 0 to 3. */
+export const RANK_COLORS = ['#ffffff', '#72c1ff', '#f6cd5d', '#ae95ff'];
+
+/** A wild familiar's rank (0..3), or null when the level doesn't list its companions (the sample fixtures). */
+export function familiarRank(level, cr) {
+	const companion = level?.companions?.[cr.id - 190];
+	return companion ? companion.rank : null;
+}
+
+/** A creature sprite's variant: a monster's species (its colour), a wild familiar's rank (its colour). */
+export function critterVariant(kind, cr, level) {
+	if (kind === 'monster') return String(cr.id);
+	if (kind === 'familiar') return String(familiarRank(level, cr) ?? '');
+	return '';
+}
+
+/** The colour of a creature's dot when zoomed out: a familiar's rank colour, else its kind's. */
+export function critterColor(kind, variant) {
+	return kind === 'familiar' && RANK_COLORS[variant] ? RANK_COLORS[variant] : KINDS[kind].color;
 }
 
 /** Objects that link to a partner, and how partners are matched. */
