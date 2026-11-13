@@ -244,7 +244,7 @@ export class Shard {
 		s.key = encounterKey(stop, countVisit(s.stopCount, stop));
 		const h = run.fight.h;
 		const needs = run.walker.routeNeeds();
-		s.info = { stop: stopOut(stop), enemies: h.D.filter((m) => isFoe(h, m)).map((m) => critterInfo(h, m)), hero: heroOf(h), needs };
+		s.info = { stop: stopOut(stop), enemies: h.D.filter((m) => isFoe(h, m)).map((m) => critterInfo(h, m)), hero: heroOf(h), needs, avail: availOf(h) };
 		s.status = 'combat';
 	}
 
@@ -484,7 +484,7 @@ function dealSamples(N, seed, W) {
  * What the scout (fixed-policy play-throughs from the start) says about the encounters: their order on the route, the
  * HP / EP each costs, and where the baseline dies.
  */
-class ScoutProfile {
+export class ScoutProfile {
 	constructor(rows) {
 		this.rows = rows;
 		this.order = new Map();     // key -> { s: sum of relative positions, n }
@@ -510,11 +510,20 @@ class ScoutProfile {
 		return o ? o.s / o.n : 0.5;
 	}
 
-	/** the scouted keys after k (all of them for a key the scout never met) */
+	/**
+	 * the scouted keys after k: all of them for a key the scout never met, and for one that is last in the scout only
+	 * because every run that met it died there (what follows is unknown, not nothing: it is no "last encounter")
+	 */
 	keysAfter(k) {
 		if (!this.order.has(k)) return this.keysByPos;
 		const p = this.pos(k);
-		return this.keysByPos.filter((q) => this.pos(q) > p + 1e-9);
+		const later = this.keysByPos.filter((q) => this.pos(q) > p + 1e-9);
+		return later.length || this.finishedAfter(k) ? later : this.keysByPos;
+	}
+
+	/** some scout run that met key k went on to finish the dungeon */
+	finishedAfter(k) {
+		return this.rows.some((r) => r.status === 'done' && r.encounters.some((e) => e.key === k));
 	}
 
 	/** need levels after key k: the largest expected HP (EP) loss of a later scouted encounter, x1.25 */
