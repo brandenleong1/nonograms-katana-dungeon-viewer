@@ -283,7 +283,10 @@ function bookLines(g, e, { left, right }) {
 
 // ---- painters ---------------------------------------------------------------------------------------
 const PAINTERS = {
+	// treasure chests with a drawing (js/view/objects.js, variant = object id) are drawn as themselves, the rest as a
+	// gold-banded chest
 	chest(g, e) {
+		if (hasObject(e.variant)) return paintObject(g, e, e.variant);
 		const { u, lw } = e;
 		shadow(g, e, 17, 8.5);
 		box(g, e, { ex: 0.3, ey: 0.2, height: 10, color: WOOD });
@@ -321,7 +324,9 @@ const PAINTERS = {
 		// faint golden aura (an objective)
 		glowDisc(g, { x: top[0], y: top[1], r: 16 * u, inner: 'rgba(255,220,120,0.35)', outer: 'rgba(255,220,120,0)' });
 	},
+	// containers with a drawing (js/view/objects.js, variant = object id) show what is in them, the rest are a crate
 	container(g, e) {
+		if (hasObject(e.variant)) return paintObject(g, e, e.variant);
 		const { u, lw } = e;
 		shadow(g, e, 13, 6.5);
 		const c = '#a57a48';

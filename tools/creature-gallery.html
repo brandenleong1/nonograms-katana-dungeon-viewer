@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- Dev tool: every creature with a drawing (js/view/creatures.js) on a floor tile, at map size and small, by role;
-     the people (NPCs) and the breakable objects (js/view/objects.js) on their own rows.
+     the people (NPCs), the breakable objects, the containers and the treasure chests (js/view/objects.js) on their own rows.
      http://127.0.0.1:8765/tools/creature-gallery.html?theme=dark -->
 <html><head><meta charset="utf-8"><title>Creature gallery</title>
 <style>body{margin:0;background:#16161a;color:#ddd;font:12px system-ui}body.light{background:#ece9e2;color:#222}canvas{display:block}</style></head>
@@ -97,6 +97,19 @@ const breakables = [
 	[107, 'breakable', 'Woven baskets'], [108, 'breakable', 'Stacked crates'], [109, 'breakable', 'Pottery jars'],
 	[121, 'breakable', 'Canopic jars'], [999, 'breakable', 'no drawing'],
 ];
+// the containers (by object id; names: data/catalog.json), then the crate for one without a drawing
+const containers = [
+	[2, 'container', 'Wooden chest'], [7, 'container', 'Drum'], [34, 'container', 'Soy sauce'], [41, 'container', 'Mushrooms'],
+	[42, 'container', 'Porcini mushroom'], [43, 'container', 'Woodland strawberry'], [44, 'container', 'Herbs'],
+	[61, 'container', 'Bamboo plant'], [62, 'container', 'Green empty bottle'], [66, 'container', 'Yellow crystal rock'],
+	[67, 'container', 'Red crystal rock'], [68, 'container', 'Green crystal rock'], [69, 'container', 'Blue crystal rock'],
+	[70, 'container', 'Violet crystal rock'], [102, 'container', 'Chariot'], [122, 'container', 'Mummy-honey'],
+	[999, 'container', 'no drawing'],
+];
+// the treasure chests (by object id), then the gold-banded chest for one without a drawing
+const chests = [
+	[21, 'chest', 'Purple chest'], [37, 'chest', 'Golden chest'], [94, 'chest', 'Black sarcophagus'], [999, 'chest', 'no drawing'],
+];
 const dpr = window.devicePixelRatio || 1;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const hw = +(new URLSearchParams(location.search).get('hw') || 50);
@@ -104,7 +117,7 @@ const cols = 10, cell = hw * 3, rowH = hw * 3.5;
 // each list starts on a new row
 const placed = [];
 let row = 0;
-for (const list of [entries, npcs, breakables]) {
+for (const list of [entries, npcs, breakables, containers, chests]) {
 	list.forEach((entry, i) => placed.push([entry, i % cols, row + ((i / cols) | 0)]));
 	row += Math.ceil(list.length / cols);
 }
