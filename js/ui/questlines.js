@@ -24,15 +24,15 @@ import { typeLabel } from '../labels.js';
  * quest state the change needs; `{item:N}` in a text is the item's name.
  */
 const EFFECTS = {
-	23: [{ when: 'Started', text: 'beaten bosses of 3C, 5C, F4 and 6C drop dragon teeth', types: [8, 14, 18, 21], kind: 'loot' }],
+	23: [{ when: 'Started', text: 'beaten bosses of 3C, 5C, F4, and 6C drop dragon teeth', types: [8, 14, 18, 21], kind: 'loot' }],
 	25: [{ when: 'In progress', text: 'a second boss waits in 5C', types: [14], kind: 'map' }],
 	27: [{ when: 'In progress', text: 'a mini-boss guards 2C until you beat it', types: [5], kind: 'map' }],
-	30: [{ when: 'In progress', text: 'mini-bosses guard 3C, 4C and 5C, each once the one before it is beaten', types: [8, 11, 14], kind: 'map' }],
-	36: [{ when: 'Done', text: 'some drops in F3, 6C and 6D change', types: [17, 21, 22], kind: 'loot' }],
+	30: [{ when: 'In progress', text: 'mini-bosses guard 3C, 4C, and 5C, each once the one before it is beaten', types: [8, 11, 14], kind: 'map' }],
+	36: [{ when: 'Done', text: 'some drops in F3, 6C, and 6D change', types: [17, 21, 22], kind: 'loot' }],
 	41: [{ when: 'Done', text: 'one {item:115} no longer counts: with none (and 20 F4 dungeons cleared) a special NPC is likelier in F3 and F4', types: [17, 18], kind: 'map' }],
 	45: [{ when: 'In progress', text: 'one forest merchant is a different person', types: [17, 18, 20], kind: 'map' }],
 	46: [
-		{ when: 'Started', text: 'more finds in F2, F3 and F4', types: [16, 17, 18], kind: 'map' },
+		{ when: 'Started', text: 'more finds in F2, F3, and F4', types: [16, 17, 18], kind: 'map' },
 		{ when: 'Done', text: 'cave bosses you haven’t beaten carry a {item:256}, and the 6C boss brings a companion', types: [19, 20, 21], kind: 'map' },
 	],
 	48: [{ when: 'Started', text: 'merchants appear in caves', types: [19, 20, 22], kind: 'map' }],
@@ -45,7 +45,7 @@ const EFFECTS = {
 	70: [{ when: 'Done', text: 'sarcophagi in EC and ED hold something else', types: [25, 26], kind: 'loot' }],
 	71: [{ when: 'Started', text: 'the EC boss drops something else', types: [25], kind: 'loot' }],
 	73: [
-		{ when: 'Started', text: 'the tomb guardian appears in EA, EB and EC', types: [23, 24, 25], kind: 'map' },
+		{ when: 'Started', text: 'the tomb guardian appears in EA, EB, and EC', types: [23, 24, 25], kind: 'map' },
 		{ when: 'Done', text: 'the tomb guardian in EA drops something else', types: [23], kind: 'loot' },
 	],
 	74: [{ when: 'Done', text: 'the tomb guardian in EB drops something else', types: [24], kind: 'loot' }],

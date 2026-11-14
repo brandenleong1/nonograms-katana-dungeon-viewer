@@ -4,10 +4,10 @@
 		"source": "Nonograms Katana Wiki, https://nonograms-katana.fandom.com: Module:Data/Dungeon-foes (Dungeon: Bestiary), Module:Data/dungeon findings (Dungeon: objects), Dungeon: doors, Dungeon: traps, Dungeon: familiars, Dungeon: lost adventurers, and the Quests pages",
 		"retrieved": "2026-11-12",
 		"licence": "Names with source \"wiki\" come from the Nonograms Katana Wiki under CC BY-SA 3.0 (https://creativecommons.org/licenses/by-sa/3.0/); names with source \"ours\" are our own descriptions. Only names are taken, no wiki text. The MIT License of the code does not cover this file.",
-		"matching": "Monsters: the wiki lists each one in its bestiary order, which is its position in the game's bestiary list (zw.K) for that dungeon; the wiki's HP, damage, defence and AP then have to equal the game's at every level it lists. Monsters the bestiary leaves out are matched by stats, abilities and look. People: by the quests they give (the wiki's quest pages) and the game's lost-adventurer pools. Objects: by what they do, cost and hold.",
+		"matching": "Monsters: the wiki lists each one in its bestiary order, which is its position in the game's bestiary list (zw.K) for that dungeon; the wiki's HP, damage, defence, and AP then have to equal the game's at every level it lists. Monsters the bestiary leaves out are matched by stats, abilities, and look. People: by the quests they give (the wiki's quest pages) and the game's lost-adventurer pools. Objects: by what they do, cost, and hold.",
 		"fields": {
 			"name": "what players call it",
-			"kind": "how the map draws it and which layer it is on (js/view/catalog.js KINDS); creatures: the kind of a plain one, before boss, key and NPC tags",
+			"kind": "how the map draws it and which layer it is on (js/view/catalog.js KINDS); creatures: the kind of a plain one, before boss, key, and NPC tags",
 			"source": "\"wiki\" or \"ours\"",
 			"confidence": "how sure the match is: high (bestiary position and stats, or what it does, agree), medium (most evidence agrees), low (a guess or a description)",
 			"byFamily": "objects: the name in a dungeon family (Dungeon, Forest, Cave, Tomb) where the wiki names it differently",
@@ -529,7 +529,7 @@
 		},
 		"objects": {
 			"84": "hw.K sets flag 512 when replacing object 84; aw.k adds 4 defence for mask 514",
-			"95": "c30 object activation grants 10 energy, sets mw.E = 100 and calls T0 to update torch sight",
+			"95": "c30 object activation grants 10 energy, sets mw.E = 100, and calls T0 to update torch sight",
 			"method": "zw.Q object IDs joined to atlas/frame IDs; inspected default sprites. Labels describe appearance, not official names. Functional doors and pickups retain their uses.",
 			"fragments": "89-92 are partial creature sprites; left without appearance labels"
 		}

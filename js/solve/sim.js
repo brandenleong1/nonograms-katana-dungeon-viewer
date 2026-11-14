@@ -472,6 +472,16 @@ export function levelOf(h) {
 /** what Walker.walk returns when the route moved on without an input: look again (null: the walk is over) */
 const AGAIN = undefined;
 
+/** the Walker fields that are not its own state (the fight, the options, the route): what freeze() leaves out of `s` */
+const WALKER_LIVE = new Set(['f', 'h', 'c', 'opts', 'refs', 'route', 'legs']);
+const identities = new WeakMap();
+let identityCount = 0;
+/** a number that tells one array from another (they are shared between checkpoints, never changed in place) */
+function identityOf(o) {
+	if (!identities.has(o)) identities.set(o, ++identityCount);
+	return identities.get(o);
+}
+
 export class Walker {
 	/**
 	 * opts: { recovery: true (visit unused fountains 48 / 58 / 95 as extra stops), rest: RestRule (between fights:
@@ -532,6 +542,15 @@ export class Walker {
 	}
 
 	static thaw(frozen, fight, opts) { return new Walker(fight, opts, frozen); }
+
+	/**
+	 * The walker's own state as a string, equal for two walkers on the same route at the same stage of it (the
+	 * look-ahead cache, lookcache.js): the fields freeze() copies, and which route and legs it follows.
+	 */
+	stateKey() {
+		const own = Object.keys(this).filter((k) => !WALKER_LIVE.has(k)).sort().map((k) => `${k}=${JSON.stringify(this[k])}`);
+		return `${identityOf(this.route)}/${identityOf(this.legs)}/${this.refs.length}|${own.join(';')}`;
+	}
 
 	ref(o) { let i = this.refs.indexOf(o); if (i < 0) { i = this.refs.length; this.refs.push(o); } return i; }
 	cellIdx(x, y) { return y * this.h.g + x; }
