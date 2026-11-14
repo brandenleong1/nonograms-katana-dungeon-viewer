@@ -661,6 +661,7 @@ export class SolvePanel {
 		const firstDeath = exact && T.pDeath ? plan.encounters.find((e) => e.expected && e.expected.pDeath) : null;
 		return `<div class="solve-card">
 			<div class="solve-card-head">${exact ? 'Exact' : 'Robust'} plan · ${esc(label)}</div>
+			${this.gaveUpHtml(plan)}
 			<div class="sum-grid">
 				<div class="stat" title="Consumables used: potions, food, thrown items; a spider that comes back is free"><span class="muted">Items</span><b>${num(T.items && T.items.mean)}</b>${!exact && T.items ? `<span class="small muted">p95 ${T.items.p95}</span>` : ''}</div>
 				<div class="stat" title="Mental power spent (net: fountains count back)"><span class="muted">Mental power</span><b>${num(T.mp && T.mp.mean, 0)}</b>${!exact && T.mp ? `<span class="small muted">p95 ${T.mp.p95}</span>` : ''}</div>
@@ -672,6 +673,24 @@ export class SolvePanel {
 			${plan.baseline ? `<div class="small muted">Plain melee everywhere: ${num(plan.baseline.items.mean)} items, ${num(plan.baseline.mp.mean, 0)} MP, death ${pct(plan.baseline.pDeath)}.</div>` : ''}
 			<div class="small muted">${solvedHowText(r)}</div>
 		</div>`;
+	}
+
+	/**
+	 * The run cannot be finished alive and the plan heads for the exit (plan.gaveUp): said plainly in the summary card,
+	 * with the objectives it leaves and what to do at the stairs.
+	 */
+	gaveUpHtml(plan) {
+		const g = plan.gaveUp;
+		if (!g) return '';
+		const when = g.afterFight > 0 ? `After fight ${g.afterFight}` : 'From the start';
+		const died = g.died.walking ? `on the way to fight ${g.died.fight}` : `in fight ${g.died.fight}`;
+		const left = g.abandoned.filter((s) => s.objective);
+		const names = left.map((s) => `${esc(this.stopText(s))}${s.target ? ` <span class="muted">(${s.target.x},${s.target.y})</span>` : ''}`);
+		return `<div class="solve-giveup" role="alert">
+				<div><b>This run can't be finished alive.</b> Every line the solver found dies ${died}. ${when} the plan gives up the remaining objectives and heads for the exit with what's left.</div>
+				${names.length ? `<div>Given up (${names.length}): ${names.join(', ')}.</div>` : ''}
+				<div>At the stairs, step onto them and confirm leaving the dungeon (the game asks, since objectives are left).</div>
+			</div>`;
 	}
 
 	/** "Bring: 2× Potion of healing (rarely: …)": the items the plan uses in most runs, and the ones it rarely needs */
@@ -801,7 +820,9 @@ export class SolvePanel {
 	stopRow(s) {
 		const row = buttonDiv('stop-row');
 		const doing = (s.doing || []).map((d) => `↳ ${esc(d.text)}${d.mp ? ` (${d.mp} MP)` : ''}${d.ep ? ` (${d.ep} energy)` : ''}${d.at ? ` at ${d.at.x},${d.at.y}` : ''}`);
-		row.innerHTML = `<div class="stop-head"><span><span class="muted">${s.i + 1}.</span> ${esc(this.stopText(s))}</span><span class="muted">+${s.steps ?? '?'} steps</span></div>${doing.length ? `<div class="small muted stop-doing">${doing.join('<br>')}</div>` : ''}`;
+		const plan = this.result && this.result.plan;
+		const givenUp = !!(plan && plan.gaveUp && plan.gaveUp.abandoned.some((a) => a.stop === s.i));
+		row.innerHTML = `<div class="stop-head"><span><span class="muted">${s.i + 1}.</span> ${esc(this.stopText(s))}${givenUp ? ' <span class="tag giveup">given up</span>' : ''}</span><span class="muted">+${s.steps ?? '?'} steps</span></div>${doing.length ? `<div class="small muted stop-doing">${doing.join('<br>')}</div>` : ''}`;
 		onActivate(row, () => this.showStop(s));
 		return row;
 	}
@@ -1072,6 +1093,7 @@ export class SolvePanel {
 		range.value = String(p);
 		$('#pl-where', box).textContent = this.playerWhereText(f);
 		this.renderTopUpNotice(box, act ? this.topUpAt(p) : null);
+		this.renderTurnBackNotice(box, p);
 		this.renderInstruction(box, act);
 		this.renderLastInput(box);
 		$('#pl-pools', box).innerHTML = poolsHtml(f);
@@ -1095,6 +1117,7 @@ export class SolvePanel {
 			</div>
 			<input type="range" id="pl-range" min="0" value="0" aria-label="Script step" />
 			<div class="pl-topup" id="pl-topup" style="display: none;"></div>
+			<div class="pl-turnback" id="pl-turnback" role="status" style="display: none;"></div>
 			<div class="instr" id="pl-instr" aria-live="polite"></div>
 			<div class="small muted" id="pl-prev"></div>
 			<div class="pools" id="pl-pools"></div>
@@ -1112,11 +1135,21 @@ export class SolvePanel {
 		range.oninput = () => this.setPos(+range.value);
 	}
 
-	/** "step 12 of 238 · fight 3 of 20" */
+	/** "step 12 of 238 · fight 3 of 20" (" · heading for the exit" once a plan that gave up has turned back) */
 	playerWhereText(f) {
 		const fi = this.fightAt(this.pos);
 		const where = fi != null ? `fight ${fi + 1} of ${this.result.plan.encounters.length}` : f.C ? 'fighting' : 'walking';
-		return `step ${this.pos} of ${this.result.acts.length} · ${where}`;
+		const g = this.result.plan.gaveUp;
+		return `step ${this.pos} of ${this.result.acts.length} · ${where}${g && this.pos > g.atInput ? ' · heading for the exit' : ''}`;
+	}
+
+	/** the step where a plan that gave up turns back: say so there */
+	renderTurnBackNotice(box, p) {
+		const g = this.result.plan.gaveUp;
+		const notice = $('#pl-turnback', box);
+		const here = !!g && p === g.atInput;
+		notice.style.display = here ? '' : 'none';
+		if (here) notice.innerHTML = `<b>Turn back here.</b> The run can't be finished alive: the plan gives up the remaining objectives and heads for the exit with what's left.`;
 	}
 
 	/** a top-up due before this input (one the script doesn't record as a step of its own) */
@@ -1131,7 +1164,7 @@ export class SolvePanel {
 		const ins = act ? instruction(act, this.wordsCtx()) : null;
 		$('#pl-instr', box).innerHTML = ins
 			? `<span class="muted">Now:</span> <b>${esc(ins.text)}</b>`
-			: `<b>${this.result.plan.totals.pDeath ? 'The hero is dead.' : 'End of the script.'}</b>`;
+			: `<b>${this.result.plan.totals.pDeath ? 'The hero is dead.' : this.result.plan.gaveUp ? 'End of the script: step onto the stairs and confirm leaving the dungeon.' : 'End of the script.'}</b>`;
 	}
 
 	/** the input before this step, and what it did */
@@ -1310,6 +1343,7 @@ function phaseText(p, running) {
 		case 'setup': return { text: 'Setting up the dungeon and the route…', frac: null };
 		case 'scout': return { text: `Scouting the route: ${p.keys} fights to decide…`, frac: null };
 		case 'encounter': return encounterPhaseText(p, running);
+		case 'giveUp': return { text: `Every line dies: trying to head for the exit after fight ${p.afterFight}…`, frac: null };
 		case 'replay': return { text: 'Checking the script in a fresh engine…', frac: 0.97 };
 		default: return { text: running.warm ? 'Starting…' : 'Loading the engine…', frac: null };
 	}
@@ -1410,7 +1444,7 @@ function planListOrder(plan) {
 
 /** the plan's warnings (other than about MP, which has its own card) and the UI's plan check */
 function warningsHtml(plan) {
-	const warns = (plan.warnings || []).filter((w) => !/^mp/i.test(String(w.kind || '')));
+	const warns = (plan.warnings || []).filter((w) => !/^mp/i.test(String(w.kind || '')) && w.kind !== 'gaveUp');
 	const list = warns.length ? `<div class="solve-warns">${warns.map((w) => `<div class="solve-note warn">${esc(w.text || w.kind)}</div>`).join('')}</div>` : '';
 	const problems = plan.uiProblems && plan.uiProblems.length ? `<div class="solve-note warn">Plan check: ${esc(plan.uiProblems.join(', '))}</div>` : '';
 	return list + problems;

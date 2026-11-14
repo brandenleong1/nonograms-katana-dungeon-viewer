@@ -147,6 +147,14 @@ export function runOracle(res, hero, label) {
 	return r;
 }
 
+/** where an exact plan turned back for the exit, and the stops it gave up (plan.gaveUp) */
+function gaveUpText(g) {
+	const stop = (s) => (s.target ? `${s.target.critter ? 'creature' : 'object'} ${s.target.id} at ${s.target.x},${s.target.y}` : s.label || s.kind);
+	const objectives = g.abandoned.filter((s) => s.objective);
+	const others = g.abandoned.filter((s) => !s.objective);
+	return `turns back at script input ${g.atInput} (after fight ${g.afterFight}); objectives given up: ${objectives.map(stop).join(', ') || 'none'}${others.length ? `; other stops: ${others.map(stop).join(', ')}` : ''}; ${g.played.length} turn-back point(s) played out, ${g.played.filter((p) => p.home).length} got home`;
+}
+
 function report(plan, res, { wall, names }) {
 	const f2 = (x) => (x == null ? '-' : Number.isFinite(x) ? (Math.round(x * 100) / 100).toString() : String(x));
 	const d = plan.dungeon;
@@ -166,6 +174,7 @@ function report(plan, res, { wall, names }) {
 		console.log(`  baseline (${b.tactic}, ${b.n} samples): items mean ${f2(b.items.mean)} p95 ${b.items.p95}; MP mean ${f2(b.mp.mean)} p95 ${b.mp.p95}; P(death) ${f2(b.pDeath)}; objectives left ${f2(b.objectivesLeft.mean)}`);
 	}
 	for (const w of plan.warnings || []) console.log(`  warning: ${w.text}`);
+	if (plan.gaveUp) console.log(`  gave up: ${gaveUpText(plan.gaveUp)}`);
 	const bring = plan.pack.filter((p) => p.bring > 0), rare = plan.pack.filter((p) => p.bring === 0);
 	console.log(`  pack: ${bring.length ? bring.map((p) => `${p.bring}x ${p.name || p.id}`).join(', ') : 'nothing needed'}${rare.length ? ` (rarely used: ${rare.map((p) => `${p.name || p.id} ${p.mean}/run`).join(', ')})` : ''}`);
 	if (plan.script) {

@@ -39,12 +39,14 @@ const BLOCKED = Object.freeze({ blocked: true });
  * Options: the game's tables (`rw` object definitions, `bw` creature definitions, `pwOf(type)` dungeon definitions,
  * nonogram `patterns`, tile walk flags `tiles`), `endAtExit` (finish at the stairs), the step price of one point of
  * energy and mental power (`epCost`, `mpCost`), up to how many stops the order is exact (`exactLimit`), and from a
- * live state the keys (167) already in the hero's pack (`heldKeys`; 0 for a label's fresh dungeon).
+ * live state the keys (167) already in the hero's pack (`heldKeys`; 0 for a label's fresh dungeon). `exitFirst`: the
+ * stairs may be the first stop when they are the only target (the solver giving up the rest of a run); without it the
+ * order walks at least one other stop (a key, a lever) before the stairs.
  *
  * Returns `{ legs, route, steps, mp, ep, exact, unreachable, unknownGates, puzzle, debug }`: `route` is the tiles
  * walked (`{ jump: true }` before a ladder or portal hop), each leg covers `route[from + 1 .. to]`.
  */
-export function planRoute(level, { rw, bw = null, pwOf, patterns, tiles = null, endAtExit = false, epCost = EP_COST, mpCost = MP_COST, exactLimit = EXACT_LIMIT, heldKeys = 0 }) {
+export function planRoute(level, { rw, bw = null, pwOf, patterns, tiles = null, endAtExit = false, epCost = EP_COST, mpCost = MP_COST, exactLimit = EXACT_LIMIT, heldKeys = 0, exitFirst = false }) {
 	const pw = pwOf(level.type);
 	const grid = new RouteGrid(level, { rw, tiles });
 	const puzzle = patterns ? nonogramWalk(level, patterns) : null;
@@ -66,6 +68,7 @@ export function planRoute(level, { rw, bw = null, pwOf, patterns, tiles = null, 
 	const unreachable = stops.filter((s, i) => i < targets.length && s.at < 0);
 
 	const tour = newTour({ start, stops, targets, locks, paths });
+	tour.exitFirst = exitFirst;
 	const order = visitOrder(tour, exactLimit);
 	const walk = walkRoute(order, tour, { grid, paths, action, rw });
 	return {
@@ -599,7 +602,7 @@ function heldKarpTable(tour) {
 	const from = new Int16Array(size * n).fill(-1);
 	const unlock = (set) => { let m = 0; for (let k = 0; k < n; k++) if (set & (1 << k)) m |= grants[live[k]]; return m; };
 	for (let k = 0; k < n; k++) {
-		if (lastStop === k && n > 1) continue;
+		if (lastStop === k && n > 1 && !(tour.exitFirst && targetBits === 1 << k)) continue;
 		best[(1 << k) * n + k] = distances.between(start, stops[live[k]].at, 0) + extra[live[k]];
 	}
 	for (let set = 1; set < size; set++) {

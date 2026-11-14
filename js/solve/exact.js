@@ -22,6 +22,7 @@ import { pricesFor, scoreOutcome, compareExact, dist } from './cost.js';
 import { outcomeOf, entryOut, mpPlanOf, runOptsFor, stopIndexOf, routeLegs, stopOut, countVisit, realNeedOf, mpItemsOf, setRestNeed } from './robust.js';
 import { LookCache } from './lookcache.js';
 import { newFight } from '../combat/driver.js';
+import { TurnBack } from './giveup.js';
 
 /**
  * problem.saveBytes (the raw guild.dat / export zip bytes) -> problem.save (js/save importSave result). An imported
@@ -71,12 +72,15 @@ export class ExactWorker {
 		const run = new Run(f, runOptsOf(this.cfg.runOpts));
 		void run.walker;
 		this.prices = pricesFor(f.h, { useItemsForMp: !!(this.cfg.runOpts || {}).useItemsForMp });
-		this.ck = run.checkpoint();
+		this.ck = this.ck0 = run.checkpoint();
 		this.n = 0;
 		return { ok: true, prices: this.prices, hero: heroOf(f.h) };
 	}
 
 	resume() { const r = Run.resume(this.ck, this.dead); this.dead = null; return r; }
+
+	/** back to the setup (the trajectory turned back to an earlier point, giveup.js): sync replays it from there */
+	rewind() { this.ck = this.ck0; this.n = 0; this.dead = null; return { n: 0 }; }
 
 	/** apply the committed inputs [from, ...] (same order as the main trajectory); walker: the main's frozen walker */
 	sync(inputs, walker = null, tops = []) {
@@ -260,7 +264,8 @@ export class InlineExactPool {
  *         encounter (100), budgetMs: expected wall time (progress only, unless strictBudget: then the search stops when
  *         behind), look: encounters played after each play-out by the continuation policy (0: none; a death in them ranks
  *         after living and before dying in the fight, cost.js compareExact), ext,
- *         useItemsForMp, runOpts, onProgress }
+ *         useItemsForMp, runOpts, onProgress, giveUp: false never turns back for the exit when every line dies
+ *         (giveup.js; result.gaveUp says where it did) }
  */
 export async function solveExact(problem, opts = {}) {
 	const t0 = now();
@@ -293,20 +298,31 @@ export async function solveExact(problem, opts = {}) {
 	// prices' need, and how far the rest rule's Doctor / Charge repair: MP only where it buys something)
 	const ck0 = start.checkpoint();
 	search.scoutNeeds = scoutNeedsOf(Run.resume(ck0), opts.maxInputs);
-	const run = search.run = Run.resume(ck0);
+	let run = search.run = Run.resume(ck0);
 	const route = routeLegs(run.walker);
-	const encounters = [];
-	const stopCount = {};
+	let encounters = [];
+	let stopCount = {};
+	// when every line found dies: back to a point between fights, give up the rest and head for the exit
+	const turn = new TurnBack(search, { enabled: opts.giveUp !== false, onProgress: opts.onProgress });
 	for (let e = 0; e < 300; e++) {
 		setRestNeed(run, needFrom(search.scoutNeeds, e));
+		turn.mark(e, run, encounters, stopCount);
 		const ev = run.toEncounter();
-		if (ev.ev !== 'combat') break;
-		await search.workers.sync(run, { walker: true });
-		const key = encounterKey(ev.stop, countVisit(stopCount, ev.stop));
-		const enc = await solveEncounter(search, { e, key, stop: ev.stop });
-		encounters.push(enc);
-		if (opts.onProgress) opts.onProgress({ phase: 'encounter', k: encounters.length, key: enc.key, tactic: enc.tactic.label, searched: enc.searched, ms: now() - t0 });
-		if (run.fight.h.f.u_() || run.fight.c.w) break;
+		if (ev.ev === 'combat') {
+			await search.workers.sync(run, { walker: true });
+			const key = encounterKey(ev.stop, countVisit(stopCount, ev.stop));
+			const enc = await solveEncounter(search, { e, key, stop: ev.stop });
+			encounters.push(enc);
+			if (opts.onProgress) opts.onProgress({ phase: 'encounter', k: encounters.length, key: enc.key, tactic: enc.tactic.label, searched: enc.searched, ms: now() - t0 });
+		} else if (!run.fight.h.f.u_()) break;
+		if (run.fight.h.f.u_()) {
+			const back = await turn.back(e, run, encounters, stopCount, { walking: ev.ev !== 'combat' });
+			if (!back || back.final) { if (back) ({ run, encounters, stopCount } = back); break; }
+			({ run, encounters, stopCount } = back);
+			e = back.e - 1;
+			continue;
+		}
+		if (run.fight.c.w) break;
 		run.walker.afterEncounter();
 	}
 	// finish the walk (the exit; no fight ahead: no Doctor / Charge)
@@ -318,10 +334,12 @@ export async function solveExact(problem, opts = {}) {
 	return {
 		mode: 'exact', problem: { type: problem.type, seed: problem.seed, xseed: problem.xseed, at: problem.at || 'start', hero: heroSpecOut(problem.hero) }, hero: hero0, prices, route, needs: needs0, entry: entryOut(f),
 		inputs: run.log.slice(), encounters,
+		// the run cannot be finished alive: where the plan turned back for the exit, and what it gave up (giveup.js)
+		gaveUp: turn.record(),
 		// MP top-ups (no engine input: the player solves puzzles; at = the script position before which to have it)
 		topUps: tops,
 		totals: { items: led.items(), byId: led.itemsById(), mp: led.mp, hpLost: led.hp, dead: h.f.u_(), end: run.fight.c.w, objectivesLeft: h.i_(), inputs: run.log.length, final: heroOf(h) },
-		search: { decisions: search.decisions, jobs: search.jobs, rollouts: search.K },
+		search: { decisions: search.decisions, jobs: search.jobs, rollouts: search.K, turnBack: turn.stats() },
 		mpPlan: exactMpPlan({ hero: hero0, needs: needs0, led, encounters, topUps: tops, route, useItemsForMp: !!runOpts.useItemsForMp }),
 		ms: now() - t0, workers: pool.size,
 	};

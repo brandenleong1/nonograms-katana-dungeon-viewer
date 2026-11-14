@@ -610,6 +610,25 @@ body.solver-hidden #solve-section {
 	outline-offset: -1px;
 }
 
+/* the plan gave up (the run can't be finished alive): a warning in the summary card, and the player's turn-back step */
+.solve-giveup, .pl-turnback {
+	display: flex;
+	flex-direction: column;
+	row-gap: 4px;
+	white-space: normal;
+	line-height: 1.35em;
+	padding: 6px 9px;
+	border-radius: 5px;
+	background-color: color-mix(in srgb, var(--color_red) 12%, var(--color_bg2));
+	outline: 2px solid var(--color_red);
+	outline-offset: -2px;
+}
+
+.tag.giveup {
+	outline-color: var(--color_red);
+	color: var(--color_red);
+}
+
 .manual-grid {
 	display: grid;
 	grid-template-columns: auto 1fr;

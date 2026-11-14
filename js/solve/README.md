@@ -18,6 +18,7 @@ Both modes write the same pure-data plan for the UI.
 | `exact.js` | `ExactWorker`, `InlineExactPool`, `solveExact(problem, opts)`, `replayScript(problem, inputs)` and `candidateInputs`. |
 | `lookcache.js` | `LookCache`: what the walk after a play-out costs (leftover foes and the look-ahead), kept by the state it starts from, so equal play-outs of one batch walk once. |
 | `worker.js`, `pool.js` | A module worker that hosts one Shard / ExactWorker, and `WorkerPool.create({ size, tables })`. Works in the browser and in Node (`worker_threads`). |
+| `giveup.js` | `TurnBack`: exact mode's last resort when every line dies (head for the exit, below). |
 | `plan.js` | `buildPlan(result, { label, names })`, `validatePlan(plan)` and `describeTactic`. |
 
 Tools:
@@ -301,6 +302,13 @@ Exact mode scouts too: the baseline plays the trajectory from the start once, an
 
 **Look-ahead.** `look: n` plays n more encounters after each play-out with the plain-melee continuation (no search). It is off by default (`look` 0) because that continuation is weaker than the search that plays the real fight: when it dies, the line may still be fine, so using its death to rule lines out made exact mode spend potions and items early on fights it could have won cheaply, and run out of them before the end. The hero's leftover HP and EP are priced by the need levels instead (the shadow prices above). When `look` is on, the order of outcomes is: alive, then dying later (the more look-ahead fights survived, the better, then HP at death), then dying in the fight being decided (`cost.js` `compareExact`). A death in the look-ahead therefore never ranks with dying now. Robust mode's own survival lookahead (above) is separate and unchanged.
 
+**Giving up (`giveup.js`).** When the hero dies on the trajectory (every line the search found dies, in a fight or on the walk to one), exact mode tries to head for the exit instead. Going home alive beats any death, whatever objectives it leaves (the objective order: survive, then objectives, then items, then MP).
+- The trajectory keeps a checkpoint at every point between fights: before each walk to the next fight.
+- Those points are played out latest first. At each, the walker gives up every stop still ahead (`Walker.giveUp`: they become given-up stops, objective monsters stop being stops, no fountain detour, and the planner may walk to the stairs first: `planRoute` option `exitFirst`), and each fight on the way out is played with the tactic whose play-out is best. A point gets home when the hero stands next to the stairs alive.
+- Once one point gets home, two more earlier ones are played. The best of those that get home is taken: the fewest objectives left, then the fewest items, then the least MP (equal ones: the later point).
+- The trajectory rewinds there (the workers too: `ExactWorker.rewind`, then a full `sync`) and the main loop solves the fights on the way out with the full search, with the need levels at the hero's full pools. If that walk dies after all, the next point is tried; with none left, the first death stands.
+- The plan ends next to the stairs. The game asks before letting a hero leave with objectives left (`DungameView.g`); the port has no such dialog, so the player steps onto the stairs and confirms. `opts.giveUp: false` turns it all off; `result.gaveUp` (and `plan.gaveUp`) says where it turned back, and the plan's first warning says so plainly.
+
 The output is the script (every input from the setup, walking included), a per-encounter slice of it, and the totals. `replayScript` replays it in a fresh JS engine; `tools/solve.mjs --oracle` replays it in the JVM oracle:
 ```
 ../nonograms-katana/tools/oracle/run.sh fightgen <type> <seed> <xseed> start <inputs.json> <out.json> <hero flags> --draws
@@ -347,7 +355,7 @@ Pure JSON (no functions, no cycles); `validatePlan(plan)` checks the structure.
   "baseline": { "tactic", "n", "pDeath", "items", "mp", "objectivesLeft" },   // robust
   "pack": [ { "id": 120, "name": "Potion of healing", "mean": 0.2, "p95": 1, "bring": 1 } ],
   "route": { "needs": { "mp": 95, "ep": 36, "invincible": 0 } },                  // what the planned route itself costs (doors, chests, objective seals)
-  "warnings": [ { "kind": "mp" | "gate" | "invincible" | "death" | "objectives", "text": "...", ... } ],
+  "warnings": [ { "kind": "mp" | "gate" | "invincible" | "death" | "objectives" | "gaveUp", "text": "...", ... } ],
   "entry": { "hero", "gates", "fee", "feePaid", "mp", "fam", "items" } | null,   // profile runs: entry.js fight.entry
   "script": { "inputs": [..], "topUps": [ { "at", "amount" } ], "replay": { "matches": true, "rej": 0, ... }, "oracle": { "ok", "combat", "summary", "prefix": { "inputs", "of", "why" } | null, ... } | null },   // exact
   "perf": { "ms", "workers", "samples", "search" },
@@ -363,10 +371,17 @@ Pure JSON (no functions, no cycles); `validatePlan(plan)` checks the structure.
           "spentBy": { "route", "unseal", "doctor", "charge", "demoralize", "divine" }, "mpItems", "useItemsForMp": false,
           "toSolve": dist, "encounters": [ { "i", "mean", "low" } ],
           "marginal": [ { "add", "mp", "n", "items", "saved", "pDeath", "dDeath", "objectivesLeft", "mpItems" } ],   // useItemsForMp only
-          "advice": "Solve puzzles for about 120 MP during this run ..." | null }
+          "advice": "Solve puzzles for about 120 MP during this run ..." | null },
+
+  // added (exact): the run cannot be finished alive, so the plan turned back for the exit (null: it did not; robust: null)
+  "gaveUp": { "reason": "every line dies", "afterFight": 7,       // fights fought before turning back (0: from the start)
+              "atInput": 83, "walkingTo": 5 | null,              // the script input it turns back at; the stop it was walking to
+              "died": { "fight": 8, "walking": false },           // where the hero died on the line given up
+              "abandoned": [ { "stop": 5 | null, "kind": "objective", "label", "target": { "id", "x", "y", "critter" }, "objective": true } ],
+              "objectivesLeft": 5, "played": [ { "afterFight", "home", "objectivesLeft", "items", "mp" } ], "failedWalks": 0 } | null
 }
 ```
-New warning kinds: `mpTopUp` (MP to solve for, with where), and with `useItemsForMp` `mpShort` / `mpValue`. The `mp` warning keeps its fields; its text now points at the top-ups.
+New warning kinds: `mpTopUp` (MP to solve for, with where), and with `useItemsForMp` `mpShort` / `mpValue`; `gaveUp` (exact: the run cannot be finished alive, first in the list; it replaces the `objectives` warning). The `mp` warning keeps its fields; its text now points at the top-ups.
 
 The inputs use the engine vocabulary (`js/combat/ORACLE.md`): `tap x,y`, `step dx,dy`, `wait`, `unseal x,y`, `skill id [x,y]`, `item id [x,y]`, `potion id` and `cancel`. Each one is applied when the engine waits for the hero.
 

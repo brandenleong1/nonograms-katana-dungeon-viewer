@@ -84,8 +84,37 @@ export function buildPlan(res, opts = {}) {
 	plan.entry = res.entry || null;
 	plan.warnings = warnings;
 	if (res.baseline) plan.baseline = baselineOut(res.baseline);
+	// exact: the run cannot be finished alive and the plan heads for the exit instead (null when it did not give up)
+	plan.gaveUp = res.mode === 'exact' ? gaveUpOut(res.gaveUp, route) : null;
 	if (res.mode === 'exact') plan.script = { inputs: res.inputs, topUps: (res.topUps || []).map((t) => ({ at: t.at, amount: t.amount })), replay: opts.replay || null, oracle: opts.oracle || null };
 	return plan;
+}
+
+/**
+ * Where an exact plan gave up (exact.js result.gaveUp, giveup.js): after how many fights and at which script input it
+ * turns back, the fight the hero died in on the line given up, and the stops given up (their plan stop indexes).
+ */
+function gaveUpOut(g, route) {
+	if (!g) return null;
+	return {
+		reason: g.reason, afterFight: g.afterFight, atInput: g.atInput, walkingTo: legIndex(route, g.stop),
+		died: { fight: g.died.fight, walking: !!g.died.walking },
+		abandoned: g.abandoned.map((s) => ({ stop: legIndex(route, s), kind: s.kind, label: s.label || null, target: s.rec ? { ...s.rec } : null, objective: s.kind === 'objective' })),
+		objectivesLeft: g.objectivesLeft,
+		played: g.played.map((p) => ({ afterFight: p.afterFight, home: p.home, objectivesLeft: p.objectivesLeft, items: p.items, mp: p.mp })),
+		failedWalks: g.failedWalks,
+	};
+}
+
+/** the give-up warning: plainly, the run cannot be finished alive, so the plan heads for the exit */
+function gaveUpWarning(g) {
+	const when = g.afterFight > 0 ? `after fight ${g.afterFight}` : 'from the start';
+	const died = g.died.walking ? `on the way to fight ${g.died.fight}` : `in fight ${g.died.fight}`;
+	const left = g.objectivesLeft;
+	return {
+		kind: 'gaveUp', afterFight: g.afterFight, left,
+		text: `This run can't be finished alive: every line the solver found dies ${died}, so ${when} the plan gives up the remaining objectives and heads for the exit with what's left (${left} objective(s) left undone). At the stairs, step onto them and confirm leaving the dungeon.`,
+	};
 }
 
 /** index of the route leg a stop record belongs to */
@@ -166,6 +195,8 @@ function runWarnings(res, { totals, encounters, stops }) {
 	const tot = res.totals || {};
 	const robust = res.mode === 'robust';
 	const stock = !!(res.mpPlan && res.mpPlan.useItemsForMp);
+	// first: the run cannot be finished alive (it also says what is left undone)
+	if (res.gaveUp) warnings.push(gaveUpWarning(res.gaveUp));
 	if (res.needs && res.hero && res.needs.mp > res.hero.mp) warnings.push({ kind: 'mp', need: res.needs.mp, have: res.hero.mp, text: `The route needs about ${res.needs.mp} MP (seals, sealed doors, chests); the hero enters with ${res.hero.mp}${stock ? '' : ': solve puzzles for the rest during the run (MP top-ups)'}.` });
 	// a profile run: the game's entry gates (entry.js; away / busy heroes are treated as back) and the MP it hands out
 	const gates = (res.entry && Array.isArray(res.entry.gates) ? res.entry.gates : []).filter((g) => g.gate !== 'away' && g.gate !== 'busy');
@@ -174,7 +205,7 @@ function runWarnings(res, { totals, encounters, stops }) {
 	// death risk, plainly: where the hero is too weak, dying is the outcome; say where it happens
 	if (totals.pDeath > (tot.maxDeath ?? 0.01)) warnings.push(deathWarning(robust, totals.pDeath, encounters, stops));
 	const left = robust ? (tot.objectivesLeft ? tot.objectivesLeft.mean : 0) : tot.objectivesLeft;
-	if (left > 0) warnings.push({ kind: 'objectives', left, text: `${robust ? 'On average ' : ''}${Math.round(left * 10) / 10} objective(s) are left undone.` });
+	if (left > 0 && !res.gaveUp) warnings.push({ kind: 'objectives', left, text: `${robust ? 'On average ' : ''}${Math.round(left * 10) / 10} objective(s) are left undone.` });
 	return warnings;
 }
 
@@ -264,6 +295,18 @@ export function validatePlan(p) {
 	need(p.totals && p.totals.items && p.totals.mp, 'totals');
 	need(Array.isArray(p.pack), 'pack');
 	if (p.mode === 'exact') need(p.script && Array.isArray(p.script.inputs), 'script');
+	if (p.gaveUp != null) checkGaveUp(p, need);
 	try { JSON.parse(JSON.stringify(p)); } catch { errs.push('not JSON'); }
 	return errs;
+}
+
+/** a give-up record: exact only, where it turns back (a fight count, a script input) and the stops it gave up */
+function checkGaveUp(p, need) {
+	const g = p.gaveUp;
+	need(p.mode === 'exact', 'gaveUp: exact plans only');
+	need(typeof g.reason === 'string', 'gaveUp reason');
+	need(Number.isInteger(g.afterFight) && g.afterFight >= 0 && g.afterFight <= (p.encounters || []).length, 'gaveUp afterFight');
+	need(Number.isInteger(g.atInput) && g.atInput >= 0 && (!p.script || g.atInput <= p.script.inputs.length), 'gaveUp atInput');
+	need(g.died && Number.isInteger(g.died.fight), 'gaveUp died');
+	need(Array.isArray(g.abandoned) && g.abandoned.every((s) => typeof s.kind === 'string'), 'gaveUp abandoned');
 }

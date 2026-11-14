@@ -15,6 +15,7 @@
 //   { level, gear, kit, kit2, skills, quests, pets, run, trapsindif }
 // or the player's profile (js/combat/entry.js, when present): { profile: { vj0, hero } }.
 import { zw, vj0 as V } from '../gen/statics.js';
+import { objectives } from '../plan/planner.js';
 import { Util$Point } from '../gen/model.js';
 import { newFight, restoreFight } from '../combat/driver.js';
 import { snapshot } from '../combat/clone.js';
@@ -508,6 +509,8 @@ export class Walker {
 		this.exitTries = 0;
 		this.exitReplans = 0;    // re-plans because the stairs did not take us (objectives left)
 		this.doorFails = {};     // cell -> times its door made us give up a leg
+		this.gaveUp = false;     // giveUp(): only the way out is planned
+		this.atExit = false;     // gave up and stands next to the stairs
 		this.planError = null;
 		this.finished = false;
 		this.done = [];          // ref indexes bumped
@@ -591,6 +594,7 @@ export class Walker {
 		const failedSet = new Set(this.failed.map((i) => this.refs[i]).filter(Boolean));
 		for (const o of level.objects) { if (doneSet.has(o.ref)) o.e = 1; if (failedSet.has(o.ref)) o.id = -1; }
 		level.critters = level.critters.filter((c) => c.id === HERO_ID || !doneSet.has(c.ref) || c.k !== 0);
+		if (this.gaveUp) this.dropObjectives(level);
 		return level;
 	}
 
@@ -598,7 +602,10 @@ export class Walker {
 		// the first plan is exact up to 16 stops (Held-Karp, 50-200 ms); re-plans mid-dungeon up to 10 (~1 ms), heuristic beyond
 		const exactLimit = this.stats.plans > 1 ? (this.opts.replanExact ?? 10) : (this.opts.planExact ?? 16);
 		// keys 167 in the pack open locked doors 29 even once their gold monsters are dead
-		return { rw: (id) => this.objectDef(id), bw: (id) => zw.R.get(id) ?? null, pwOf: (t) => zw.M[t], patterns: this.nonogramDone ? null : zw.O, tiles: zw.u, endAtExit: true, exactLimit, heldKeys: packCount(this.h, KEY) };
+		const options = { rw: (id) => this.objectDef(id), bw: (id) => zw.R.get(id) ?? null, pwOf: (t) => zw.M[t], patterns: this.nonogramDone ? null : zw.O, tiles: zw.u, endAtExit: true, exactLimit, heldKeys: packCount(this.h, KEY) };
+		// gave up: the stairs may come first (no key or lever on the way unless the way out needs it)
+		if (this.gaveUp) options.exitFirst = true;
+		return options;
 	}
 
 	/**
@@ -608,7 +615,7 @@ export class Walker {
 	objectDef(id) {
 		const d = zw.Q.get(id) ?? zw.R.get(id) ?? null;
 		if (d == null) return undefined;
-		const recoveryStop = this.opts.recovery !== false && zw.Q.has(id) && RECOVERY.has(id) && !d.t && this.wantRecovery(id);
+		const recoveryStop = this.opts.recovery !== false && !this.gaveUp && zw.Q.has(id) && RECOVERY.has(id) && !d.t && this.wantRecovery(id);
 		if (!recoveryStop) return d;
 		const stop = Object.create(d);
 		stop.t = true;
@@ -670,7 +677,7 @@ export class Walker {
 	 * route does not go there yet -- planning costs 50-200 ms, so not after every fight.
 	 */
 	afterEncounter() {
-		if (this.opts.recovery === false || this.finished) return;
+		if (this.opts.recovery === false || this.finished || this.gaveUp) return;
 		if (!this.unplannedFountainWanted()) return;
 		this.planAgain();
 	}
@@ -755,6 +762,41 @@ export class Walker {
 		this.replan();
 	}
 
+	/**
+	 * Give up every stop still ahead and plan only the way out (exact.js: the run cannot be finished alive): those stops
+	 * become given-up ones, no objective counts as a stop any more and no fountain is worth a detour. Returns the stops
+	 * given up, as plain data.
+	 */
+	giveUp() {
+		const w = this.currentWaypoint();
+		const abandoned = [];
+		for (let i = w ? w.leg : this.legs.length; i < this.legs.length; i++) {
+			const L = this.legs[i];
+			if (L.kind === 'exit' || (L.rec && this.done.includes(L.rec.ri))) continue;
+			abandoned.push({ kind: L.kind, label: L.label, rec: L.rec ? { id: L.rec.id, x: L.rec.x, y: L.rec.y, critter: L.rec.k !== undefined } : null, at: L.at });
+			if (L.rec && L.rec.ri >= 0 && !this.failed.includes(L.rec.ri)) this.failed.push(L.rec.ri);
+		}
+		this.gaveUp = true;
+		this.planAgain();
+		return abandoned;
+	}
+
+	/** gave up: the objectives the planner would still go for (objects, creatures) lose their type, so only the exit is left */
+	dropObjectives(level) {
+		const bw = (id) => zw.R.get(id) ?? null;
+		for (const ob of objectives(level, { rw: (id) => this.objectDef(id), bw, pw: zw.M[this.h.b] })) if (ob.rec) ob.rec.id = -1;
+	}
+
+	/**
+	 * Gave up and next to the stairs: the walk is over. The player steps onto them and confirms leaving (the game asks
+	 * when objectives are left, DungameView.g; the port has no such dialog, so the script stops here).
+	 */
+	arriveAtExit() {
+		this.atExit = true;
+		this.finished = true;
+		return null;
+	}
+
 	/** re-plan from here after a failure; past maxReplans the walk ends */
 	replan() {
 		if (++this.replans > (this.opts.maxReplans ?? 60)) { this.finished = true; return; }
@@ -833,7 +875,7 @@ export class Walker {
 
 	/** past the last waypoint: re-plan while objectives are left (and re-plans remain), else the walk is over */
 	routeEnd() {
-		if (this.h.i_() > 0 && this.route.length && this.replans < (this.opts.maxReplans ?? 60)) { this.replan(); return AGAIN; }
+		if (!this.gaveUp && this.h.i_() > 0 && this.route.length && this.replans < (this.opts.maxReplans ?? 60)) { this.replan(); return AGAIN; }
 		this.finished = true;
 		return null;
 	}
@@ -871,6 +913,7 @@ export class Walker {
 		const h = this.h;
 		const stairs = this.stairsStep();
 		if (!stairs) { this.failLeg(); return AGAIN; }
+		if (this.gaveUp) return this.arriveAtExit();
 		if (++this.exitTries <= 3) return stairs;
 		// the stairs did not take us: objectives left (a forest exit lock, a stop given up too early) -> re-plan
 		if (h.i_() > 0 && ++this.exitReplans <= 3) { this.exitTries = 0; this.replan(); return AGAIN; }
