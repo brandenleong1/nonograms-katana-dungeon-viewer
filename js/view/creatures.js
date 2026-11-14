@@ -9,7 +9,7 @@
 //   paintCreature(g, env, species, scale = 1)   -> draw it (env as in sprites.js: { u, lw })
 
 /** species drawn the same as another (one picture in the game) */
-const SAME_AS = { 276: 210, 277: 212, 278: 234, 279: 236, 285: 224, 267: 268, 280: 265, 281: 266, 282: 244, 283: 246, 270: 255, 271: 255, 272: 256, 385: 351, 386: 352, 382: 354, 383: 354, 392: 359, 395: 359, 391: 370, 372: 371, 384: 375, 388: 378, 389: 394, 390: 394, 397: 258, 349: 293, 338: 337, 339: 337, 347: 348, 343: 258, 344: 260, 345: 243, 350: 319, 387: 314, 627: 609, 628: 609, 649: 622, 643: 624, 648: 625 };
+const SAME_AS = { 276: 210, 277: 212, 278: 234, 279: 236, 285: 224, 267: 268, 280: 265, 281: 266, 282: 244, 283: 246, 270: 255, 271: 255, 272: 256, 385: 351, 386: 352, 382: 354, 383: 354, 392: 359, 395: 359, 391: 370, 372: 371, 384: 375, 388: 378, 389: 394, 390: 394, 397: 258, 349: 293, 338: 337, 339: 337, 347: 348, 343: 258, 344: 260, 345: 243, 350: 319, 387: 314, 627: 609, 628: 609, 649: 622, 643: 624, 648: 625, /* same pictures as drawn ones: quest copies, spawns, mimics */ 227: 226, 273: 222, 274: 222, 284: 262, 346: 258, 411: 255, 412: 258, 413: 268, 417: 328, 418: 329, 432: 268, 433: 255, 439: 255, 443: 223, 453: 224, 454: 215, 455: 258, 456: 262, 457: 239, 458: 222, 459: 255, 460: 255, 463: 243, 464: 243, 530: 201, 531: 201, 532: 201, 533: 201, 534: 201, 535: 201, 393: 214, 396: 214 };
 
 const drawingOf = (id) => DRAW[SAME_AS[id] ?? id];
 
@@ -7071,5 +7071,141 @@ const DRAW = {
 		P.shape((p) => { p.m(-3.6, -31); p.l(3.6, -31); p.l(3.2, -34); p.l(-3.2, -34); }, red, -3.6, 3.6);
 		for (const x of [-1.5, 1.5]) P.shape((p) => { p.m(x - 1.4, -34); p.l(x - 1.4, -44); p.q(x, -46.4, x + 1.4, -44); p.l(x + 1.4, -34); }, gold, x - 1.4, x + 1.4);
 		P.thin([[-1.5, -35], [-1.5, -43.4]], shade(gold, -0.3), 0.3); P.thin([[1.5, -35], [1.5, -43.4]], shade(gold, -0.3), 0.3);
+	},
+	// ---- creatures that spawn during play: mimics and a summoned imp ----
+	// Fire beetle (the vase mimic, outside the caves): a low green spiny bug facing right, dragging a great glowing
+	// cluster of orange egg sacs behind it, a yellow eye, spiky legs
+	214(P) {
+		P.shadow(13, 4);
+		const green = '#5a8a30', sac = '#f0a020';
+		// legs: far ones darker, each bent up at the knee and down to a point
+		for (const far of [true, false]) {
+			for (const [x, d] of [[-2, -1], [3, 0.3], [7, 1]]) {
+				const c = far ? shade(green, -0.22) : green, dx = far ? 2 : -0.6;
+				taper(P, [[x + dx, -6], [x + dx + d * 4.4 + 1, -13.4], [x + dx + d * 7.6 + 1, -0.6]], 2.1, 0.4, c);
+			}
+		}
+		// the egg sacs, glowing: one great round cluster of swollen lobes
+		P.glow(-4.4, -13.4, 13, '#ffb030', 0.35);
+		P.circle(-4.4, -14, 9.2, shade(sac, -0.12));
+		for (const [x, y, r] of [[-8.4, -9.4, 3.8], [-3.2, -8, 3.8], [1, -10.8, 3.4], [-4.8, -13.6, 3.8], [-9.4, -15.4, 3.8], [0.4, -16.4, 3.6], [-6.4, -19.4, 3.8], [-2, -20.4, 3.4]]) {
+			P.circle(x, y, r, sac);
+			P.gloss(x - r * 0.35, y - r * 0.42, r * 0.32, r * 0.2, 0.55);
+		}
+		// the spiny green body and head at the front
+		P.shape((p) => { p.m(-1.6, -15); p.q(6.4, -17.4, 11, -11); p.q(12.6, -5.4, 7, -4.2); p.q(1, -3.2, -1.4, -7.6); p.q(-2.6, -11, -1.6, -15); }, green, -2.6, 12.6);
+		for (const [x, y, a] of [[1, -15.4, -1.9], [4, -15.6, -1.6], [7, -14.4, -1.2], [9.6, -12, -0.8]]) P.poly([[x - 0.9, y + 0.4], [x + Math.cos(a) * 3, y + Math.sin(a) * 3], [x + 0.9, y + 0.2]], shade(green, -0.15));
+		for (const y of [-12, -9, -6.4]) P.thin([[0, y], [5, y + 0.6]], shade(green, -0.35), 0.4);
+		P.circle(8.8, -9.4, 1.9, '#e8d060');
+		P.dot(9.2, -9.4, 0.8, '#1a1a0a'); P.dot(8.5, -10, 0.3, '#ffffff');
+		P.poly([[11.4, -7], [13.6, -6.4], [11.6, -5.4]], shade(green, -0.3));
+	},
+	// Kraken (the barrel mimic, outside the caves): an oak barrel with iron hoops, purple tentacles writhing up out of
+	// its open top and more curling out underneath for legs
+	275(P) {
+		P.shadow(13, 4.5);
+		const purple = '#9a5aa8', dark = '#6a3a7a', wood = '#8a5a34', hoop = '#5a5a64', sucker = '#e8c8e8';
+		// tentacle legs under the barrel, far ones darker
+		for (const [sd, far] of [[-1, true], [1, true], [-1, false], [1, false]]) {
+			const c = far ? dark : purple;
+			const pts = far ? [[sd * 2, -9], [sd * 7, -7], [sd * 8, -1], [sd * 10.4, -1.6]] : [[sd * 4, -9], [sd * 10, -8], [sd * 13, -2], [sd * 15.4, -2.6]];
+			taper(P, pts, 3, 0.6, c);
+		}
+		// the barrel: bulging staves, two iron hoops, a dark open top
+		P.shape((p) => { p.m(-6.4, -24); p.q(-9.4, -16, -6.4, -7.4); p.l(6.4, -7.4); p.q(9.4, -16, 6.4, -24); }, wood, -9.4, 9.4);
+		for (const x of [-4, -1.4, 1.4, 4]) P.thin([[x * 1.05, -23.4], [x * 1.25, -15.6], [x * 1.05, -8]], shade(wood, -0.35), 0.4);
+		for (const y of [-20.6, -10.6]) P.thin([[-7.8, y], [0, y + 1], [7.8, y]], hoop, 1.2);
+		P.ellipse(0, -24, 6.4, 1.8, shade(wood, -0.2));
+		P.ellipse(0, -24, 5, 1.2, '#2a1424', { line: false });
+		P.gloss(-5, -18, 1, 2.6, 0.3);
+		// tentacles rising out of the barrel, the back ones darker, suckers on the near ones
+		const up = [
+			[dark, [[-3, -24], [-7, -31], [-11, -36], [-9, -40]]],
+			[dark, [[3.4, -24], [8, -31], [12.4, -35], [11, -39]]],
+			[purple, [[-4.4, -24], [-5, -33], [-2.6, -41], [0.6, -41]]],
+			[purple, [[0.6, -24], [2, -33], [5.4, -39], [8, -37.6]]],
+			[purple, [[4.6, -24], [10, -27], [14, -25], [14.6, -21.4]]],
+			[purple, [[-5.4, -24], [-11, -26.6], [-14.4, -24], [-14, -20.6]]],
+		];
+		for (const [c, pts] of up) taper(P, pts, 3, 0.6, c);
+		for (const [x, y] of [[-4.8, -30], [-3.8, -35], [2.2, -30.6], [3.6, -35.4], [9.4, -26.6], [12.4, -26.2], [-10.4, -26], [-13, -25]]) P.dot(x, y, 0.55, sucker);
+	},
+	// Mimikchest (the chest mimic in the forest and caves): a wooden treasure chest gaping open into a toothy maw, a
+	// long pink tongue lolling out, a gold eye on the lid, curved horns, and green clawed arms planted on the ground
+	286(P) {
+		P.shadow(15, 5);
+		const wood = '#a0582a', gold = '#d8a840', arm = '#5a6a3a', bone = '#efe2bc', tongue = '#e07888';
+		// clawed arms reaching down and out to the ground on either side
+		for (const sd of [-1, 1]) {
+			taper(P, [[sd * 9, -10], [sd * 15.6, -9], [sd * 15.6, -2]], 3.8, 2.8, sd < 0 ? shade(arm, -0.15) : arm);
+			for (const k of [-1, 0, 1]) taper(P, [[sd * 15.6, -2], [sd * 17.4 + k * 1.5, -0.4]], 1.2, 0.3, '#2a2a1a');
+		}
+		// the chest's base, planks and gold corner bands
+		P.shape((p) => { p.m(-11.4, -13); p.l(11.4, -13); p.l(10.8, -2.4); p.l(-10.8, -2.4); }, wood, -11.4, 11.4);
+		for (const y of [-9.4, -5.8]) P.thin([[-11, y], [11, y]], shade(wood, -0.35), 0.4);
+		for (const sd of [-1, 1]) P.line([[sd * 10.4, -12.6], [sd * 9.9, -2.8]], gold, 1.5);
+		// the gaping maw between base and lid
+		P.shape((p) => { p.m(-11, -13); p.q(0, -15, 11, -13); p.l(10.4, -23.4); p.q(0, -27, -10.4, -23.4); }, '#4a0e10', -11, 11);
+		P.ellipse(0, -16.4, 6.4, 2.6, '#7a1a20', { line: false });
+		for (let x = -9; x <= 9.1; x += 3) P.poly([[x - 1.2, -13.2], [x + 1.2, -13.2], [x, -17.6 + Math.abs(x) * 0.12]], bone);
+		// the lid, thrown back, with its gold eye
+		P.shape((p) => { p.m(-11, -23); p.q(0, -27.4, 11, -23); p.l(10, -30); p.q(0, -34.6, -10, -30); }, wood, -11, 11);
+		P.thin([[-10.4, -26.6], [0, -30.4], [10.4, -26.6]], shade(wood, -0.35), 0.4);
+		for (const sd of [-1, 1]) P.line([[sd * 10.6, -23.4], [sd * 9.8, -29.6]], gold, 1.5);
+		for (let x = -8.4; x <= 8.5; x += 2.8) P.poly([[x - 1.2, -24.4 - (8.4 - Math.abs(x)) * 0.13], [x + 1.2, -24.4 - (8.4 - Math.abs(x)) * 0.13], [x, -19.4]], bone);
+		P.circle(0, -29.4, 2.4, gold);
+		P.ellipse(0, -29.4, 0.55, 1.7, '#2a1408', { line: false });
+		// horns curving up from the lid's corners
+		for (const sd of [-1, 1]) taper(P, [[sd * 9.4, -29], [sd * 14.4, -31], [sd * 13.4, -37.6]], 3.2, 0.5, '#e8d8a8');
+		// the long tongue lolling out over the front and down the side
+		P.shape((p) => { p.m(-4, -15.4); p.q(-5.4, -10, -2.6, -7); p.q(1, -4, 2.6, -1.6); p.q(4.4, 0, 5.6, -2.4); p.q(3.6, -3.4, 3.4, -6.4); p.q(3, -11.6, 3.4, -15.4); }, tongue, -5.4, 5.6);
+		P.thin([[-0.4, -14.6], [-0.6, -9], [2.4, -4.4]], shade(tongue, -0.3), 0.4);
+
+	},
+	// Minidimmon: a crouching tan imp facing right, horned, yellow-eyed, an orange bat wing spread behind it, a red
+	// loincloth, long arms hanging to its knees and a long thin tail
+	341(P) {
+		P.shadow(12, 4.5);
+		const skin = '#d8b07a', wing = '#d9852a', horn = '#6a4a30';
+		// the bat wing behind
+		P.shape((p) => { p.m(-2, -24); p.q(-9, -38, -19, -36); p.q(-17, -32, -18.6, -28); p.q(-15, -28, -14, -25); p.q(-10, -26, -9, -22); p.q(-6, -24, -2.6, -20); }, wing, -19, -2);
+		for (const [x, y] of [[-19, -36], [-18.6, -28], [-14, -25]]) P.thin([[-3, -22.6], [x, y]], shade(wing, -0.45), 0.4);
+		// the tail
+		taper(P, [[-4, -9], [-10, -6], [-13, -1.6], [-16.4, -3]], 1.4, 0.4, shade(skin, -0.1));
+		// legs folded in a crouch, the far one darker
+		for (const [hx, kx, fx, c] of [[1.4, 7, 5, shade(skin, -0.15)], [-3, 2.6, -0.6, skin]]) {
+			taper(P, [[hx, -9], [kx, -9.4], [fx, -2]], 4.6, 3, c);
+			P.ellipse(fx + 1, -1.3, 2.8, 1.2, shade(c, -0.15));
+		}
+		// far arm hanging to the ground
+		taper(P, [[5, -20], [9.6, -13], [9, -5]], 3.2, 2.4, shade(skin, -0.15));
+		P.circle(9.2, -4.6, 1.8, shade(skin, -0.15));
+		// the hunched body, a red loincloth
+		P.shape((p) => { p.m(-6, -10); p.q(-9.4, -20, -3, -25); p.q(5, -27.6, 8, -20); p.q(8.4, -12, 3.4, -9); p.q(-2, -7.6, -6, -10); }, shade(skin, -0.08), -9.4, 8.4);
+		P.thin([[0.6, -21.6], [3.4, -19.4], [6.6, -20.6]], shade(skin, -0.3), 0.45);
+		P.gloss(-3.6, -20, 1.6, 1, 0.3);
+		P.shape((p) => { p.m(-5, -11); p.l(3.6, -10); p.l(3, -6.4); p.l(1.6, -2.6); p.l(0.2, -4.4); p.l(-1.4, -2.2); p.l(-2.6, -5); p.l(-4.4, -6); }, '#a02a20', -5, 3.6);
+		P.line([[-5.4, -10.8], [3.8, -9.8]], '#6a1a14', 1);
+		P.thin([[-1, -9.4], [-0.4, -4]], shade('#a02a20', -0.3), 0.4);
+		for (const y of [-18, -15.6]) P.thin([[0, y], [4, y + 0.4]], shade(skin, -0.3), 0.4);
+		// the head thrust forward: horns, pointed ear, yellow eyes, a toothy grin
+		for (const [x, tx] of [[2.6, 0.6], [7.4, 9.4]]) taper(P, [[x, -31], [tx - 1, -35.4], [tx + 1.4, -39]], 2.4, 0.4, horn);
+		P.poly([[1, -28], [-4.4, -31], [0.6, -25]], shade(skin, -0.05));
+		head(P, -27, 6, skin, 5.6);
+		P.shape((p) => { p.m(6, -25.4); p.q(11.6, -26.4, 12.4, -23.4); p.q(11.4, -20.6, 7, -21); p.q(5, -22, 6, -25.4); }, skin, 5, 12.4);
+		P.thin([[3.6, -29.4], [7, -28.4], [10.6, -29.2]], shade(skin, -0.5), 0.7);
+		P.dot(11.6, -25.4, 0.4, '#4a3020');
+		for (const x of [5.4, 8.6]) { P.dot(x, -26.8, 1.3, '#ffd23f'); P.dot(x + 0.3, -26.8, 0.5, '#2a1a0a'); }
+		P.thin([[4.4, -28.6], [9.6, -28.2]], shade(skin, -0.45), 0.5);
+		P.shape((p) => { p.m(6.6, -23.2); p.q(9.4, -21.6, 11.8, -23.4); p.q(9.4, -22.6, 6.6, -23.2); }, '#5a1a10', 6.6, 11.8, { line: false });
+		for (const x of [7.8, 10.4]) P.poly([[x - 0.45, -23], [x + 0.45, -23], [x, -24.4]], '#ffffff', { line: false });
+		// near arm, long, a clawed hand on the ground
+		taper(P, [[-1.4, -20], [3, -12], [2.4, -4.6]], 3.4, 2.6, skin);
+		for (const k of [-1, 0, 1]) P.thin([[2, -4], [2.6 + k * 1, -2.6]], '#4a3020', 0.4);
+		// a strap across the chest and a red diamond pendant set in gold
+		P.thin([[-5, -22.6], [1.4, -19.6], [6.6, -21.6]], '#5a3a20', 0.6);
+		P.poly([[4, -21.4], [5.6, -19.2], [4, -16.8], [2.4, -19.2]], '#d8a840');
+		P.poly([[4, -20.6], [5, -19.2], [4, -17.6], [3, -19.2]], '#c8202a', { line: false });
+		P.dot(3.7, -19.8, 0.3, '#ffd0d0');
 	},
 };
