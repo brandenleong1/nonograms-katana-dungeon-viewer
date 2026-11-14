@@ -17,7 +17,7 @@
 //   node tools/pr-bot.mjs branches            report every branch: age, PR, ahead/behind main, what prune would do
 //   add --dry-run to print what it would do
 //
-// Ready to merge: not a draft, no merge conflict, up to date with main, every check it depends on passed on the head
+// Ready to merge: not a draft, based on main (a stacked PR waits for the one below it), no merge conflict, up to date with main, every check it depends on passed on the head
 // commit, nobody requests changes, every requested reviewer (person or team) has responded, and someone with write
 // access approved the head commit (two people when the PR changes CI, the rulesets or the PR tools: CI_PATHS).
 //
@@ -97,6 +97,7 @@ function heldReason(pr, merge) {
  * (with the status set back to pending) when GitHub refuses.
  */
 async function mergeNow(pr) {
+	if (pr.base?.ref && pr.base.ref !== 'main') return null;   // notReadyReason holds these; never squash into a side branch
 	const title = pr.title.trim();
 	const titleErrors = checkPr({ title, author: pr.user?.login || '' }).errors;
 	if (titleErrors.length) {
@@ -144,6 +145,8 @@ async function reportBranches() {
 
 async function notReadyReason(pr, mainSha) {
 	if (pr.draft) return 'Draft';
+	const stacked = await stackedReason(pr);
+	if (stacked) return stacked;
 	const detail = await github(`/repos/${REPO}/pulls/${pr.number}`);
 	if (detail.mergeable === false) return 'Merge conflict with main';
 	const compare = await github(`/repos/${REPO}/compare/${mainSha}...${pr.head.sha}`);
@@ -162,6 +165,19 @@ async function notReadyReason(pr, mainSha) {
 			: 'Needs a review of the latest commit';
 	}
 	return null;
+}
+
+/**
+ * A PR based on another branch than main (a stacked PR) waits. Merging it would squash it into that branch, not into
+ * main. Once the PR below it merges, the bot deletes that branch and GitHub retargets this PR to main.
+ */
+async function stackedReason(pr) {
+	const base = pr.base?.ref;
+	if (!base || base === 'main') return null;
+	const below = (await openPulls()).find((p) => p.head?.ref === base && p.head?.repo?.full_name === REPO);
+	return below
+		? `Stacked on #${below.number}: waits for it to merge (GitHub then retargets this PR to main)`
+		: `Based on ${base}, not main: change the base branch to main`;
 }
 
 async function changesCi(pr) {
