@@ -60,7 +60,7 @@ const EXACT = '#solve-controls .seg-btn[data-k="mode"][data-v="exact"]';
 const HARDWARE_THREADS = 4;
 
 /** the trusted half's limits (tools/screenshot-comment.mjs) */
-const LIMITS = { views: 60, pngBytes: 3 * 1024 * 1024, totalBytes: 40 * 1024 * 1024, name: /^[a-z0-9][a-z0-9-]{0,47}$/ };
+const LIMITS = { views: 100, pngBytes: 3 * 1024 * 1024, totalBytes: 80 * 1024 * 1024, name: /^[a-z0-9][a-z0-9-]{0,47}$/ };
 
 /** A pixel counts as changed when a channel moves by more than this; a view when more than MIN_PIXELS do. */
 const CHANNEL_TOLERANCE = 24;
