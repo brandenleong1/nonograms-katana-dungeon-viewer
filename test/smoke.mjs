@@ -160,8 +160,14 @@ async function checkNoDungeonView(browser, base, themeId, theme) {
 	return report(`${theme} no dungeon`, errors);
 }
 
-function waitForPage(page) {
-	return page.waitForFunction(() => window.nkd && window.nkd.solve && window.nkd.state.hero, null, { timeout: 60000 });
+/**
+ * The page is wired up and its theme applied. init.js adds the theme stylesheet (#theme-css) on its own schedule, and
+ * the map follows it (js/app.js followPageTheme): on a slow machine a check that reads colours before it would see the
+ * fallback theme.
+ */
+async function waitForPage(page) {
+	await page.waitForFunction(() => window.nkd && window.nkd.solve && window.nkd.state.hero && document.querySelector('#theme-css'), null, { timeout: 60000 });
+	await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
 }
 
 /** What the page shows about having no dungeon: the state, the overlay, the panels and the View buttons. */
