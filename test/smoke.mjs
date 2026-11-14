@@ -31,6 +31,7 @@ const NAMED = {
 		{ x: 38, y: 56, says: [/Orc shieldman/, /HP 17 · damage 7 · defence 5/] },           // monster 259
 		{ x: 43, y: 10, says: [/Bone Dragon/, /Drops Emerald tablet shard/, /Name: Nonograms Katana Wiki/], tooltipSays: [/HP 85/, /Drops Emerald tablet shard/] },   // the boss, 267
 		{ x: 33, y: 35, says: [/Purple chest/, /Holds Meteoric Iron/], tooltipSays: [/Holds Meteoric Iron/] },
+		{ x: 45, y: 8, says: [/Table and two chairs/] },   // object 18, a 2 by 2 table anchored at 44,9: its far corner is the table too
 	],
 };
 const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/game-version.json'), 'utf8'));
