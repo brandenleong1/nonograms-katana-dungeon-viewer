@@ -65,6 +65,16 @@ export function objectKind(obj, rw) {
 	return rw && rw.t ? 'chest' : 'decor';
 }
 
+/**
+ * The cells a placed object covers, as { cols, rows }: cols run right from its tile (+x), rows run up from it (-y),
+ * the way the game fills them (hw.g, and `footprint` in js/plan/planner.js). rw = its zw.Q definition (T by U cells);
+ * the flip flag (o.c) swaps the two. Most objects cover one cell.
+ */
+export function objectFootprint(obj, rw) {
+	const T = rw && rw.T ? rw.T : 1, U = rw && rw.U ? rw.U : 1;
+	return obj.c ? { cols: U, rows: T } : { cols: T, rows: U };
+}
+
 /** Classify a creature: its species' kind (data/catalog.json), then what this one is tagged with. bw = its zw.R record. */
 export function critterKind(cr, bw) {
 	const base = speciesKind(cr.id, bw);

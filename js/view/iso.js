@@ -2,7 +2,7 @@
 //   screen x = (x + y) * HW,  screen y = (y - x) * HH   — +x goes up-right, +y goes down-right.
 // Walls are drawn the game's way (c30.D): a bar through the middle of the cell, a centre square with an arm to the
 // edge toward each neighbour the wall goes on to, standing on the floor. Exact rule and sources: walls.js.
-import { KINDS, TILE, objectKind, critterKind, critterVariant, critterColor, isHiddenTrap, isPressurePlate } from './catalog.js';
+import { KINDS, TILE, objectKind, objectFootprint, critterKind, critterVariant, critterColor, isHiddenTrap, isPressurePlate } from './catalog.js';
 import { drawSprite } from './sprites.js';
 import { wallArms, WALL_CORE, ARM_LEFT, ARM_RIGHT, ARM_UP, ARM_DOWN, OPEN_LEFT, OPEN_DOWN } from './walls.js';
 
@@ -57,8 +57,12 @@ export class IsoView {
 		this.level = level;
 		this.info = info;
 		this.palette = paletteFor(this.theme, info.family);
-		this.objAt = new Map();
-		for (const o of level.objects) this.objAt.set(o.y * level.w + o.x, o);
+		this.objAt = new Map();      // an object's own tile: where it is drawn
+		this.objCover = new Map();   // every tile an object covers (furniture spans several): what hover and clicks find
+		for (const o of level.objects) {
+			this.objAt.set(o.y * level.w + o.x, o);
+			for (const i of this._coveredCells(o)) this.objCover.set(i, o);
+		}
 		this.critAt = new Map();
 		for (const c of level.critters) this.critAt.set(c.y * level.w + c.x, c);
 		this.walls = wallArms(level);
@@ -370,6 +374,18 @@ export class IsoView {
 		drawSprite(ctx, kind, cx, cy, hw, { selected, theme: this.theme, dpr: this.dpr, variant });
 	}
 
+	/** the indexes of the tiles an object covers: its own, then the rest of its footprint (cols to the right, rows up) */
+	_coveredCells(o) {
+		const { w, h } = this.level;
+		const { cols, rows } = objectFootprint(o, this.info.rw(o.id));
+		const cells = [];
+		for (let dy = 0; dy < rows; dy++) for (let dx = 0; dx < cols; dx++) {
+			const x = o.x + dx, y = o.y - dy;
+			if (x < w && y >= 0) cells.push(y * w + x);
+		}
+		return cells;
+	}
+
 	_cellA(x, y) {
 		const { w, h, cells } = this.level;
 		return x < 0 || y < 0 || x >= w || y >= h ? 0 : cells[2 * (y * w + x)];
@@ -380,14 +396,17 @@ export class IsoView {
 		const { layer } = KINDS[kind];
 		if (!this.layers.has(layer)) return;
 		if (layer === 'decor' && !frame.showDecor) return;
+		const { cols, rows } = objectFootprint(o, this.info.rw(o.id));
 		if (layer === 'decor' && frame.hw < 14) {
+			// one dot, in the middle of the cells the furnishing covers
+			const [mx, my] = this.project(o.x + (cols - 1) / 2, o.y - (rows - 1) / 2);
 			ctx.fillStyle = KINDS[kind].color;
-			fillCircle(ctx, cell.cx, cell.cy - frame.hh * 0.3, Math.max(1.5, frame.hw * 0.12));
+			fillCircle(ctx, mx, my - frame.hh * 0.3, Math.max(1.5, frame.hw * 0.12));
 			return;
 		}
 		const sprite = { cx: cell.cx, cy: cell.cy, hw: frame.hw, selected: this.selected === o, variant: '' };
 		if (isWallTile(cell.a)) this._mountOnWall(o, sprite, frame.hh);
-		else sprite.variant = this._objectVariant(o, kind);
+		else sprite.variant = cols * rows > 1 ? `${cols}x${rows}` : this._objectVariant(o, kind);
 		this._badge(ctx, kind, sprite);
 	}
 
@@ -506,9 +525,23 @@ export class IsoView {
 	}
 
 	_hoverOutline(ctx, { hw, hh }) {
-		const [cx, cy] = this.project(this.hover.x, this.hover.y);
+		const { x, y } = this.hover;
+		const o = this.objCover.get(y * this.level.w + x);
+		const { cols, rows } = o ? objectFootprint(o, this.info.rw(o.id)) : { cols: 1, rows: 1 };
 		ctx.strokeStyle = this.theme === 'light' ? 'rgba(20,20,20,0.85)' : 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5;
-		this._diamond(ctx, cx, cy, hw, hh); ctx.stroke();
+		if (cols * rows === 1) {
+			const [cx, cy] = this.project(x, y);
+			this._diamond(ctx, cx, cy, hw, hh); ctx.stroke();
+			return;
+		}
+		// furniture spanning several tiles: outline all of it, whichever of its tiles the pointer is on
+		const [x0, y0, x1, y1] = [o.x - 0.5, o.y + 0.5, o.x + cols - 0.5, o.y - rows + 0.5];
+		ctx.beginPath();
+		[[x0, y0], [x1, y0], [x1, y1], [x0, y1]].forEach(([px, py], k) => {
+			const [sx, sy] = this.project(px, py);
+			if (k) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy);
+		});
+		ctx.closePath(); ctx.stroke();
 	}
 
 	/** the solver's overlay: trail, cell marks, HP bars, fight pins, callout (see setSolveOverlay) */
@@ -747,7 +780,7 @@ export class IsoView {
 			const t = this.unproject(p[0], p[1] + dy);
 			if (t.x >= 0 && t.y >= 0 && t.x < this.level.w && t.y < this.level.h) {
 				const i = t.y * this.level.w + t.x;
-				if (dy === 0 || this.objAt.has(i) || this.critAt.has(i)) return t;
+				if (dy === 0 || this.objCover.has(i) || this.critAt.has(i)) return t;
 			}
 		}
 		return null;
@@ -766,7 +799,7 @@ export class IsoView {
 		const t = this._cellAt(p);
 		if (!t) return;
 		const i = t.y * this.level.w + t.x;
-		this.selected = this.critAt.get(i) || this.objAt.get(i) || null;
+		this.selected = this.critAt.get(i) || this.objCover.get(i) || null;
 		this.onSelect(this.describe(t.x, t.y));
 		this.redraw();
 	}
@@ -776,7 +809,7 @@ export class IsoView {
 		return {
 			x, y,
 			a: this.level.cells[2 * i], b: this.level.cells[2 * i + 1],
-			object: this.objAt.get(i) || null,
+			object: this.objCover.get(i) || null,
 			critter: this.critAt.get(i) || null,
 		};
 	}

@@ -17,12 +17,14 @@ const CACHE_MAX = 600;
 /**
  * Draw sprite `kind` standing on the tile centred at (cx, cy) (CSS px). hw = half tile width (CSS px).
  * opts: { selected, theme: 'dark'|'light', dpr, variant: string (door axis 'x'/'y', species, …) }
+ * Furniture that covers several tiles has the variant 'COLSxROWS' (cols run right from the tile, rows up from it): the
+ * sprite is drawn across all of them, and (cx, cy) stays the centre of its own tile, the corner it is anchored at.
  */
 export function drawSprite(ctx, kind, cx, cy, hw, { selected = false, theme = 'dark', dpr = 1, variant = '' } = {}) {
 	const px = sizeBucket(hw * dpr);
 	const spr = cachedSprite({ kind, variant, px, theme });
 	const k = hw / px;   // device-px sprite -> CSS px
-	if (selected) ring(ctx, cx, cy, hw, theme);
+	if (selected) ring(ctx, ...footprintCentre(cx, cy, hw, variant), hw * footprintSpan(variant), theme);
 	ctx.drawImage(spr.canvas, cx - spr.ax * k, cy - spr.ay * k, spr.canvas.width * k, spr.canvas.height * k);
 }
 
@@ -42,6 +44,24 @@ function cachedSprite(spec) {
 	return spr;
 }
 
+/** a variant that names a footprint ('2x1'): its cols and rows; one tile otherwise */
+function footprintOf(variant) {
+	const m = /^(\d+)x(\d+)$/.exec(variant);
+	return m ? { cols: +m[1], rows: +m[2] } : { cols: 1, rows: 1 };
+}
+
+/** where the middle of the footprint is, given the centre of its anchor tile (X right-up, -Y left-up, in tiles) */
+function footprintCentre(cx, cy, hw, variant) {
+	const { cols, rows } = footprintOf(variant);
+	return [cx + (cols - rows) / 2 * hw, cy - (cols + rows - 2) / 4 * hw];
+}
+
+/** how many tiles wide the selection ring is: 1 for a single tile */
+function footprintSpan(variant) {
+	const { cols, rows } = footprintOf(variant);
+	return (cols + rows) / 2;
+}
+
 function ring(ctx, cx, cy, hw, theme) {
 	ctx.save();
 	const col = theme === 'light' ? 'rgba(20,90,200,0.9)' : 'rgba(150,215,255,0.95)';
@@ -58,14 +78,18 @@ function ring(ctx, cx, cy, hw, theme) {
 /** paint a sprite at `px` device px per half tile width onto its own canvas; ax, ay: the tile centre in it */
 function paintSprite({ kind, variant, px, theme }) {
 	const u = px / 32;
-	const w = Math.ceil(px * 2.3), h = Math.ceil(px * 2.9);
+	const { cols, rows } = footprintOf(variant);
+	// a footprint reaches (rows - 1) tiles further left, (cols - 1) further right and (cols + rows - 2) half tiles up
+	const left = (rows - 1) * px, right = (cols - 1) * px, up = (cols + rows - 2) * px / 2;
+	const w = Math.ceil(px * 2.3 + left + right), h = Math.ceil(px * 2.9 + up);
 	const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
 	const g = canvas.getContext('2d');
-	const ax = w / 2, ay = h - px * 0.62;   // tile centre inside the sprite canvas
+	const ax = px * 1.15 + left, ay = h - px * 0.62;   // tile centre inside the sprite canvas
 	g.translate(ax, ay);
+	g.translate(...P(u, (cols - 1) / 2, -(rows - 1) / 2));   // painters draw around the middle of the footprint
 	g.lineJoin = 'round';
 	g.lineCap = 'round';
-	const env = { u, theme, variant, lw: Math.max(0.8, 0.9 * u), shadowA: theme === 'light' ? 0.22 : 0.38 };
+	const env = { u, theme, variant, cols, rows, lw: Math.max(0.8, 0.9 * u), shadowA: theme === 'light' ? 0.22 : 0.38 };
 	(PAINTERS[kind] || PAINTERS.decor)(g, env);
 	return { canvas, ax, ay };
 }
@@ -100,6 +124,14 @@ const ink = (hex) => shade(hex, -0.55);
 /** Tile-plane point (X, Y in tiles) at elevation z (in u). */
 function P(u, X, Y, z = 0) {
 	return [(X + Y) * 32 * u, (Y - X) * 16 * u - z * u];
+}
+
+/**
+ * Half extents (tiles) of a block standing on the sprite's footprint: the one-tile size `ex` by `ey` grows by half a
+ * tile for every extra tile in a direction, so furniture fills the cells it covers.
+ */
+function spread({ cols, rows }, ex, ey) {
+	return { ex: ex + (cols - 1) * 0.5, ey: ey + (rows - 1) * 0.5 };
 }
 
 function path(g, pts) {
@@ -288,23 +320,24 @@ const PAINTERS = {
 	chest(g, e) {
 		if (hasObject(e.variant)) return paintObject(g, e, e.variant);
 		const { u, lw } = e;
-		shadow(g, e, 17, 8.5);
-		box(g, e, { ex: 0.3, ey: 0.2, height: 10, color: WOOD });
+		const { ex, ey } = spread(e, 0.3, 0.2);
+		shadow(g, e, 17 + (e.cols + e.rows - 2) * 14, (17 + (e.cols + e.rows - 2) * 14) / 2);
+		box(g, e, { ex, ey, height: 10, color: WOOD });
 		// rounded lid: a lighter box plus a curved highlight
-		const { T } = box(g, e, { ex: 0.31, ey: 0.21, height: 5, color: '#9b6a3c', z0: 10 });
+		const { T } = box(g, e, { ex: ex + 0.01, ey: ey + 0.01, height: 5, color: '#9b6a3c', z0: 10 });
 		g.strokeStyle = 'rgba(255,230,190,0.45)'; g.lineWidth = lw;
 		g.beginPath(); g.moveTo(...T[0]); g.lineTo(...T[3]); g.stroke();
 		// metal bands on the front (+Y) face and the side (−X) face
 		const band = '#c9a24a';
-		for (const s of [-0.18, 0.18]) {
-			const a = P(u, s, 0.21, 0), b = P(u, s, 0.21, 15);
+		for (const s of [-ex + 0.12, ex - 0.12]) {
+			const a = P(u, s, ey + 0.01, 0), b = P(u, s, ey + 0.01, 15);
 			g.strokeStyle = shade(band, -0.35); g.lineWidth = lw * 2.6; g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke();
 			g.strokeStyle = band; g.lineWidth = lw * 1.6; g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke();
 		}
-		const a = P(u, -0.31, 0, 0), b = P(u, -0.31, 0, 15);
+		const a = P(u, -ex - 0.01, 0, 0), b = P(u, -ex - 0.01, 0, 15);
 		g.strokeStyle = band; g.lineWidth = lw * 1.4; g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke();
 		// lock plate
-		const [lx, ly] = P(u, 0, 0.21, 10);
+		const [lx, ly] = P(u, 0, ey + 0.01, 10);
 		g.fillStyle = '#e8c35a'; g.strokeStyle = shade('#e8c35a', -0.5); g.lineWidth = lw;
 		g.beginPath(); g.roundRect(lx - 3 * u, ly - 3.5 * u, 6 * u, 6.5 * u, 1.2 * u); g.fill(); g.stroke();
 		g.fillStyle = '#3a2a14'; g.beginPath(); g.arc(lx, ly - 0.8 * u, 1 * u, 0, Math.PI * 2); g.fill();
@@ -475,8 +508,9 @@ const PAINTERS = {
 	},
 	portal(g, e) {
 		const { u, lw } = e;
-		shadow(g, e, 14, 6);
-		box(g, e, { ex: 0.2, ey: 0.2, height: 3, color: '#5e5970' });
+		const { ex, ey } = spread(e, 0.2, 0.2);
+		shadow(g, e, 14 + (e.cols + e.rows - 2) * 14, (14 + (e.cols + e.rows - 2) * 14) * 3 / 7);
+		box(g, e, { ex, ey, height: 3, color: '#5e5970' });
 		const cy = -17 * u;
 		for (const [r, a] of [[16, 0.12], [12, 0.18]]) glowDisc(g, { x: 0, y: cy, r: r * u, inner: `rgba(190,140,255,${a * 2})`, outer: 'rgba(130,70,255,0)' });
 		const disc = g.createRadialGradient(-2 * u, cy - 3 * u, 1 * u, 0, cy, 11 * u);
@@ -620,11 +654,12 @@ const PAINTERS = {
 	},
 	decor(g, e) {
 		const { u, lw } = e;
-		shadow(g, e, 11, 5.5);
+		const { ex, ey } = spread(e, 0.17, 0.12);
+		shadow(g, e, 11 + (e.cols + e.rows - 2) * 14, (11 + (e.cols + e.rows - 2) * 14) / 2);
 		const c = '#8b7356';
-		box(g, e, { ex: 0.17, ey: 0.12, height: 9, color: c });
+		box(g, e, { ex, ey, height: 9, color: c });
 		g.strokeStyle = shade(c, -0.4); g.lineWidth = lw * 0.8;
-		const a = P(u, -0.17, -0.12, 4.5), b = P(u, -0.17, 0.12, 4.5), d = P(u, 0.17, 0.12, 4.5);
+		const a = P(u, -ex, -ey, 4.5), b = P(u, -ex, ey, 4.5), d = P(u, ex, ey, 4.5);
 		g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.lineTo(...d); g.stroke();
 	},
 
