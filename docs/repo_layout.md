@@ -43,6 +43,7 @@ player progress (what changes the map):
 |---|---|
 | `app.js` | UI glue: label → level → map, layers, selection, objectives, route panel; the "No Dungeon Loaded" view; what an import wipes and shows. Exposes `window.nkd` for debugging. |
 | `labels.js` | Dungeon labels (`3C-172582050`) ↔ dungeon type and seed. |
+| `tombs.js` | Shared Secret name item, Thoth and boss-immunity rules, and Book of the Dead part numbers. |
 | `game-version.js` | The game version line in the Help popup. |
 | `hero.js` | The "Your hero" panel: imports a save (after the page's confirmation when a dungeon or plan is on screen), shows heroes, gear, pack and progress. `effectiveProfile()` is what maps and the solver use. |
 

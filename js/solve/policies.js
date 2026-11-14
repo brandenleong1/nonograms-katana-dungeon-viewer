@@ -17,6 +17,7 @@
 //
 // Every policy is robust to rejected inputs: what was rejected (or changed nothing) this hero turn is banned and the
 // next option is taken; the last resort is `wait`, which always ends the turn.
+import { SECRET_NAME, needsSecretName } from '../tombs.js';
 import { zw, vj0 } from '../gen/statics.js';
 import { Util$Point } from '../gen/model.js';
 import {
@@ -145,7 +146,14 @@ export class Policy {
 
 	/** heal / EP / unseal before the tactic proper */
 	common(fight, ctx) {
-		return this.upkeep(ctx) || this.unsealInput(ctx);
+		return this.upkeep(ctx) || this.secretNameInput(ctx) || this.unsealInput(ctx);
+	}
+
+	/** The Secret name removes the tomb boss's immunity; mental power cannot pay it. */
+	secretNameInput(ctx) {
+		if (ctx.pools.ap < 1 || zw.n_(ctx.h.b) || !packHas(ctx.h, SECRET_NAME)) return null;
+		const boss = ctx.foes.find((q) => needsSecretName(q.m.a, q.m) && q.adj);
+		return boss ? this.first({ t: 'item', id: SECRET_NAME, x: boss.x, y: boss.y }) : null;
 	}
 
 	/** Divine protection or a healing item when the foes could kill us before our next turn, then EP for melee */
@@ -183,7 +191,7 @@ export class Policy {
 	unsealInput(ctx) {
 		const { h, pools } = ctx;
 		const early = this.params.unseal === 'early';
-		const sealed = ctx.foes.filter((q) => q.seal > 0 && q.m.d && mpOk(h, q.seal) && (q.adj || (early && q.d <= 3 && h.e.h[7] >= 1)));
+		const sealed = ctx.foes.filter((q) => q.seal > 0 && !needsSecretName(q.m.a, q.m) && q.m.d && mpOk(h, q.seal) && (q.adj || (early && q.d <= 3 && h.e.h[7] >= 1)));
 		if (!sealed.length || pools.ap < 1) return null;
 		sealed.sort((a, b) => a.d - b.d || a.seal - b.seal);
 		return this.first({ t: 'unseal', x: sealed[0].x, y: sealed[0].y });

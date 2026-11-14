@@ -14,6 +14,7 @@
 // stuck door or pays a seal when walking around would cost more. The visiting order is solved exactly
 // (Held-Karp with unlock state) for up to 16 stops, by search beyond.
 
+import { SECRET_NAME, THOTH, tombQuestPart, needsSecretName } from '../tombs.js';
 const DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 const EXACT_LIMIT = 16;
 const DOORS = new Set([27, 28, 29, 33, 35, 53, 60, 73]);   // objects that sit on doorways
@@ -39,12 +40,13 @@ const BLOCKED = Object.freeze({ blocked: true });
  * Options: the game's tables (`rw` object definitions, `bw` creature definitions, `pwOf(type)` dungeon definitions,
  * nonogram `patterns`, tile walk flags `tiles`), `endAtExit` (finish at the stairs), the step price of one point of
  * energy and mental power (`epCost`, `mpCost`), up to how many stops the order is exact (`exactLimit`), and from a
- * live state the keys (167) already in the hero's pack (`heldKeys`; 0 for a label's fresh dungeon).
+ * live state the keys (167) already in the hero's pack (`heldKeys`; 0 for a label's fresh dungeon),
+ * `heldSecretNames` (Secret name items) and `tombQuestDone` (this tomb's Book of the Dead part is finished).
  *
- * Returns `{ legs, route, steps, mp, ep, exact, unreachable, unknownGates, puzzle, debug }`: `route` is the tiles
+ * Returns `{ legs, route, steps, mp, ep, exact, unreachable, unknownGates, puzzle, warnings, debug }`: `route` is the tiles
  * walked (`{ jump: true }` before a ladder or portal hop), each leg covers `route[from + 1 .. to]`.
  */
-export function planRoute(level, { rw, bw = null, pwOf, patterns, tiles = null, endAtExit = false, epCost = EP_COST, mpCost = MP_COST, exactLimit = EXACT_LIMIT, heldKeys = 0 }) {
+export function planRoute(level, { rw, bw = null, pwOf, patterns, tiles = null, endAtExit = false, epCost = EP_COST, mpCost = MP_COST, exactLimit = EXACT_LIMIT, heldKeys = 0, heldSecretNames = 0, tombQuestDone = false }) {
 	const pw = pwOf(level.type);
 	const grid = new RouteGrid(level, { rw, tiles });
 	const puzzle = patterns ? nonogramWalk(level, patterns) : null;
@@ -59,6 +61,7 @@ export function planRoute(level, { rw, bw = null, pwOf, patterns, tiles = null, 
 
 	const hero = level.critters.find((c) => c.id === HERO);
 	const targets = targetStops(grid, { rw, bw, pw, endAtExit });
+	const warnings = tombStops(grid, targets, { bw, heldSecretNames, tombQuestDone });
 	const start = hero.y * grid.w + hero.x;
 	clearOpenersThatAreObjectives(locks.openers, targets);
 	const stops = [...targets, ...locks.openers];
@@ -68,12 +71,14 @@ export function planRoute(level, { rw, bw = null, pwOf, patterns, tiles = null, 
 	const tour = newTour({ start, stops, targets, locks, paths });
 	const order = visitOrder(tour, exactLimit);
 	const walk = walkRoute(order, tour, { grid, paths, action, rw });
+	if (crossesBossRoomBeforeThoth(level, walk)) warnings.push('The route crosses the boss room before Thoth; evade or slow the boss until you have the Secret name.');
 	return {
 		legs: walk.legs, route: walk.route, steps: walk.steps, mp: walk.mp, ep: walk.ep,
 		exact: tour.live.length <= exactLimit,
 		unreachable: unreachable.map((s) => s.rec),
 		unknownGates: unknownGates.map((g) => g.obj),
 		puzzle,
+		warnings,
 		debug: { bfs: (src, mask) => paths.search(src, mask), teleports, gates: locks.gates, start },
 	};
 }
@@ -501,6 +506,49 @@ function targetStops(grid, { rw, bw, pw, endAtExit }) {
 	return targets;
 }
 
+// Thoth is not a game objective, but his usable drop is required to fight a tomb boss.
+function tombStops(grid, targets, { bw, heldSecretNames, tombQuestDone }) {
+	const { level } = grid;
+	if (!tombQuestPart(level.type) || !bw) return [];
+	const thoth = level.critters.find((c) => c.id === THOTH && c.g === SECRET_NAME);
+	const warnings = [];
+	for (let i = targets.length - 1; i >= 0; i--) {
+		const stop = targets[i];
+		if (!stop.rec || !needsSecretName(bw(stop.rec.id), stop.rec.ref)) continue;
+		if (!thoth && !(tombQuestDone && heldSecretNames > 0)) {
+			targets.splice(i, 1);
+			warnings.push(tombQuestDone
+				? 'The tomb boss cannot be hurt yet: get a Secret name from Thoth first.'
+				: `The tomb boss cannot be hurt yet: finish part ${tombQuestPart(level.type)} of Book of the Dead, then bring Thoth down to 10 health or less for a usable Secret name.`);
+			continue;
+		}
+		stop.label = 'Use the Secret name on the boss, then defeat it';
+		if (heldSecretNames > 0 && tombQuestDone) continue;
+		const opener = { kind: 'thoth', rec: thoth, cells: grid.approach(thoth), label: 'Bring Thoth down to 10 health or less (Secret name)' };
+		targets.push(opener);
+		stop.requires = opener;
+	}
+	return warnings;
+}
+
+function crossesBossRoomBeforeThoth(level, walk) {
+	if (!level.regions) return false;
+	for (const leg of walk.legs) {
+		if (!leg.stop.requires) continue;
+		const thothLeg = walk.legs.find((l) => l.stop === leg.stop.requires);
+		if (!thothLeg) continue;
+		const boss = leg.stop.rec;
+		const room = level.regions[boss.y * level.w + boss.x];
+		if (room && walk.route.slice(0, thothLeg.to + 1).some((p) => !p.jump && level.regions[p.y * level.w + p.x] === room)) return true;
+	}
+	return false;
+}
+
+function requirementsMet(tour, si, visited) {
+	const required = tour.stops[si].requires;
+	return !required || visited.has(tour.stops.indexOf(required));
+}
+
 // an opener that is itself an objective (e.g. the forest mini-boss) is done as that objective, not as a stop of its own
 function clearOpenersThatAreObjectives(openers, targets) {
 	for (const r of openers) if (r.rec && targets.some((t) => t.rec === r.rec)) r.cells = [];
@@ -594,12 +642,14 @@ function heldKarpTable(tour) {
 	const n = live.length;
 	const targetBits = live.reduce((m, si, k) => (si < tour.targetCount ? m | (1 << k) : m), 0);
 	const lastStop = live.findIndex((si) => stops[si].last);
+	const requires = live.map((si) => stops[si].requires ? live.indexOf(stops.indexOf(stops[si].requires)) : -1);
 	const size = 1 << n;
 	const best = new Float64Array(size * n).fill(Infinity);
 	const from = new Int16Array(size * n).fill(-1);
 	const unlock = (set) => { let m = 0; for (let k = 0; k < n; k++) if (set & (1 << k)) m |= grants[live[k]]; return m; };
 	for (let k = 0; k < n; k++) {
 		if (lastStop === k && n > 1) continue;
+		if (stops[live[k]].requires) continue;
 		best[(1 << k) * n + k] = distances.between(start, stops[live[k]].at, 0) + extra[live[k]];
 	}
 	for (let set = 1; set < size; set++) {
@@ -611,6 +661,7 @@ function heldKarpTable(tour) {
 			if (k === lastStop && set !== size - 1 && (set & targetBits) !== targetBits) continue;
 			for (let j = 0; j < n; j++) {
 				if (set & (1 << j)) continue;
+				if (stops[live[j]].requires && (requires[j] < 0 || !(set & (1 << requires[j])))) continue;
 				if (j === lastStop && ((set | (1 << j)) & targetBits) !== targetBits) continue;
 				const d = distances.between(stops[live[k]].at, stops[live[j]].at, m);
 				if (d === Infinity) continue;
@@ -665,6 +716,7 @@ function nearestFirst(tour) {
 	while (todo.size) {
 		let pick = -1, pd = Infinity;
 		for (const si of [...todo, ...optional]) {
+			if (!requirementsMet(tour, si, new Set(seq))) continue;
 			const d = distances.between(pos, stops[si].at, mask) + extra[si];
 			if (si >= T && !(grants[si] & ~mask)) continue;
 			if (d < pd) { pd = d; pick = si; }
@@ -701,12 +753,15 @@ function improveByTwoOpt(tour, seq) {
 function tourLength(tour, seq) {
 	const { stops, grants, extra, distances } = tour;
 	let pos = tour.start, mask = 0, total = 0;
+	const visited = new Set();
 	for (const si of seq) {
+		if (!requirementsMet(tour, si, visited)) return Infinity;
 		const d = distances.between(pos, stops[si].at, mask);
 		if (d === Infinity) return Infinity;
 		total += d + extra[si];
 		pos = stops[si].at;
 		mask |= grants[si];
+		visited.add(si);
 	}
 	return total;
 }
