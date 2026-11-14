@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TOOL = path.join(ROOT, 'tools/screenshot-comment.mjs');
@@ -39,7 +39,7 @@ function post(dir, fake = {}, { conclusion = 'success', sha = SHA } = {}) {
 	const config = { pulls: [{ number: 7, sha: SHA }], ...fake };
 	const env = { ...process.env, GITHUB_TOKEN: 'test', GITHUB_REPOSITORY: 'o/r', GITHUB_RUN_ID: '888', FAKE_GITHUB: JSON.stringify(config), FAKE_GITHUB_OUT: out };
 	return new Promise((done) => {
-		const child = spawn(process.execPath, ['--import', FAKE, TOOL, 'post', dir, sha, conclusion, RUN_URL], { env });
+		const child = spawn(process.execPath, ['--import', pathToFileURL(FAKE).href, TOOL, 'post', dir, sha, conclusion, RUN_URL], { env });
 		let stdout = '';
 		let stderr = '';
 		child.stdout.on('data', (chunk) => (stdout += chunk));
@@ -234,11 +234,19 @@ test('builds the notice from trusted values only: nothing from the artifact is i
 	assert.equal(refused.status, 2);
 });
 
+test('accepts a manifest at the 100-view limit', async () => {
+	const views = Array.from({ length: 100 }, (_, i) => [`view-${i}`, 'same']);
+	const r = await post(artifact(views));
+	assert.equal(r.status, 0, r.stderr);
+	assert.equal(r.comments.length, 1);
+	assert.match(bodyOf(r), /No view looks different\*\* \(100 checked\)/);
+});
+
 test('refuses a manifest with too many views, tells the PR, and says nothing of what was in it', async () => {
-	const views = Array.from({ length: 61 }, (_, i) => [`view-${i}`, 'same']);
+	const views = Array.from({ length: 101 }, (_, i) => [`view-${i}`, 'same']);
 	const r = await post(artifact(views));
 	assert.equal(r.status, 2);
-	assert.match(r.stderr, /at most 60 views/);
+	assert.match(r.stderr, /at most 100 views/);
 	assert.match(bodyOf(r), /weren't stored/);
 	assert.doesNotMatch(bodyOf(r), /view-/);
 	assert.equal(r.count('POST /git/blobs'), 0);
