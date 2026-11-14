@@ -14,6 +14,7 @@
 // Hero spec (what the hero brings): either the oracle-style edits of js/combat/setup.js
 //   { level, gear, kit, kit2, skills, quests, pets, run, trapsindif }
 // or the player's profile (js/combat/entry.js, when present): { profile: { vj0, hero } }.
+import { SECRET_NAME, THOTH, needsSecretName } from '../tombs.js';
 import { zw, vj0 as V } from '../gen/statics.js';
 import { Util$Point } from '../gen/model.js';
 import { newFight, restoreFight } from '../combat/driver.js';
@@ -456,7 +457,7 @@ export function levelOf(h) {
 	const bit = (v) => (v ? 1 : 0);
 	const obj = (q) => ({ id: q.a.a, x: q.b.a, y: q.b.b, c: bit(q.c), d: bit(q.d), e: bit(q.e), f: bit(q.f), g: q.g, h: q.h, ref: q });
 	return {
-		type: h.b, seed: h.a, w: h.g, h: h.h, a: h.a, y: h.y, A: h.A, cells,
+		type: h.b, seed: h.a, w: h.g, h: h.h, a: h.a, y: h.y, A: h.A, cells, regions: Array.from(h.l),
 		objects: h.n.map(obj),
 		critters: h.o.map((c) => ({ ...obj(c), k: c.k, x: c.b.a, y: c.b.b })),
 	};
@@ -598,7 +599,7 @@ export class Walker {
 		// the first plan is exact up to 16 stops (Held-Karp, 50-200 ms); re-plans mid-dungeon up to 10 (~1 ms), heuristic beyond
 		const exactLimit = this.stats.plans > 1 ? (this.opts.replanExact ?? 10) : (this.opts.planExact ?? 16);
 		// keys 167 in the pack open locked doors 29 even once their gold monsters are dead
-		return { rw: (id) => this.objectDef(id), bw: (id) => zw.R.get(id) ?? null, pwOf: (t) => zw.M[t], patterns: this.nonogramDone ? null : zw.O, tiles: zw.u, endAtExit: true, exactLimit, heldKeys: packCount(this.h, KEY) };
+		return { rw: (id) => this.objectDef(id), bw: (id) => zw.R.get(id) ?? null, pwOf: (t) => zw.M[t], patterns: this.nonogramDone ? null : zw.O, tiles: zw.u, endAtExit: true, exactLimit, heldKeys: packCount(this.h, KEY), heldSecretNames: packCount(this.h, SECRET_NAME), tombQuestDone: !zw.n_(this.h.b) };
 	}
 
 	/**
@@ -700,8 +701,10 @@ export class Walker {
 		for (const m of h.o) {
 			if (m === h.f || m.u_() || !m.a.t) continue;
 			const seal = sealOf(h, m);
-			if (seal >= UNSEALABLE) invincible++;
-			else mp += seal;
+			if (seal >= UNSEALABLE) {
+				const canGetName = !zw.n_(h.b) && (packHas(h, SECRET_NAME) || h.o.some((c) => c.a.a === THOTH && !c.u_() && c.g === SECRET_NAME));
+				if (!canGetName) invincible++;
+			} else mp += seal;
 		}
 		return { mp, ep, invincible };
 	}
@@ -896,6 +899,7 @@ export class Walker {
 		if (tries > 6) { this.failLeg(); return AGAIN; }
 		this.stats.bumps++;
 		const tgt = this.footNear(live);
+		if (needsSecretName(live.a, live) && !zw.n_(this.h.b) && packHas(this.h, SECRET_NAME)) return { t: 'item', id: SECRET_NAME, x: live.b.a, y: live.b.b };
 		if (this.adjacent(H, tgt) || w.bump === 'cr' || tries > 3) this.pendingBump = this.adjacent(H, tgt) ? w.ri : -1;
 		return this.tapCell(tgt);
 	}

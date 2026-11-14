@@ -16,12 +16,14 @@
 //
 // Workers (pool.js) each hold the same trajectory (re-setup from the problem + the committed inputs, synced) and play
 // out (input, policy) jobs from it.
+import { SECRET_NAME, needsSecretName } from '../tombs.js';
 import { Run, Walker, trimTopUps, mpOk, heroSpecOut, heroOf, isFoe, critterInfo, foesOf, packHas, canSkill, free, SKILL, SPIDER, DIR4, bestItem, makeFight, structuredCloneLite, manh, cheb, encounterKey } from './sim.js';
 import { makePolicy, labelOf, candidates as defaultCandidates, availOf, usable, BASELINE } from './policies.js';
 import { pricesFor, scoreOutcome, compareExact, dist } from './cost.js';
 import { outcomeOf, entryOut, mpPlanOf, runOptsFor, stopIndexOf, routeLegs, stopOut, countVisit, realNeedOf, mpItemsOf, setRestNeed } from './robust.js';
 import { LookCache } from './lookcache.js';
 import { newFight } from '../combat/driver.js';
+import { zw } from '../gen/statics.js';
 
 /**
  * problem.saveBytes (the raw guild.dat / export zip bytes) -> problem.save (js/save importSave result). An imported
@@ -179,7 +181,9 @@ function addFoeInputs(found, h, m) {
 	const d = manh(m.b, h.f.b);
 	const seal = m.i_(h.e);
 	if (d === 1 && seal > 0) {
-		if (m.d && mpOk(h, seal)) found.add({ t: 'unseal', x: m.b.a, y: m.b.b });
+		if (needsSecretName(m.a, m)) {
+			if (!zw.n_(h.b) && packHas(h, SECRET_NAME)) found.add({ t: 'item', id: SECRET_NAME, x: m.b.a, y: m.b.b });
+		} else if (m.d && mpOk(h, seal)) found.add({ t: 'unseal', x: m.b.a, y: m.b.b });
 		return;
 	}
 	if (d === 1) {

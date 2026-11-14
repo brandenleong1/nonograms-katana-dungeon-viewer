@@ -170,7 +170,7 @@ function runWarnings(res, { totals, encounters, stops }) {
 	// a profile run: the game's entry gates (entry.js; away / busy heroes are treated as back) and the MP it hands out
 	const gates = (res.entry && Array.isArray(res.entry.gates) ? res.entry.gates : []).filter((g) => g.gate !== 'away' && g.gate !== 'busy');
 	for (const g of gates) warnings.push({ kind: 'gate', gate: g.gate, text: `The game would not start this run: ${g.text}.` });
-	if (res.needs && res.needs.invincible) warnings.push({ kind: 'invincible', n: res.needs.invincible, text: `${res.needs.invincible} objective boss(es) cannot be hurt yet (their quest is not done; the secret name 306 works only then).` });
+	if (res.needs && res.needs.invincible) warnings.push({ kind: 'invincible', n: res.needs.invincible, text: `${res.needs.invincible} objective boss(es) cannot be hurt yet. Finish this tomb's part of Book of the Dead, bring Thoth down to 10 health or less for a usable Secret name, and use it on the boss before fighting.` });
 	// death risk, plainly: where the hero is too weak, dying is the outcome; say where it happens
 	if (totals.pDeath > (tot.maxDeath ?? 0.01)) warnings.push(deathWarning(robust, totals.pDeath, encounters, stops));
 	const left = robust ? (tot.objectivesLeft ? tot.objectivesLeft.mean : 0) : tot.objectivesLeft;

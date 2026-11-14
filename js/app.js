@@ -595,12 +595,18 @@ function renderRoute(level) {
 	view.setRoute(plan.route);
 	box.innerHTML = '';
 	box.append(routeSummary(plan));
+	for (const warning of plan.warnings) {
+		const note = document.createElement('div');
+		note.className = 'muted';
+		note.textContent = warning;
+		box.append(note);
+	}
 	renderLegs(box, plan);
 }
 
 function routeOptions() {
 	const effort = EFFORT[$('#effort-select').value] || EFFORT.balanced;
-	return { rw: objectDef, bw: critterDef, pwOf: (t) => zw.M[t], patterns: zw.O, tiles: zw.u, endAtExit: view.layers.has('endexit'), ...effort };
+	return { rw: objectDef, bw: critterDef, pwOf: (t) => zw.M[t], patterns: zw.O, tiles: zw.u, endAtExit: view.layers.has('endexit'), tombQuestDone: !zw.n_(state.level.type), ...effort };
 }
 
 function routeSummary(plan) {

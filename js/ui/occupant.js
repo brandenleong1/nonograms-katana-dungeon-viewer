@@ -3,6 +3,7 @@
 // damage and defence at this dungeon's level, their seal, and what they drop. People: their quest, or what they give.
 // Wild familiars: what they look like and their rank. Objects: what opening or breaking them costs, and what they
 // link to.
+import { SECRET_NAME } from '../tombs.js';
 import { KINDS, objectKind, critterKind, critterName, objectName, familiarRank, critterNameSource, objectNameSource, itemName as catalogItemName } from '../view/catalog.js';
 import { partners } from '../view/links.js';
 import { family } from '../labels.js';
@@ -12,7 +13,6 @@ import { partTitle } from './questlines.js';
 const FIGHTERS = new Set(['monster', 'goldmonster', 'boss', 'miniboss', 'unique', 'shapeshifter', 'familiar']);
 const FIRST_FAMILIAR = 190;   // critters 190..193 are the level's wild familiars (hw.p, level.companions)
 const RANK_NAMES = ['white', 'blue', 'yellow', 'purple'];
-const SECRET_NAME = 306;      // the item (bj0.c0 12) that lets a sealed tomb boss be hurt (input.js, the item-use branch)
 const MINE_CART_DEFENCE = 4; // aw.k: a creature with flag 512 (in a mine cart) defends 4 better
 const JADE_KEY = 222;         // the key a forest boss or mini-boss drops for its jade door
 const KEY_USES = { 167: 'for a keylock door', [JADE_KEY]: 'for the jade door' };
