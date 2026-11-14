@@ -1085,8 +1085,28 @@ table.cmp tr.muted td {
 }
 
 .pg-toolbar .seg-btn,
-.pg-toolbar .pg-reset {
+.pg-toolbar .pg-reset,
+.pg-mark-btn {
 	padding: 5px 9px;
+}
+
+/* "Mark all ... done": the buttons, what the last one did, and what they leave alone */
+.pg-mark {
+	display: flex;
+	flex-direction: column;
+	row-gap: 6px;
+}
+
+.pg-mark-buttons {
+	display: flex;
+	flex-wrap: wrap;
+	column-gap: 12px;
+	row-gap: 8px;
+}
+
+.pg-mark-result {
+	white-space: normal;
+	line-height: 1.35em;
 }
 
 .pg-count {
@@ -1179,6 +1199,7 @@ table.cmp tr.muted td {
 
 .pg-line-name {
 	flex: 1 1 auto;
+	font-weight: bold;
 	font-size: 110%;
 	line-height: 1.25em;
 }
@@ -1384,22 +1405,57 @@ table.cmp tr.muted td {
 }
 
 .pg-picks {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-	gap: 3px 10px;
+	container-type: inline-size;
 	font-size: 88%;
 	line-height: 1.3em;
 	white-space: normal;
 }
 
+/* Quest NPCs by dungeon: one row per family or floor, in the game's order; four columns so the rows line up */
+.pg-pick-row {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 4px 6px;
+	padding: 5px 0;
+}
+
+.pg-pick-row + .pg-pick-row {
+	border-top: 1px dotted var(--color_txt2);
+}
+
+/* phones: three columns, so the floors keep one line each and the four-dungeon rows wrap their last one */
+@container (max-width: 340px) {
+	.pg-pick-row {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+
 .pg-pick {
-	padding: 1px 4px;
+	padding: 2px 4px;
 	border-radius: 4px;
+	overflow-wrap: break-word;
 }
 
 .pg-pick.pg-cur {
 	outline: 2px solid var(--color_btn);
 	outline-offset: -2px;
+}
+
+.pg-pick-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	column-gap: 5px;
+}
+
+/* the dungeon on the map: a tag in the box's own colour, the selected-button colours of every theme */
+.pg-here {
+	padding: 0 5px;
+	border-radius: 8px;
+	font-size: 85%;
+	white-space: nowrap;
+	color: var(--color_bg);
+	background-color: var(--color_btn);
 }
 
 .pg-changed {
