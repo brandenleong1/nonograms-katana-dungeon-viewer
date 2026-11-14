@@ -48,16 +48,64 @@ export function mix32(x) {
 	return (x ^ (x >>> 16)) | 0;
 }
 
-/** play a candidate from a resumed run; returns the outcome (plain data) */
+/**
+ * play a candidate from a resumed run; returns the outcome (plain data). ctx: { ext, look, maxInputs, cont, lookWalk,
+ * extWalk, lookCache: a LookCache (lookcache.js) that shares the walk after the fight between play-outs }
+ */
 export function outcomeOf(run, cand, ctx = {}) {
 	const h0 = run.fight.h;
 	const led0 = run.led.clone();
 	const engaged = h0.D.filter((m) => isFoe(h0, m));
 	const fought = run.fightWith(makePolicy(cand.name, cand.params), ctx.maxInputs);
-	const play = { engaged, end: fought.end, turns: fought.turns, ext: 0, looked: 0 };
+	const play = { engaged, end: fought.end, turns: fought.turns, ext: 0, looked: 0, final: null };
+	walkOn(run, play, ctx);
+	return outcomeRecord(run, led0, play);
+}
+
+/**
+ * What follows the fight: the foes it left behind, then the look-ahead. With a cache, a state that was walked before
+ * costs what the walk cost then (the run itself stays where the fight left it: only play and its ledger move on).
+ */
+function walkOn(run, play, ctx) {
+	const cache = ctx.lookCache;
+	const key = cache && walksOn(run, play, ctx) ? cache.keyOf(run) : null;
+	const known = key === null ? undefined : cache.get(key);
+	if (known && !cache.verify) {
+		adoptWalk(run, play, known);
+		cache.reused();
+		return;
+	}
+	const before = key === null ? null : { led: run.led.clone(), turns: play.turns };
 	fightLeftovers(run, play, ctx);
 	lookAhead(run, play, ctx);
-	return outcomeRecord(run, led0, play);
+	play.final = finalOf(run);
+	if (before) cache.walked(key, walkSince(run, play, before), known);
+}
+
+/** there is a walk to make: the fight was won, the hero is alive in the dungeon, and leftovers or look-ahead are on */
+function walksOn(run, play, ctx) {
+	const h = run.fight.h;
+	return play.end === 'won' && !h.f.u_() && !run.fight.c.w && ((ctx.ext ?? 1) > 0 || (ctx.look ?? 0) > 0);
+}
+
+/** the hero where a play-out ends */
+function finalOf(run) {
+	return { hero: heroOf(run.fight.h), dead: run.fight.h.f.u_() };
+}
+
+/** what the walk since `before` cost (the ledger it added, the turns) and where it left the play */
+function walkSince(run, play, before) {
+	return { led: run.led.since(before.led), turns: play.turns - before.turns, ext: play.ext, looked: play.looked, end: play.end, final: play.final };
+}
+
+/** a cached walk's cost, added as if it had been made */
+function adoptWalk(run, play, walk) {
+	run.led.add(walk.led);
+	play.turns += walk.turns;
+	play.ext += walk.ext;
+	play.looked += walk.looked;
+	play.end = walk.end;
+	play.final = walk.final;
 }
 
 /**
@@ -105,9 +153,9 @@ function fightOn(run, ctx) {
 /** what a play-out cost, counted from led0 (the ledger before it), and where it left the hero */
 function outcomeRecord(run, led0, play) {
 	const led = run.led.since(led0);
-	const h = run.fight.h, P = heroOf(h);
+	const { hero: P, dead } = play.final;
 	return {
-		dead: led.dead || h.f.u_(), end: play.end, items: led.items(), byId: led.itemsById(), mpSpent: led.mp, hpLost: led.hp, epLost: led.ep,
+		dead: led.dead || dead, end: play.end, items: led.items(), byId: led.itemsById(), mpSpent: led.mp, hpLost: led.hp, epLost: led.ep,
 		hp: P.hp, hpM: P.hpM, ep: P.ep, epM: P.epM, mpLeft: P.mp, inputs: led.inputs, turns: play.turns, ext: play.ext, looked: play.looked,
 	};
 }
