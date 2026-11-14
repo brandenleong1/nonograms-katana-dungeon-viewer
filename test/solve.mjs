@@ -11,7 +11,7 @@ import { resetStatics } from '../js/combat/setup.js';
 import * as S from '../js/solve/sim.js';
 import { makePolicy, candidates, usable, availOf } from '../js/solve/policies.js';
 import { duelModel, verdict } from '../js/solve/kite.js';
-import { solveRobust, InlinePool, outcomeOf, mix32 } from '../js/solve/robust.js';
+import { solveRobust, InlinePool, outcomeOf, mix32, ScoutProfile } from '../js/solve/robust.js';
 import { solveExact, replayScript, InlineExactPool } from '../js/solve/exact.js';
 import { buildPlan, validatePlan } from '../js/solve/plan.js';
 import { shadow, pricesFor, compareAgg, aggregate, scoreOutcome } from '../js/solve/cost.js';
@@ -64,6 +64,16 @@ const t0 = performance.now();
 	check('cost: death above 1% loses to anything feasible', compareAgg(b, c) < 0);
 }
 
+// ---- scout need levels: zero after the last encounter only when a scout run got past it ----
+{
+	const run = (status) => ({ status, encounters: [{ key: 'a', hpNeed: 10, epNeed: 2 }, { key: 'b', hpNeed: 30, epNeed: 5 }] });
+	const died = new ScoutProfile([run('dead'), run('dead')]);
+	const finished = new ScoutProfile([run('dead'), run('done')]);
+	const str = (x) => JSON.stringify(x);
+	check('scout: every run died at the last key: its need is unknown, not zero', str(died.needAfter('b')) === str({ hp: 38, ep: 7 }) && str(died.restNeedAfter('b')) === str({ hp: 30, ep: 5 }), `${str(died.needAfter('b'))} ${str(died.restNeedAfter('b'))}`);
+	check('scout: a run finished after the last key: nothing is needed after it', str(finished.needAfter('b')) === str({ hp: 0, ep: 0 }) && str(finished.restNeedAfter('b')) === str({ hp: 0, ep: 0 }) && str(finished.needAfter('a')) === str({ hp: 38, ep: 7 }));
+}
+
 // ---- walker: a fountain re-plan doesn't count toward maxReplans ----
 {
 	resetStatics(tables);
@@ -89,6 +99,26 @@ const t0 = performance.now();
 	const k1 = play(a);
 	const k2 = play(S.Run.resume(ck));
 	check('walker: checkpoint resumes identically', k1 === k2, `${k1} vs ${k2}`);
+}
+
+// ---- walker: keys in the pack open locked doors 29 once their gold monsters are dead (c30.m0: any key, one per door) ----
+{
+	const objectiveStops = (w) => w.legs.filter((L) => L.kind === 'objective').map((L) => (L.rec ? `${L.rec.id}@${L.rec.x},${L.rec.y}` : L.label)).sort();
+	const replanWithKeys = (keys) => {
+		resetStatics(tables);
+		const run = S.Run.start({ level: 21, gear: 4, kit2: true }, { type: 12, seed: 344057351, xseed: 1 });
+		const h = run.fight.h, w = run.walker;
+		const before = objectiveStops(w);
+		const gold = h.o.filter((m) => m.g === 167);
+		for (const m of gold) h.j_(m, false);   // dead: the engine takes a critter off the level (hw.j)
+		if (keys) h.f.D.b_(167, keys);
+		w.replan();
+		return { before, after: objectiveStops(w), gold: gold.length };
+	};
+	const all = replanWithKeys(2), one = replanWithKeys(1);
+	const lost = (r) => r.before.filter((s) => !r.after.includes(s)).join(' ');
+	check('walker: a re-plan with the gold monsters dead keeps the objectives behind locked doors 29 when the keys are in the pack', all.gold === 2 && all.after.length === all.before.length, `lost ${lost(all) || 'none'}`);
+	check('walker: one key opens one locked door 29', one.after.length === one.before.length - 1, `lost ${lost(one) || 'none'}`);
 }
 
 // ---- wiki: first strike against a lone 2-AP melee foe (243, type 10) ----
@@ -219,6 +249,16 @@ let robustKeys = [];
 		check('robust: survives', robustPlan.totals.pDeath <= 0.1, `P(death) ${robustPlan.totals.pDeath}`);
 		check('robust: plan has the MP fields (mp, mpTopUps, mpToSolve, mpNeeded)', robustPlan.mp && Array.isArray(robustPlan.mpTopUps) && typeof robustPlan.mpToSolve === 'number' && robustPlan.mpNeeded && typeof robustPlan.mpNeeded.total === 'number', JSON.stringify(robustPlan.mpNeeded));
 	}
+}
+
+// ---- robust: the skill / item tactics are tried where the hero has what they need ----
+{
+	resetStatics(tables);
+	const extra = candidates('full').filter((c) => c.needs && (c.params.demor || c.params.divine || c.params.bomb === 118));
+	const res = await solveRobust({ hero: { level: 21, gear: 4, kit2: true }, type: 15, seed: 1492658333 }, { pool: new InlinePool(1), N: 4, nMin: 4, n0: 4, scout: 2, screen: 2, cands: [...candidates('quick'), ...extra], budgetMs: 120000 });
+	const tried = (label) => !res.error && res.decisions.some((d) => d.candidates.some((c) => c.label === label && c.n > 0));
+	const labels = ['melee(demor=2)', 'melee(divine=1)', 'melee(bomb=118)'];
+	check('robust: tries Demoralize, Divine protection and madness powder (the hero has them)', labels.every(tried), res.error || labels.filter((l) => !tried(l)).join(', '));
 }
 
 // ---- exact: seeded fightgen, replay identical ----

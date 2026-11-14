@@ -2,12 +2,14 @@
 import { showGameVersion } from './game-version.js';
 import { parseLabel, formatLabel, typeLabel, family } from './labels.js';
 import { IsoView } from './view/iso.js';
-import { KINDS, objectKind, critterKind, familiarRank, tileName, linkGroup } from './view/catalog.js';
+import { KINDS, objectKind, critterKind, tileName, linkGroup } from './view/catalog.js';
 import { partners, allLinks, floorNonogram, LINK_COLORS } from './view/links.js';
+import { occupantHtml, occupantName } from './ui/occupant.js';
 import { initTables, zw, vj0 as V } from './gen/statics.js';
 import { planRoute, objectives as gameObjectives } from './plan/planner.js';
-import { HeroPanel } from './hero.js';
+import { HeroPanel, hasKeptSave } from './hero.js';
 import { SolvePanel } from './ui/solve-panel.js';
+import { confirmPopup } from './ui/confirm-popup.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -33,18 +35,34 @@ const EFFORT = {
 };
 
 const MAP_BG = { light: '#ece9e2', sepia: '#e6dbc3', dark: '#0b0b0d', contrast: '#000000' };
-const DEFAULT_LABEL = '3C-172582050';
+// the map with no dungeon on it: a little darker than MAP_BG, and the colour of the words over it (the dark themes
+// have little room to go darker: Dark High Contrast is pure black already)
+const MAP_EMPTY = {
+	light: { bg: '#d9d5cb', text: '#2b2a27' },
+	sepia: { bg: '#d3c5a6', text: '#3a2a12' },
+	dark: { bg: '#050506', text: '#d6d6dc' },
+	contrast: { bg: '#000000', text: '#ffffff' },
+};
 const SELECT_HINT = 'Click a tile, object or monster.';
+const NO_DUNGEON = {
+	status: 'No dungeon is shown. Type a label above, or import a save made inside a dungeon.',
+	notInDungeon: 'This save is not inside a dungeon, so no dungeon is shown. Type a label above to look at one.',
+	select: 'Nothing to select: no dungeon is shown.',
+	list: 'No dungeon is shown.',
+};
+// the View buttons that need a dungeon on the map (the solver and tall-walls buttons work without one)
+const MAP_VIEW_BUTTONS = ['#zoom-in-btn', '#zoom-out-btn', '#fit-btn', '#hero-btn'];
 const HERO_ID = 180;
 const EXIT_LOCK_LOOK = { color: KINDS.lockdoor.color, glyph: '⚿', label: 'Unlock the exit (mini-boss key)' };
 const PUZZLE_STOP_LOOK = { glyph: '▦', color: KINDS.puzzledoor.color };
 
 /**
  * The page's state, shared with the solver panel and exposed as `window.nkd.state`: the dungeon shown (level, type,
- * seed) and its route (plan), the generator (null: only the sample fixtures), the new-game profile (fresh), and the
- * Your hero and solver panels.
+ * seed) and its route (plan), the generator (null: only the sample fixtures), the new-game profile (fresh), the
+ * Your hero and solver panels, and the item, skill and quest names (data/names.json). `level` is null while no
+ * dungeon is shown ("No Dungeon Loaded"); `type` then stays the last one shown (the hero panel's pack uses it).
  */
-const state = { level: null, type: 8, seed: 0, generator: null, fresh: null, hero: null, plan: null, solve: null };
+const state = { level: null, type: 8, seed: 0, generator: null, fresh: null, hero: null, plan: null, solve: null, names: {} };
 
 /** The map (IsoView). main() makes it before anything else runs. */
 let view;
@@ -56,6 +74,7 @@ async function main() {
 	view.setLayers(layersOn);
 	window.nkd = { view, state, show };   // console/debug handle
 	followPageTheme();
+	if (location.hash.length <= 1 && !hasKeptSave()) setNoDungeonView(true);   // nothing to wait for
 
 	await loadGameData();
 	showGameVersion($('#game-version'));
@@ -67,6 +86,7 @@ async function main() {
 
 	// Solver column (js/ui/solve-panel.js): solves run in a module worker with its own pool
 	const names = await loadNames();
+	state.names = names;
 	state.solve = new SolvePanel({ view, state, names, root: $('#solve-section'), show: (label) => show(label) });
 	state.solve.bind();
 	window.nkd.solve = state.solve;
@@ -77,7 +97,15 @@ async function main() {
 	bindEffortSelect();
 	window.addEventListener('hashchange', () => show(labelInHash()));
 
-	show(location.hash.length > 1 ? labelInHash() : DEFAULT_LABEL);
+	showStartView();
+}
+
+/** The first view: the URL's label; else the dungeon in the save kept in this tab; else "No Dungeon Loaded". */
+async function showStartView() {
+	const saved = state.hero.dungeon;
+	if (location.hash.length <= 1 && !saved) return clearDungeon();
+	await show(location.hash.length > 1 ? labelInHash() : formatLabel(saved.type, saved.seed));
+	if (!state.level) showNoDungeon();   // the label did not build: the status line says why
 }
 
 // ---- page setup --------------------------------------------------------------------------
@@ -90,8 +118,8 @@ function createMapView() {
 		onSelect: showSelection,
 	});
 	$('#map').addEventListener('mousemove', (e) => {
-		tooltip.style.left = `${e.clientX + 14}px`;
-		tooltip.style.top = `${e.clientY + 14}px`;
+		tooltip.style.left = `${Math.max(8, Math.min(e.clientX + 14, window.innerWidth - tooltip.offsetWidth - 8))}px`;
+		tooltip.style.top = `${Math.max(8, Math.min(e.clientY + 14, window.innerHeight - tooltip.offsetHeight - 8))}px`;
 	});
 	return mapView;
 }
@@ -102,8 +130,16 @@ function showTooltip(tooltip, cell) {
 		return;
 	}
 	const occupied = cell.critter || cell.object;
-	tooltip.textContent = occupied ? `${KINDS[cellKind(cell)].label} · ${cell.x},${cell.y}` : `${tileName(cell.a, cell.b)} · ${cell.x},${cell.y}`;
+	tooltip.textContent = occupied ? `${tooltipSummary(cell)} · ${cell.x},${cell.y}` : `${tileName(cell.a, cell.b)} · ${cell.x},${cell.y}`;
 	tooltip.style.display = 'block';
+}
+
+/** Reuse the Selected panel's details, with plain text and without its attribution line. */
+function tooltipSummary(cell) {
+	const summary = document.createElement('div');
+	summary.innerHTML = occupantHtml(cell, { level: state.level, names: state.names, profile: V.i2 });
+	summary.querySelector('.wiki-credit')?.remove();
+	return Array.from(summary.children, (line) => line.textContent).join(' — ');
 }
 
 /** The ids of the map layers that are on: the player's last choice (localStorage), else the defaults. */
@@ -151,6 +187,8 @@ function followPageTheme() {
 function applyPageTheme() {
 	const theme = pageTheme();
 	$('#map').style.setProperty('--map_bg', MAP_BG[theme]);
+	$('#map-section').style.setProperty('--map_bg_empty', MAP_EMPTY[theme].bg);
+	$('#map-section').style.setProperty('--map_fg_empty', MAP_EMPTY[theme].text);
 	const mapTheme = theme === 'light' || theme === 'sepia' ? 'light' : 'dark';
 	const changed = mapTheme !== view.theme;
 	view.setTheme(mapTheme);
@@ -191,14 +229,18 @@ function loadNames() {
 function createHeroPanel() {
 	return new HeroPanel({
 		getType: () => state.type,
-		getLabel: () => formatLabel(state.type, state.seed),
+		getLabel: () => (state.level ? formatLabel(state.type, state.seed) : ''),
+		hasDungeon: () => !!state.level,
 		onChange: rebuildMap,
+		confirmImport,
+		onImported: showImportedSave,
+		onForgotten: saveForgotten,
 	});
 }
 
 /** The progress the map is built with changed: build the dungeon shown again. */
 function rebuildMap() {
-	if (state.level || state.seed) show(formatLabel(state.type, state.seed));
+	if (state.level) show(formatLabel(state.type, state.seed));
 }
 
 /** The button that shows and hides the solver column (remembered in localStorage). */
@@ -238,10 +280,11 @@ async function showRandomLabel() {
 }
 
 function bindMapButtons() {
-	$('#zoom-in-btn').onclick = () => view.zoomAt(1.4, view.cssW / 2, view.cssH / 2);
-	$('#zoom-out-btn').onclick = () => view.zoomAt(1 / 1.4, view.cssW / 2, view.cssH / 2);
-	$('#fit-btn').onclick = () => view.fit();
-	$('#hero-btn').onclick = centerOnHero;
+	const withDungeon = (action) => () => { if (state.level) action(); };
+	$('#zoom-in-btn').onclick = withDungeon(() => view.zoomAt(1.4, view.cssW / 2, view.cssH / 2));
+	$('#zoom-out-btn').onclick = withDungeon(() => view.zoomAt(1 / 1.4, view.cssW / 2, view.cssH / 2));
+	$('#fit-btn').onclick = withDungeon(() => view.fit());
+	$('#hero-btn').onclick = withDungeon(centerOnHero);
 	$('#walls-btn').onclick = toggleWallHeight;
 }
 
@@ -345,6 +388,42 @@ function setCurrentLevel(level, label) {
 	const labelText = formatLabel(label.type, label.seed);
 	$('#label-input').value = labelText;
 	history.replaceState(null, '', `#${labelText}`);
+	setNoDungeonView(false);
+}
+
+/**
+ * Show no dungeon: the dark "No Dungeon Loaded" map, and the panels that list the dungeon say there is nothing. The
+ * label box and the URL's hash are emptied, so a reload does not bring the old dungeon back.
+ */
+function clearDungeon(statusText = NO_DUNGEON.status) {
+	showNoDungeon();
+	const status = $('#label-status');
+	status.classList.remove('error');
+	status.textContent = statusText;
+}
+
+function showNoDungeon() {
+	state.level = null;
+	state.seed = 0;
+	state.plan = null;
+	view.clearLevel();
+	setNoDungeonView(true);
+	$('#label-input').value = '';
+	history.replaceState(null, '', location.pathname + location.search);
+	$('#selected-info').textContent = NO_DUNGEON.select;
+	$('#objective-count').textContent = '';
+	$('#objective-list').textContent = NO_DUNGEON.list;
+	$('#route-info').textContent = NO_DUNGEON.list;
+	refreshPanelsForLevel();
+}
+
+/** The map's "No Dungeon Loaded" look, and the View buttons that need a dungeon switched off with it. */
+function setNoDungeonView(on) {
+	$('#map-section').classList.toggle('no-dungeon', on);
+	for (const id of MAP_VIEW_BUTTONS) {
+		$(id).classList.toggle('disabled', on);
+		$(id).setAttribute('aria-disabled', String(on));
+	}
 }
 
 function drawLevel(level, type) {
@@ -362,7 +441,14 @@ function levelStatusHtml(level, type) {
 	const basis = mapProfile ? mapProfile.basis : 'new';
 	const text = mapProfile ? mapProfile.text : 'New game';
 	return `${typeLabel(type)} · ${level.w}×${level.h} · ${level.objects.length} objects · ${level.critters.length} creatures` +
-		`<div class="map-basis basis-${basis}" title="The progress this map is built with (Your hero, Progress)">Built with: <b>${text}</b></div>`;
+		`<div class="map-basis basis-${basis}" title="The progress this map is built with (Your hero, Progress)">Built with: <b>${text}</b></div>` +
+		(showsSavedDungeon() ? '<div class="map-basis basis-save">Your dungeon in progress, <b>from your save</b></div>' : '');
+}
+
+/** Whether the dungeon on the map is the one the imported save is inside. */
+function showsSavedDungeon() {
+	const saved = state.hero && state.hero.profile && state.hero.dungeon;
+	return !!saved && !!state.level && saved.type === state.type && saved.seed === state.seed;
 }
 
 /** The Your hero popups and the solver follow the dungeon shown. */
@@ -372,13 +458,60 @@ function refreshPanelsForLevel() {
 	if (state.solve) state.solve.onLevel();
 }
 
+// ---- importing and forgetting a save -----------------------------------------------------
+
+/** What an import would wipe: the dungeon on the map, the solver's plan, a solve under way. */
+function whatIsOnScreen() {
+	return { dungeon: !!state.level, plan: !!(state.solve && state.solve.result), solving: !!(state.solve && state.solve.running) };
+}
+
+/** Ask before an import wipes something on screen (js/hero.js importFile). Nothing on screen: no question. */
+async function confirmImport({ replacesSave }) {
+	const onScreen = whatIsOnScreen();
+	if (!onScreen.dungeon && !onScreen.plan && !onScreen.solving) return true;
+	return confirmPopup({ title: 'Import a save?', text: wipeWarning(replacesSave), confirmLabel: 'Import' });
+}
+
+/** The question: the dungeon (with its plan and any solve) goes, and so does the save imported before, if there is one. */
+function wipeWarning(replacesSave) {
+	return `Importing a save clears the existing dungeon${replacesSave ? ' and save' : ''}. Import and continue?`;
+}
+
+/**
+ * A new save was read (js/hero.js): nothing from before stays on screen. Show the dungeon the save is inside, or the
+ * "No Dungeon Loaded" view (whose text says why). The scene change is the message: no toast.
+ * @param {{ type: number, seed: number, kind: string } | null} dungeon the save's dungeon in progress
+ */
+async function showImportedSave(dungeon) {
+	if (state.solve) state.solve.reset();
+	if (!dungeon) {
+		clearDungeon(NO_DUNGEON.notInDungeon);
+		return;
+	}
+	showNoDungeon();   // should the dungeon not build, the old one must not stay on the map
+	const label = formatLabel(dungeon.type, dungeon.seed);
+	await show(label);
+}
+
+/** The save was forgotten (js/hero.js): the map stays; the plan made from the save goes. Say what happened. */
+function saveForgotten() {
+	if (state.solve) state.solve.dropWhatCameFromSave();
+	if (!state.level) $('#label-status').textContent = NO_DUNGEON.status;   // not "this save is not inside a dungeon"
+	toast('Save removed. Dungeons are generated as new games.');
+}
+
+/** A short message at the bottom of the page (lib/utils Popup), in the middle: the View buttons stay clear. */
+function toast(text) {
+	if (typeof Popup !== 'undefined') Popup.toastPopup(text, DOWN, 4500);
+}
+
 // ---- selection ---------------------------------------------------------------------------
 
 /** The Selected panel and the link highlights for a clicked cell (null: nothing selected). */
 function showSelection(cell) {
 	const box = $('#selected-info');
 	if (!cell) {
-		box.textContent = SELECT_HINT;
+		box.textContent = state.level ? SELECT_HINT : NO_DUNGEON.select;
 		view.setLinks(baseLinks(), []);
 		return;
 	}
@@ -403,39 +536,8 @@ function baseLinks() {
 
 function cellHtml(cell) {
 	const occupied = cell.critter || cell.object;
-	const occupantPart = occupied ? occupantHtml(cell) : '';
+	const occupantPart = occupied ? occupantHtml(cell, { level: state.level, names: state.names, profile: V.i2 }) : '';
 	return `${occupantPart}<div class="muted">${tileName(cell.a, cell.b)} · ${cell.x},${cell.y}</div>`;
-}
-
-/** A cell's creature or object: what it is, the mental power it takes to open, and what it links to. */
-function occupantHtml(cell) {
-	const isCritter = !!cell.critter;
-	const rec = cell.critter || cell.object;
-	const look = KINDS[cellKind(cell)];
-	const parts = [`<div><span class="glyph" style="color:${look.color}">${look.glyph}</span><b>${look.label}</b> <span class="muted">#${rec.id}</span></div>`];
-	const def = isCritter ? critterDef(rec.id) : objectDef(rec.id);
-	if (isCritter && critterKindOf(rec) === 'shapeshifter') parts.push('<div>Looks like a person, but turns into a monster when you talk to it.</div>');
-	// a familiar's v is its level cap (zw.d by rank), not a mental power cost
-	const familiar = isCritter && critterKindOf(rec) === 'familiar';
-	if (familiar) parts.push(familiarRankHtml(familiarRank(state.level, rec)));
-	if (def && def.v > 0 && !familiar) parts.push(`<div>Needs <b>${def.v}</b> mental power to open.</div>`);
-	if (!isCritter && objectKindOf(rec) === 'stuckdoor' && state.level) parts.push(`<div>Breaking it costs ${breakCost(state.level.type)} energy.</div>`);
-	if (def && def.t) parts.push(`<div class="muted">Counts as an objective.</div>`);
-	const linked = isCritter ? [] : partners(state.level, rec);
-	if (linked.length) parts.push(`<div>Links to ${linked.map(partnerLinkHtml).join(', ')}.</div>`);
-	return parts.join('');
-}
-
-const RANK_NAMES = ['white', 'blue', 'yellow', 'purple'];
-
-/** a wild familiar's rank, named by the colour the game shows it in */
-function familiarRankHtml(rank) {
-	if (rank === null) return '<div class="muted">Its rank is not known for this dungeon.</div>';
-	return `<div>Rank <b>${rank}</b> of 3 (${RANK_NAMES[rank]}).</div>`;
-}
-
-function partnerLinkHtml(p) {
-	return `<a data-x="${p.x}" data-y="${p.y}">${KINDS[objectKindOf(p)].label.toLowerCase()} at ${p.x},${p.y}</a>`;
 }
 
 // ---- objectives --------------------------------------------------------------------------
@@ -457,16 +559,16 @@ function objectives(level) {
 function objectiveEntry(objective) {
 	if (objective.kind === 'exitlock') {
 		const { x, y } = objective.at;
-		return { rec: { id: -1, x, y, exitlock: true }, look: EXIT_LOCK_LOOK };
+		return { rec: { id: -1, x, y, exitlock: true }, look: EXIT_LOCK_LOOK, name: EXIT_LOCK_LOOK.label };
 	}
 	const kind = objective.kind === 'critter' ? critterKindOf(objective.rec) : objectKindOf(objective.rec);
-	return { rec: objective.rec, look: KINDS[kind] };
+	return { rec: objective.rec, look: KINDS[kind], name: recName(objective.rec) };
 }
 
-function objectiveRow({ rec, look }) {
+function objectiveRow({ rec, look, name }) {
 	const row = document.createElement('div');
 	row.className = 'row';
-	row.innerHTML = `<span><span class="glyph" style="color:${look.color}">${look.glyph}</span>${look.label}</span><span class="muted">${rec.x},${rec.y}</span>`;
+	row.innerHTML = `<span><span class="glyph" style="color:${look.color}">${look.glyph}</span>${esc(name)}</span><span class="muted">${rec.x},${rec.y}</span>`;
 	row.onclick = () => {
 		view.centerOn(rec.x, rec.y);
 		view.selected = rec;
@@ -545,15 +647,10 @@ function outlineOnly(box, row) {
 }
 
 function stopLabel(stop) {
-	return stop.label || KINDS[stopKind(stop.rec)].label;
+	return stop.label || esc(recName(stop.rec));
 }
 
 // ---- what things are ---------------------------------------------------------------------
-
-/** Energy to break a stuck door in a dungeon type: its pw.r, as the route planner counts it. */
-function breakCost(type) {
-	return zw.M[type] ? zw.M[type].r : 5;
-}
 
 /** The game's definition of an object (its rw record, zw.Q). */
 function objectDef(id) {
@@ -573,14 +670,18 @@ function critterKindOf(rec) {
 	return critterKind(rec, critterDef(rec.id));
 }
 
-/** The kind of what stands on a map cell: its creature, else its object. */
-function cellKind(cell) {
-	return cell.critter ? critterKindOf(cell.critter) : objectKindOf(cell.object);
-}
-
 /** Planner stops hold either a creature (it has a `k`) or an object. */
 function stopKind(rec) {
 	return rec.k !== undefined ? critterKindOf(rec) : objectKindOf(rec);
+}
+
+/** What the Objectives and Route lists call a stop: its name (data/catalog.json), e.g. "Purple chest" or "Bone Dragon". */
+function recName(rec) {
+	return occupantName(rec.k !== undefined ? { critter: rec } : { object: rec }, state.level);
+}
+
+function esc(text) {
+	return String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 }
 
 main();

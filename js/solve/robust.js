@@ -48,16 +48,64 @@ export function mix32(x) {
 	return (x ^ (x >>> 16)) | 0;
 }
 
-/** play a candidate from a resumed run; returns the outcome (plain data) */
+/**
+ * play a candidate from a resumed run; returns the outcome (plain data). ctx: { ext, look, maxInputs, cont, lookWalk,
+ * extWalk, lookCache: a LookCache (lookcache.js) that shares the walk after the fight between play-outs }
+ */
 export function outcomeOf(run, cand, ctx = {}) {
 	const h0 = run.fight.h;
 	const led0 = run.led.clone();
 	const engaged = h0.D.filter((m) => isFoe(h0, m));
 	const fought = run.fightWith(makePolicy(cand.name, cand.params), ctx.maxInputs);
-	const play = { engaged, end: fought.end, turns: fought.turns, ext: 0, looked: 0 };
+	const play = { engaged, end: fought.end, turns: fought.turns, ext: 0, looked: 0, final: null };
+	walkOn(run, play, ctx);
+	return outcomeRecord(run, led0, play);
+}
+
+/**
+ * What follows the fight: the foes it left behind, then the look-ahead. With a cache, a state that was walked before
+ * costs what the walk cost then (the run itself stays where the fight left it: only play and its ledger move on).
+ */
+function walkOn(run, play, ctx) {
+	const cache = ctx.lookCache;
+	const key = cache && walksOn(run, play, ctx) ? cache.keyOf(run) : null;
+	const known = key === null ? undefined : cache.get(key);
+	if (known && !cache.verify) {
+		adoptWalk(run, play, known);
+		cache.reused();
+		return;
+	}
+	const before = key === null ? null : { led: run.led.clone(), turns: play.turns };
 	fightLeftovers(run, play, ctx);
 	lookAhead(run, play, ctx);
-	return outcomeRecord(run, led0, play);
+	play.final = finalOf(run);
+	if (before) cache.walked(key, walkSince(run, play, before), known);
+}
+
+/** there is a walk to make: the fight was won, the hero is alive in the dungeon, and leftovers or look-ahead are on */
+function walksOn(run, play, ctx) {
+	const h = run.fight.h;
+	return play.end === 'won' && !h.f.u_() && !run.fight.c.w && ((ctx.ext ?? 1) > 0 || (ctx.look ?? 0) > 0);
+}
+
+/** the hero where a play-out ends */
+function finalOf(run) {
+	return { hero: heroOf(run.fight.h), dead: run.fight.h.f.u_() };
+}
+
+/** what the walk since `before` cost (the ledger it added, the turns) and where it left the play */
+function walkSince(run, play, before) {
+	return { led: run.led.since(before.led), turns: play.turns - before.turns, ext: play.ext, looked: play.looked, end: play.end, final: play.final };
+}
+
+/** a cached walk's cost, added as if it had been made */
+function adoptWalk(run, play, walk) {
+	run.led.add(walk.led);
+	play.turns += walk.turns;
+	play.ext += walk.ext;
+	play.looked += walk.looked;
+	play.end = walk.end;
+	play.final = walk.final;
 }
 
 /**
@@ -105,9 +153,9 @@ function fightOn(run, ctx) {
 /** what a play-out cost, counted from led0 (the ledger before it), and where it left the hero */
 function outcomeRecord(run, led0, play) {
 	const led = run.led.since(led0);
-	const h = run.fight.h, P = heroOf(h);
+	const { hero: P, dead } = play.final;
 	return {
-		dead: led.dead || h.f.u_(), end: play.end, items: led.items(), byId: led.itemsById(), mpSpent: led.mp, hpLost: led.hp, epLost: led.ep,
+		dead: led.dead || dead, end: play.end, items: led.items(), byId: led.itemsById(), mpSpent: led.mp, hpLost: led.hp, epLost: led.ep,
 		hp: P.hp, hpM: P.hpM, ep: P.ep, epM: P.epM, mpLeft: P.mp, inputs: led.inputs, turns: play.turns, ext: play.ext, looked: play.looked,
 	};
 }
@@ -244,7 +292,7 @@ export class Shard {
 		s.key = encounterKey(stop, countVisit(s.stopCount, stop));
 		const h = run.fight.h;
 		const needs = run.walker.routeNeeds();
-		s.info = { stop: stopOut(stop), enemies: h.D.filter((m) => isFoe(h, m)).map((m) => critterInfo(h, m)), hero: heroOf(h), needs };
+		s.info = { stop: stopOut(stop), enemies: h.D.filter((m) => isFoe(h, m)).map((m) => critterInfo(h, m)), hero: heroOf(h), needs, avail: availOf(h) };
 		s.status = 'combat';
 	}
 
@@ -484,7 +532,7 @@ function dealSamples(N, seed, W) {
  * What the scout (fixed-policy play-throughs from the start) says about the encounters: their order on the route, the
  * HP / EP each costs, and where the baseline dies.
  */
-class ScoutProfile {
+export class ScoutProfile {
 	constructor(rows) {
 		this.rows = rows;
 		this.order = new Map();     // key -> { s: sum of relative positions, n }
@@ -510,11 +558,20 @@ class ScoutProfile {
 		return o ? o.s / o.n : 0.5;
 	}
 
-	/** the scouted keys after k (all of them for a key the scout never met) */
+	/**
+	 * the scouted keys after k: all of them for a key the scout never met, and for one that is last in the scout only
+	 * because every run that met it died there (what follows is unknown, not nothing: it is no "last encounter")
+	 */
 	keysAfter(k) {
 		if (!this.order.has(k)) return this.keysByPos;
 		const p = this.pos(k);
-		return this.keysByPos.filter((q) => this.pos(q) > p + 1e-9);
+		const later = this.keysByPos.filter((q) => this.pos(q) > p + 1e-9);
+		return later.length || this.finishedAfter(k) ? later : this.keysByPos;
+	}
+
+	/** some scout run that met key k went on to finish the dungeon */
+	finishedAfter(k) {
+		return this.rows.some((r) => r.status === 'done' && r.encounters.some((e) => e.key === k));
 	}
 
 	/** need levels after key k: the largest expected HP (EP) loss of a later scouted encounter, x1.25 */

@@ -20,7 +20,7 @@
 			<div class="content-header">Dungeon Viewer</div>
 			<div class="content-container-vertical" style="row-gap: 10px; justify-content: flex-start;">
 				<div class="content-caption">Type the label shown at the top of your dungeon.</div>
-				<input type="text" id="label-input" placeholder="3C-172582050" spellcheck="false" autocomplete="off" />
+				<input type="text" id="label-input" placeholder="e.g. 3C-172582050" spellcheck="false" autocomplete="off" />
 				<div class="content-container-horizontal" style="column-gap: 15px;">
 					<div class="button-positive-2" id="show-btn">Show</div>
 					<div class="button-positive-2" id="random-btn" title="A random dungeon of the same kind">Random</div>
@@ -52,7 +52,13 @@
 		</div>
 
 		<div class="content-container-vertical" id="map-section">
-			<canvas id="map"></canvas>
+			<div class="map-frame">
+				<canvas id="map"></canvas>
+				<div class="map-empty" id="map-empty">
+					<div class="map-empty-title">No Dungeon Loaded</div>
+					<div class="map-empty-hint">Type a label, or import a save made inside a dungeon.</div>
+				</div>
+			</div>
 			<div class="content-caption" id="map-caption">Drag to move · Scroll or pinch to zoom · Click something to see what it is</div>
 		</div>
 
@@ -94,7 +100,7 @@
 				<div class="content-text">Text styled like <span style="color: var(--color_btn);">this</span> are buttons.</div>
 				<div class="content-text">
 					This site rebuilds a Nonograms Katana dungeon from its label (for example <b>3C-172582050</b>), using the same
-					rules the game uses, and draws it the way the game does. Click a ladder, hatch, portal, lever or gate to see the
+					rules the game uses, and draws it the way the game does. Click a ladder, hatch, portal, lever, or gate to see the
 					thing it connects to. The route panel suggests an order for clearing every objective.
 				</div>
 				<div class="content-text">
@@ -106,9 +112,15 @@
 				<div class="content-text">
 					Monsters and people can depend on your quests and finds. The map assumes a new game until you import your
 					save under Your hero (the game's Settings → Export file) or set your quests and bosses under Progress.
-					The save is read in your browser only.
+					The save is read in your browser only. A save made inside a dungeon shows that dungeon, and importing a save
+					replaces the dungeon and plan on screen (you are asked first).
 				</div>
 				<div class="content-text" id="game-version">Built for the game version listed in this site's README.</div>
+				<div class="content-text">
+					Monster, NPC, and object names: <a href="https://nonograms-katana.fandom.com" target="_blank" rel="noopener">Nonograms
+					Katana Wiki</a> community, <a href="https://creativecommons.org/licenses/by-sa/3.0/" target="_blank" rel="noopener">CC
+					BY-SA 3.0</a>.
+				</div>
 			</div>
 		</div>
 		<div class="popup" id="popup-hero">
@@ -118,7 +130,7 @@
 				anywhere. It is kept in this tab until you close it or press Forget.
 			</div>
 			<div class="content-container-horizontal hero-footer" id="hero-footer" style="display: none;">
-				<div class="layer-row" id="hero-use" title="Build maps with your quests, bosses beaten and mini-boss quests">
+				<div class="layer-row" id="hero-use" title="Build maps with your quests, bosses beaten, and mini-boss quests">
 					<div class="checkbox selected" id="hero-use-box"></div><span>Use my progress for maps</span>
 				</div>
 				<div class="button-positive-2" id="hero-forget">Forget this save</div>
@@ -132,10 +144,18 @@
 			<div class="hero-error" id="hero-error" style="display: none;"></div>
 			<div class="content-container-horizontal hero-body" id="hero-body" style="display: none;"></div>
 		</div>
+		<div class="popup" id="popup-confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-text" inert>
+			<div class="content-header" id="confirm-title"></div>
+			<div class="content-text" id="confirm-text"></div>
+			<div class="content-container-horizontal confirm-buttons">
+				<div class="button-positive-2" id="confirm-cancel" role="button" tabindex="0">Cancel</div>
+				<div class="button-positive-2 primary" id="confirm-ok" role="button" tabindex="0"></div>
+			</div>
+		</div>
 		<div class="popup" id="popup-progress">
 			<div class="content-header">Your progress</div>
 			<div class="privacy-note">
-				Monsters, people and bosses in a dungeon depend on what you have done in the game. Set it here without a
+				Monsters, people, and bosses in a dungeon depend on what you have done in the game. Set it here without a
 				save, or start from your save and try what-ifs. The map and the solver use it at once; your changes are kept
 				in this browser.
 			</div>

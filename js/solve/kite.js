@@ -326,7 +326,7 @@ export function duelInput(fight, foe, k, freeFn, opts = {}) {
 
 /**
  * Path lengths (steps) of the monster's hw.t path to every cell as a target, with the hero's cell vacated (where the
- * hero would stand instead): a Dijkstra on hw.t's step costs (plain 100, liquid 90, reeds 85, doors 300 / 500,
+ * hero would stand instead): a Dijkstra on hw.t's step costs (plain 100, liquid 90, mine carts 85, doors 300 / 500,
  * same-team critters 1500; other occupants and unrevealed cells block), turn penalties left out. Returns Int16Array
  * (-1 = no path within maxSteps).
  */

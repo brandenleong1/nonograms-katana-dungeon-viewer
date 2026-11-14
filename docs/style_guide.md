@@ -9,13 +9,13 @@ about structure.
 ## Where it applies
 
 **Everything we wrote:** `js/view/`, `js/plan/`, `js/solve/`, `js/ui/`, `js/app.js`, `js/hero.js`, `js/labels.js`,
-`test/` and `tools/`.
+`test/`, and `tools/`.
 
 **Not the ports.** `js/gen/`, `js/combat/`, and the loader in `js/save/guild.js` / `records.js` mirror the game's Java
 method for method, so they can be diffed against it and stay bit-exact. There, fidelity beats style:
 
 - Keep the Java names (`hw`, `qw.e`, `S0_`), even short or meaningless ones.
-- Keep the method boundaries, argument lists, control flow and statement order. Don't extract, merge or flatten.
+- Keep the method boundaries, argument lists, control flow, and statement order. Don't extract, merge, or flatten.
 - Keep Java's statics as they are (`vj0.i2` and friends). A port that "improves" structure can't be checked against the
   original any more.
 
@@ -32,7 +32,7 @@ A function does one thing. If it has numbered steps, blank-line sections with he
 Keep orchestration separate from detail. The top-level function reads like a summary of the steps:
 
 ```js
-// Avoid: route search, MP bookkeeping and DOM writes in one function
+// Avoid: route search, MP bookkeeping, and DOM writes in one function
 function showPlan(level) { /* 80 lines */ }
 
 // Prefer
@@ -109,7 +109,7 @@ rather than editing the global.
 
 ### Files named for what they do
 
-No `utils.js`, `helpers.js` or `common.js` in this repo. (`lib/utils` is the shared upstream library; that's a
+No `utils.js`, `helpers.js`, or `common.js` in this repo. (`lib/utils` is the shared upstream library; that's a
 different thing.)
 
 - If a function is really about one type, make it a method of that class.
@@ -166,9 +166,15 @@ function pinFor(encounter, plan) {
 }
 ```
 
+## 6. Writing
+
+In text players see, docs, and comments, use the serial (Oxford) comma in lists of three or more: "seals, sealed
+doors, and chests", not "seals, sealed doors and chests". The same goes for "or". Two items take no comma ("monsters
+and people").
+
 ## Hot paths
 
-The engine step, `clone.js` and A* run millions of times per solve. There, a flat loop over typed arrays can beat a
+The engine step, `clone.js`, and A* run millions of times per solve. There, a flat loop over typed arrays can beat a
 tidy abstraction. That's acceptable when:
 
 - a comment says why, and

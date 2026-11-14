@@ -8,14 +8,54 @@
 //             script step by step (creatures where the engine has them, HP bars, the instruction as a callout, the
 //             walked trail)
 // The solve runs in js/ui/solve-host.js (a module worker with its own pool), so the page stays responsive.
-import { formatLabel, typeLabel } from '../labels.js';
-import { KINDS, critterKind, critterVariant, objectKind } from '../view/catalog.js';
+import { formatLabel, typeLabel, family } from '../labels.js';
+import { KINDS, critterKind, critterVariant, objectKind, critterName as catalogName, objectName, itemName } from '../view/catalog.js';
 import { drawSprite } from '../view/sprites.js';
 import { zw, vj0 as V } from '../gen/statics.js';
 import { SolveClient, CancelError } from './solve-client.js';
 import { BUDGETS, BUDGET_LABELS, workerCount } from './budgets.js';
+
+/**
+ * The solver's options in players' words: a short hover title, and for Mode and Search a description of the chosen
+ * option in a box under their rows (hover text is slow and never shows on phones). The time is shown next to Solve.
+ */
+const OPTION_HELP = {
+	mode: {
+		robust: {
+			title: 'Random dice: plays each fight many times',
+			desc: 'the game rolls truly random dice once you enter, so it plays each fight many times with random rolls '
+				+ 'and picks the tactic that does best on average.',
+		},
+		exact: {
+			title: 'Plan from a save made in the dungeon: a tap-by-tap script',
+			desc: 'plans from a save made inside this dungeon (Settings → Export while in it), which holds the dice: you '
+				+ 'get a tap-by-tap script. One different tap changes every roll after it.',
+		},
+	},
+	heroSrc: {
+		profile: { title: 'The hero picked in Your hero, with its own gear, skills, pack, and mental power' },
+		manual: { title: 'A made-up hero: choose a level, gear, and kit' },
+	},
+	exactSrc: {
+		save: { title: 'Play on from the state in your save, with the game\'s own dice' },
+		xseed: { title: 'This label with a made-up dice seed' },
+	},
+};
+
+/** the help for a search depth in this mode: how many runs (robust) or moves per fight (exact) it tries */
+function searchHelp(mode, depth) {
+	const b = BUDGETS[mode][depth];
+	if (mode === 'exact') {
+		const more = { normal: 'Good for a first look.', thorough: 'Finds a better line more often.', exhaustive: 'The deepest search, and the slowest.' }[depth] || '';
+		return { title: `Searches up to ${b.maxDecisions} moves per fight`, desc: `beyond every tactic, searches up to ${b.maxDecisions} of your moves per fight. ${more}` };
+	}
+	const more = { normal: 'Good for a first look.', thorough: 'Steadier numbers.', exhaustive: 'The most reliable numbers, and the slowest.' }[depth] || '';
+	return { title: `Plays the dungeon ${b.N} times`, desc: `plays the dungeon ${b.N} times, testing each fight's tactic on at least ${b.nMin} rolls. ${more}` };
+}
 import { instruction, effects, tacticWords, topUpText, pct, num } from './words.js';
 
+const SOLVER_INTRO = 'The solver plays this dungeon in the game\'s own combat engine and picks, fight by fight, the tactic that uses the fewest items, then the least mental power, without dying.';
+const NO_DUNGEON_INTRO = 'No dungeon is shown. Type a label, or import a save made inside a dungeon, and the solver can plan it.';
 const KEY = 'nkd-solve';
 const $ = (s, root = document) => root.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -25,7 +65,7 @@ const KIT_TEXT = {
 	none: 'No kit: only what a new-game hero carries',
 	// js/combat/setup.js KIT_ITEMS / KIT2_ITEMS
 	kit: 'Basic kit: 5 healing potions, 2 Mechanical spiders, 5 kunai, 3 Greek grenades, 2 nets, 2 grappling hooks, 1 Ambrosia; 60 mental power; basic skills',
-	kit2: 'Full kit: healing, energy and mental-power potions, 2 Ambrosia, grenades, flamethrowers, golden kunai, food and more; full mental power; most skills',
+	kit2: 'Full kit: healing, energy, and mental-power potions, 2 Ambrosia, grenades, flamethrowers, golden kunai, food, and more; full mental power; most skills',
 };
 const GEAR_TEXT = ['Tier 1 (starter)', 'Tier 2', 'Tier 3', 'Tier 4 (best)'];
 const SKILL_NAMES_FALLBACK = { 20001: 'Wait', 20002: 'Smashing blow', 20003: 'Round kick', 20004: 'Demoralization', 20005: 'Charge of motivation', 20006: 'Doctor', 20007: 'Divine protection' };
@@ -66,6 +106,7 @@ export class SolvePanel {
 		this.pos = 0;
 		this.playing = null;
 		this.status = '';
+		this.epoch = 0;   // counts resets: a run that started before one must not go on
 	}
 
 	save() { localStorage.setItem(KEY, JSON.stringify(this.cfg)); }
@@ -89,13 +130,21 @@ export class SolvePanel {
 	}
 
 	// ---- names ----------------------------------------------------------------------------------------------
-	item(id) { return (this.names.items && this.names.items[id]) || `item ${id}`; }
+	item(id) { return itemName(id, this.names); }
 	skill(index, id) { return (index != null && index >= 0 && this.names.skills && this.names.skills[index]) || SKILL_NAMES_FALLBACK[id] || `skill ${id}`; }
-	objectLabel(id) { return KINDS[objectKind({ id }, zw.Q?.get(id))].label.toLowerCase(); }
+	/** an object's name in the dungeon shown (data/catalog.json), e.g. "purple chest"; its kind if it has none */
+	objectLabel(id) { return this.objectTitle(id).toLowerCase(); }
+	objectTitle(id) {
+		const type = this.state.level ? this.state.level.type : this.state.type;
+		return objectName({ id }, family(type)) ?? KINDS[objectKind({ id }, zw.Q?.get(id))].label;
+	}
 	critterKindOf(rec) { return critterKind(rec, zw.R?.get(rec.id)); }
+	/** a creature's name (data/catalog.json), e.g. "Gnoll shaman"; its kind and id if it has none */
 	critterName(kind, id) {
 		if (kind === 'spider') return 'your Mechanical spider';
 		if (kind === 'hero') return 'you';
+		const name = catalogName({ id });
+		if (name) return name;
 		const base = { monster: 'Monster', goldmonster: 'Gold monster', miniboss: 'Mini-boss', boss: 'Boss', unique: 'Unique monster', familiar: 'Wild familiar', npc: 'Person', shapeshifter: 'Shapeshifter' }[kind] || 'Creature';
 		return `${base} ${id}`;
 	}
@@ -160,14 +209,69 @@ export class SolvePanel {
 		const c = this.cfg;
 		const exact = c.mode === 'exact';
 		const xseed = exact && !this.useSave() ? ` · xseed ${esc(c.xseed)}` : '';
-		return `<div class="solve-compact"><span>${exact ? 'Exact' : 'Robust'} · ${BUDGET_LABELS[c.budget]} · ${esc(this.heroWords())}${xseed}${c.useItemsForMp ? ' · items for MP' : ''}</span> <a id="solve-expand" role="button" tabindex="0">Change</a></div>${this.runRowHtml()}`;
+		return `<div class="solve-compact"><span>${exact ? 'Exact' : 'Robust'} · ${BUDGET_LABELS[c.budget]} · ${this.targetWords()}${xseed}${c.useItemsForMp ? ' · items for MP' : ''}</span> <a id="solve-expand" role="button" tabindex="0">Change</a></div>${this.runRowHtml()}`;
+	}
+
+	/** the dungeon and the hero a Solve would use, in one line for the compact settings */
+	targetWords() {
+		if (this.useSave()) return `${esc(this.saveDungeonLabel())}, your save's dungeon in progress`;
+		const dungeon = this.state.level ? formatLabel(this.state.type, this.state.seed) : 'no dungeon';
+		return `${esc(dungeon)} · ${esc(this.heroWords())}`;
 	}
 
 	heroWords() {
-		if (this.useSave()) return 'your dungeon in progress';
 		if (this.cfg.heroSrc !== 'profile') return heroSpecText(this.heroSpec());
 		const pi = this.profileInfo();
 		return pi ? `your hero ${pi.index + 1} (Lv ${pi.lvl})` : 'your hero';
+	}
+
+	saveDungeonLabel() {
+		const sd = this.saveDungeon();
+		return sd ? formatLabel(sd.type, sd.seed) : '';
+	}
+
+	/**
+	 * What a Solve would use right now, so no plan is ever mistaken for another save's or dungeon's: the dungeon and where
+	 * it starts, and the hero. Exact mode on the save's dungeon plays that dungeon on from the save; every other solve
+	 * plays the dungeon on the map from its entrance.
+	 */
+	solveTargetHtml() {
+		const { dungeon, hero } = this.solveTarget();
+		return `<div class="solve-note solve-target" id="solve-target"><div><span class="muted">Solves</span> ${dungeon}</div><div><span class="muted">With</span> ${hero}</div></div>`;
+	}
+
+	solveTarget() {
+		if (this.useSave()) return this.saveTarget();
+		return { dungeon: this.mapDungeonWords(), hero: this.heroSourceWords() };
+	}
+
+	saveTarget() {
+		const label = this.saveDungeonLabel();
+		const onMap = this.state.level && formatLabel(this.state.type, this.state.seed) === label;
+		return {
+			dungeon: `<b>${esc(label)}</b>, your save's dungeon, played on from where your save stands${onMap ? '' : ' (shown on the map first)'}`,
+			hero: 'the hero in your save, its pack, mental power and dice',
+		};
+	}
+
+	/** the map's dungeon as the target of a robust or experiment solve */
+	mapDungeonWords() {
+		if (!this.state.level) return 'nothing yet: type a label, or import a save made inside a dungeon';
+		const label = formatLabel(this.state.type, this.state.seed);
+		const ownSave = this.saveDungeonLabel() === label || this.heroDungeonLabel() === label;
+		return `<b>${esc(label)}</b>, the dungeon on the map${ownSave ? ' (your save\'s dungeon)' : ''}, from its entrance`;
+	}
+
+	heroSourceWords() {
+		if (this.cfg.heroSrc !== 'profile') return esc(heroSpecText(this.heroSpec()));
+		const pi = this.profileInfo();
+		return pi ? `hero ${pi.index + 1} (Lv ${pi.lvl}) from your save` : 'no hero yet: import your save, or use What-if';
+	}
+
+	/** the label of the dungeon the imported save is inside, of any kind ('' when it is in town or there is no save) */
+	heroDungeonLabel() {
+		const H = this.heroPanel();
+		return H && H.profile && H.dungeon ? formatLabel(H.dungeon.type, H.dungeon.seed) : '';
 	}
 
 	controlsHtml() {
@@ -175,12 +279,14 @@ export class SolvePanel {
 		const exact = c.mode === 'exact';
 		const useSave = this.useSave();
 		return `
-			<div class="solve-row"><span class="solve-key">Mode</span>${this.seg('mode', [['robust', 'Robust', 'Monte Carlo over the unknown dice: works from the label alone'], ['exact', 'Exact', 'Known dice (a save made in the dungeon, or an xseed): a tap-by-tap script']], 'Solver mode')}</div>
-			<div class="solve-row"><span class="solve-key">Search</span>${this.seg('budget', Object.entries(BUDGET_LABELS).map(([k, t]) => [k, t, `Takes about ${durText(BUDGETS[c.mode][k].budgetMs)}`]), 'Search depth')}</div>
+			<div class="solve-row"><span class="solve-key">Mode</span>${this.seg('mode', [['robust', 'Robust', OPTION_HELP.mode.robust.title], ['exact', 'Exact', OPTION_HELP.mode.exact.title]], 'Solver mode')}</div>
+			<div class="solve-row"><span class="solve-key">Search</span>${this.seg('budget', Object.entries(BUDGET_LABELS).map(([k, t]) => [k, t, searchHelp(c.mode, k).title]), 'Search depth')}</div>
+			${this.optionHelpHtml()}
 			${exact ? `<div class="solve-sub">${this.exactSourceHtml()}</div>` : ''}
-			${useSave ? '' : `<div class="solve-row"><span class="solve-key">Hero</span>${this.seg('heroSrc', [['profile', 'Your hero', 'The hero chosen in Your hero, with the pack and mental power the game gives it'], ['manual', 'What-if', 'A made-up hero: level, gear, kit, skills']], 'Hero')}</div>`}
+			${useSave ? '' : `<div class="solve-row"><span class="solve-key">Hero</span>${this.seg('heroSrc', [['profile', 'Your hero', OPTION_HELP.heroSrc.profile.title], ['manual', 'What-if', OPTION_HELP.heroSrc.manual.title]], 'Hero')}</div>`}
 			<div class="solve-sub">${this.heroHtml()}</div>
 			<div class="layer-row solve-check" id="sv-mpitems" role="checkbox" tabindex="0" aria-checked="${!!c.useItemsForMp}" title="Off: the plan never spends items on mental power; it asks you to solve puzzles for it instead (in a dungeon, puzzle MP goes straight to the hero, up to its max)."><div class="checkbox${c.useItemsForMp ? ' selected' : ''}"></div><span>Use items for mental power</span></div>
+			${this.solveTargetHtml()}
 			${this.runRowHtml()}
 			${this.result ? '<div class="small"><a id="solve-collapse" role="button" tabindex="0">Hide these settings</a></div>' : ''}`;
 	}
@@ -190,23 +296,24 @@ export class SolvePanel {
 		const c = this.cfg;
 		const sd = this.saveDungeon();
 		const xseedRow = `<div class="solve-line"><label for="sv-xseed">Dice seed (xseed)</label> <input type="number" id="sv-xseed" value="${esc(c.xseed)}" /></div>`;
-		if (!sd) return `<div class="solve-note">${this.noSaveDungeonText()}</div>${xseedRow}${this.xseedNote()}`;
+		const why = sd ? '' : this.noSaveDungeonText();
+		if (!sd) return `${why ? `<div class="solve-note">${why}</div>` : ''}${xseedRow}${this.xseedNote()}`;
 		const label = formatLabel(sd.type, sd.seed);
-		return `${this.seg('exactSrc', [['save', 'Saved dungeon', `Solve ${label} on from the state in your save`], ['xseed', 'Experiment', 'This label with a made-up dice seed']], 'Exact source')}
+		return `${this.seg('exactSrc', [['save', 'Saved dungeon', OPTION_HELP.exactSrc.save.title], ['xseed', 'Experiment', OPTION_HELP.exactSrc.xseed.title]], 'Exact source')}
 					${c.exactSrc === 'save' ? `<div class="solve-line">Your save is inside <b>${label}</b>; the solver plays on from there with the game's own dice.</div>` : xseedRow + this.xseedNote()}`;
 	}
 
-	/** why exact mode can't use the save's own dice */
+	/** why exact mode can't use the imported save's own dice ('' with no save imported) */
 	noSaveDungeonText() {
 		const H = this.heroPanel();
-		if (!(H && H.profile)) return 'Exact mode follows your real dice rolls, which only a save exported inside a dungeon contains (Settings → Export while in the dungeon).';
+		if (!(H && H.profile)) return '';   // no save yet: the mode's description says where the dice come from
 		if (H.dungeon && H.dungeon.kind === 'ew') return 'Your save holds an autonomous run (the hero is exploring alone), which has no fight to solve.';
-		return 'Your save was made in town: no dungeon is in progress, so the dice (the combat RNG state) are not in it. Enter the dungeon in the game, export again (Settings → Export) and import that file to solve your real run.';
+		return 'Your save was made in town: no dungeon is in progress, so the dice (the combat RNG state) are not in it. Enter the dungeon in the game, export again (Settings → Export), and import that file to solve your real run.';
 	}
 
-	/** the hero settings: from the save's dungeon, your imported hero, or the what-if fields */
+	/** the hero settings: your imported hero, or the what-if fields (the save's own hero has none: see solveTargetHtml) */
 	heroHtml() {
-		if (this.useSave()) return `<div class="solve-note">The hero, pack, mental power and dice come from your save's dungeon in progress.</div>`;
+		if (this.useSave()) return '';
 		if (this.cfg.heroSrc === 'profile') return this.profileHeroHtml();
 		return this.manualHeroHtml();
 	}
@@ -214,9 +321,17 @@ export class SolvePanel {
 	profileHeroHtml() {
 		const pi = this.profileInfo();
 		if (!pi) return `<div class="solve-note">No save imported yet. <a id="solve-import">Import your save</a> to solve with your own hero, or use <a id="solve-whatif">What-if</a>.</div>`;
+		const gates = pi.gates.filter((g) => g.gate !== 'dungeon');
 		return `<div class="solve-line">Hero ${pi.index + 1} · level ${pi.lvl} · enters with <b>${pi.mpIn}</b> mental power <span class="muted">(stock ${pi.stock}, max ${pi.mpMax})</span></div>
 					<div class="solve-line small muted"><a id="solve-pick-hero">Choose another hero</a> in Your hero.</div>
-					${pi.gates.length ? `<div class="solve-note warn">${pi.gates.map((g) => esc(g.text[0].toUpperCase() + g.text.slice(1))).join('. ')}. The solver plays the run anyway.</div>` : ''}`;
+					${pi.gates.length > gates.length ? this.alreadyInDungeonNote() : ''}
+					${gates.length ? `<div class="solve-note warn">${gates.map((g) => esc(g.text[0].toUpperCase() + g.text.slice(1))).join('. ')}. The solver plays the run anyway.</div>` : ''}`;
+	}
+
+	/** the save's hero is inside a dungeon: a robust or experiment solve starts a run from an entrance, which is not that run */
+	alreadyInDungeonNote() {
+		const playOn = this.saveDungeon() ? ' Exact mode with Saved dungeon plays that run on from where your save stands.' : '';
+		return `<div class="solve-note">Your save is already inside <b>${esc(this.heroDungeonLabel())}</b>.${playOn} This solve starts the dungeon on the map from its entrance.</div>`;
 	}
 
 	manualHeroHtml() {
@@ -263,6 +378,16 @@ export class SolvePanel {
 		this.cfg[key] = value;
 		this.save();
 		this.renderControls();
+	}
+
+	/** The box under the Search row: what the chosen Mode and Search depth do. Both rows sit above it, so pressing a
+	 * button never moves the buttons. */
+	optionHelpHtml() {
+		const c = this.cfg;
+		const mode = OPTION_HELP.mode[c.mode];
+		const depth = BUDGETS[c.mode][c.budget] ? searchHelp(c.mode, c.budget) : null;
+		const line = (name, help) => `<div><b>${esc(name)}:</b> ${esc(help.desc)}</div>`;
+		return `<div class="solve-note solve-help" id="solve-help">${mode ? line(c.mode === 'exact' ? 'Exact' : 'Robust', mode) : ''}${depth ? line(BUDGET_LABELS[c.budget], depth) : ''}</div>`;
 	}
 
 	/** typing in a field saves the settings without re-rendering (that would drop the focus) */
@@ -346,7 +471,9 @@ export class SolvePanel {
 		const ok = this.canRun();
 		if (!ok.ok) { this.status = ok.why; this.renderControls(); return; }
 		const job = this.buildJob();
+		const epoch = this.epoch;
 		if (this.useSave()) await this.showSaveDungeon(job.label);
+		if (epoch !== this.epoch) return;   // reset meanwhile (a new save came in): this request is out of date
 		this.stopPlay();
 		this.running = { t0: performance.now(), job, budgetMs: BUDGETS[job.mode][job.budget].budgetMs, prog: null, warm: this.client.warm };
 		this.status = this.running.warm ? 'Starting…' : 'Starting the solver…';
@@ -431,6 +558,29 @@ export class SolvePanel {
 		}
 	}
 
+	/** Start over, as when the page has a new save: no plan, nothing selected or playing, a running solve cancelled. */
+	reset() {
+		this.epoch++;
+		this.cancel();
+		this.stopPlay();
+		this.result = null;
+		this.sel = null;
+		this.pos = 0;
+		this.status = '';
+		this.controlsOpen = false;
+		this.view.clearSolveOverlay();
+		this.renderControls();
+		this.renderResult();
+	}
+
+	/** The save was forgotten: drop the plan and the solve that came from it (its hero or dungeon). True if there was one. */
+	dropWhatCameFromSave() {
+		const plan = this.result && this.result.plan;
+		const fromSave = (plan && planUsesProfile(plan)) || (this.running && jobUsesSave(this.running.job));
+		if (fromSave) this.reset();
+		return !!fromSave;
+	}
+
 	stale() {
 		const p = this.result && this.result.plan;
 		return !!p && !!this.state.level && (this.state.type !== p.dungeon.type || this.state.seed !== p.dungeon.seed);
@@ -481,7 +631,7 @@ export class SolvePanel {
 		if (!box) return;
 		const r = this.result;
 		if (!r) {
-			box.innerHTML = `<div class="small muted solve-empty">The solver plays this dungeon in the game's own combat engine and picks, fight by fight, the tactic that uses the fewest items, then the least mental power, without dying.</div>`;
+			box.innerHTML = `<div class="small muted solve-empty">${this.state.level ? SOLVER_INTRO : NO_DUNGEON_INTRO}</div>`;
 			return;
 		}
 		const plan = r.plan;
@@ -570,8 +720,8 @@ export class SolvePanel {
 			? `Solve puzzles for about <b>${mp.toSolve}</b> mental power during this run. In a dungeon, puzzle MP goes straight to the hero, up to its max${mp.max != null ? ` (${mp.max})` : ''}.`
 			: 'The hero\'s mental power covers this run: no puzzles needed.');
 		if (mp.topUps.length) lines.push(`<ul class="topup-list">${mp.topUps.map((u) => `<li>${esc(topUpText(u, plan))}</li>`).join('')}</ul>`);
-		else if (mp.toSolve > 0) lines.push('<span class="muted">Top up before the seals, sealed doors and chests on the route (the stops list shows them).</span>');
-		const spend = mp.route != null && mp.route !== mp.need ? `This run spends about ${mp.need} MP (the route's seals, sealed doors and chests: ${mp.route})` : `The route's seals, sealed doors and chests take about ${mp.need} MP`;
+		else if (mp.toSolve > 0) lines.push('<span class="muted">Top up before the seals, sealed doors, and chests on the route (the stops list shows them).</span>');
+		const spend = mp.route != null && mp.route !== mp.need ? `This run spends about ${mp.need} MP (the route's seals, sealed doors, and chests: ${mp.route})` : `The route's seals, sealed doors, and chests take about ${mp.need} MP`;
 		lines.push(`<span class="small muted">${spend}${mp.start != null ? `; the hero starts with ${mp.start}${isProfile ? ' (from your stock)' : ''}` : ''}.${isProfile ? ' Puzzles solved in town before you go raise the stock the game hands the hero at entry.' : ''}</span>`);
 		if (itemsForMp && mp.potions.length) lines.push(`<span class="small muted">With "Use items for mental power" on, the plan also uses ${mp.potions.map((p) => `${p.bring}× ${esc(p.name || this.item(p.id))}`).join(', ')}.</span>`);
 		if (mp.value) lines.push(`<span class="small muted">${esc(mp.value)}</span>`);
@@ -643,7 +793,7 @@ export class SolvePanel {
 		if (s.label) return s.label;
 		if (s.target) {
 			if (s.target.critter) return this.critterName(this.critterKindOf({ id: s.target.id, g: 0, h: 0, k: 2 }), s.target.id);
-			return KINDS[objectKind({ id: s.target.id }, zw.Q?.get(s.target.id))].label;
+			return this.objectTitle(s.target.id);
 		}
 		return { exit: 'Stairs (exit)', nonogram: 'Floor nonogram', barrels: 'Barrel puzzle' }[s.kind] || s.kind;
 	}
@@ -1287,6 +1437,11 @@ function planHeroText(plan) {
 	if (plan.heroSpec && plan.heroSpec.profile) return `your hero ${(plan.heroSpec.profile.hero ?? 0) + 1}`;
 	if (plan.dungeon.at === 'save') return 'your hero in the dungeon';
 	return heroSpecText(plan.heroSpec);
+}
+
+/** whether a solve job uses the imported save: its hero, or (exact mode) its dungeon and dice */
+function jobUsesSave(job) {
+	return !!job.saveBytes || !!(job.hero && job.hero.profile);
 }
 
 /** whether the plan was made with the player's progress (their hero, or their save's dungeon) */

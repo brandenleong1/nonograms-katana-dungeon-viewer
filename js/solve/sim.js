@@ -24,7 +24,8 @@ export const DIR4 = [[-1, 0], [0, -1], [1, 0], [0, 1]];
 const TELEPORTS = new Set([38, 39, 40, 74, 88, 126]);
 const DOOR_IDS = new Set([27, 28, 29, 33, 35, 53, 60, 73]);
 const HERO_ID = 180;
-const REEDS = 84;          // the one object the hero walks through
+const MINE_CART = 84;      // the one object the hero walks through (into it, to ride it)
+const KEY = 167;           // the gold monster's key: opens one locked door 29 (c30.m0)
 const STAIRS_TILE = 5;
 /** seal MP from here up marks bw.m0 bosses (100000) until their quest is done: no MP opens them */
 const UNSEALABLE = 1000;
@@ -63,6 +64,8 @@ export function packOf(h) {
 	return m;
 }
 export const packHas = (h, id) => h.f.D.c.some((e) => e.a.a === id && e.a_() > 0);
+/** how many of item id the hero carries */
+export const packCount = (h, id) => h.f.D.c.reduce((n, e) => (e.a.a === id ? n + e.a_() : n), 0);
 /** skill learned (nw.h level >= 1, or no skill index) */
 export function learned(h, id) {
 	const sk = zw.q.get(id);
@@ -469,6 +472,16 @@ export function levelOf(h) {
 /** what Walker.walk returns when the route moved on without an input: look again (null: the walk is over) */
 const AGAIN = undefined;
 
+/** the Walker fields that are not its own state (the fight, the options, the route): what freeze() leaves out of `s` */
+const WALKER_LIVE = new Set(['f', 'h', 'c', 'opts', 'refs', 'route', 'legs']);
+const identities = new WeakMap();
+let identityCount = 0;
+/** a number that tells one array from another (they are shared between checkpoints, never changed in place) */
+function identityOf(o) {
+	if (!identities.has(o)) identities.set(o, ++identityCount);
+	return identities.get(o);
+}
+
 export class Walker {
 	/**
 	 * opts: { recovery: true (visit unused fountains 48 / 58 / 95 as extra stops), rest: RestRule (between fights:
@@ -530,6 +543,15 @@ export class Walker {
 
 	static thaw(frozen, fight, opts) { return new Walker(fight, opts, frozen); }
 
+	/**
+	 * The walker's own state as a string, equal for two walkers on the same route at the same stage of it (the
+	 * look-ahead cache, lookcache.js): the fields freeze() copies, and which route and legs it follows.
+	 */
+	stateKey() {
+		const own = Object.keys(this).filter((k) => !WALKER_LIVE.has(k)).sort().map((k) => `${k}=${JSON.stringify(this[k])}`);
+		return `${identityOf(this.route)}/${identityOf(this.legs)}/${this.refs.length}|${own.join(';')}`;
+	}
+
 	ref(o) { let i = this.refs.indexOf(o); if (i < 0) { i = this.refs.length; this.refs.push(o); } return i; }
 	cellIdx(x, y) { return y * this.h.g + x; }
 	heroCell() { const p = this.h.f.b; return p.b * this.h.g + p.a; }
@@ -575,7 +597,8 @@ export class Walker {
 	planOptions() {
 		// the first plan is exact up to 16 stops (Held-Karp, 50-200 ms); re-plans mid-dungeon up to 10 (~1 ms), heuristic beyond
 		const exactLimit = this.stats.plans > 1 ? (this.opts.replanExact ?? 10) : (this.opts.planExact ?? 16);
-		return { rw: (id) => this.objectDef(id), bw: (id) => zw.R.get(id) ?? null, pwOf: (t) => zw.M[t], patterns: this.nonogramDone ? null : zw.O, tiles: zw.u, endAtExit: true, exactLimit };
+		// keys 167 in the pack open locked doors 29 even once their gold monsters are dead
+		return { rw: (id) => this.objectDef(id), bw: (id) => zw.R.get(id) ?? null, pwOf: (t) => zw.M[t], patterns: this.nonogramDone ? null : zw.O, tiles: zw.u, endAtExit: true, exactLimit, heldKeys: packCount(this.h, KEY) };
 	}
 
 	/**
@@ -974,8 +997,8 @@ export class Walker {
 		return AGAIN;
 	}
 
-	/** an object other than the hero that stands in the way (everything but reeds) */
-	blocksCell(o) { return o != null && o !== this.h.f && o.a.a !== REEDS; }
+	/** an object other than the hero that stands in the way (everything but a mine cart) */
+	blocksCell(o) { return o != null && o !== this.h.f && o.a.a !== MINE_CART; }
 
 	/** the floor nonogram (c30.u0): dips from the corner (2,2) that toggle exactly the cells that differ */
 	nonogramDips() {

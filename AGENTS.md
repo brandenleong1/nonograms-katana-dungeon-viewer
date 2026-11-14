@@ -24,7 +24,7 @@ More docs:
 - Porting rules: [js/gen/PORTING.md](js/gen/PORTING.md), [js/combat/PORTING.md](js/combat/PORTING.md).
 - Solver design and plan format: [js/solve/README.md](js/solve/README.md).
 - [docs/style_guide.md](docs/style_guide.md): how to structure code (functions, names, comments), and why the ports are exempt.
-- [docs/pr_guidelines.md](docs/pr_guidelines.md): PR titles, descriptions and commit messages.
+- [docs/pr_guidelines.md](docs/pr_guidelines.md): PR titles, descriptions, and commit messages.
 
 ## Hard rules
 
@@ -34,17 +34,17 @@ More docs:
 2. **`js/gen/` and `js/combat/` are bit-exact ports.** They must produce the same random draws and the same state as the
    game. So:
    - Keep the Java class and field names, and suffix every ported method with `_`.
-   - Use `js/gen/jrt.js` for Java int, long, float and division semantics.
-   - Don't "clean up", reorder or simplify ported logic, even when it looks redundant. Order of RNG draws matters.
+   - Use `js/gen/jrt.js` for Java int, long, float, and division semantics.
+   - Don't "clean up", reorder, or simplify ported logic, even when it looks redundant. Order of RNG draws matters.
    - Fixing a divergence means matching the game, not improving on it.
-   - Behaviour changes (new features, better choices) go in `js/plan/`, `js/solve/`, `js/view/` or `js/ui/`, never into
+   - Behaviour changes (new features, better choices) go in `js/plan/`, `js/solve/`, `js/view/`, or `js/ui/`, never into
      the ports.
 3. **Parity tests must stay green.** Any change under `js/gen/` or `js/combat/` must keep the suites in
    [docs/testing.md](docs/testing.md) passing. The standalone ones (`npm test`) run anywhere. The oracle-backed ones
    need maintainer-only data. If you can't run them, say so in the PR; don't claim parity.
 4. **`lib/utils` is a git submodule** (shared with the maintainer's other sites). Don't edit it here. Fixes go to
    [brandenleong1/utils](https://github.com/brandenleong1/utils), and a daily workflow bumps the submodule.
-5. **Privacy:** saves are read in the browser only. Nothing may be uploaded, logged remotely or sent anywhere. Keep
+5. **Privacy:** saves are read in the browser only. Nothing may be uploaded, logged remotely, or sent anywhere. Keep
    imported saves in `sessionStorage` (cleared with the tab).
 6. **Local servers bind to `127.0.0.1`** (`npm run serve` does).
 
@@ -57,6 +57,10 @@ More docs:
 - **Cloning:** `js/combat/clone.js` snapshots fight state for search. Any static the engine mutates during play must be
   pinned there, or clones leak state into each other.
 - **Plan schema:** `js/solve/plan.js` (`nk-solve-plan/1`) is read by the UI. Only add fields; keep old ones working.
+- **No dungeon:** the page starts empty ("No Dungeon Loaded", `window.nkd.state.level === null`) unless the URL has a
+  label or the save kept in the tab is inside a dungeon. UI code must cope with a null level. Importing a save asks
+  first when a dungeon or plan is on screen, then shows the save's dungeon or none; nothing of the old save or solve
+  stays (`importFile` in `js/hero.js`, `showImportedSave` in `js/app.js`).
 
 ## Commands
 
@@ -86,7 +90,7 @@ node tools/solve.mjs --help   # solver from the command line
 - **Branches:** `<username>/<short-name>`, lowercase, e.g. `brandenleong1/docs`. Other names are rejected.
 - **Commits and PRs:** follow [docs/pr_guidelines.md](docs/pr_guidelines.md) and check with `node tools/check-pr.mjs`. The title is
   `[Area] Qualifier: Title Case Summary` (e.g. `[Solve] Feature: Kite Melee Foes With Two Or More Speed To Spare`),
-  then Context / Changes / Testing. Keep save data, personal paths and game files out of messages.
-- **Merging:** don't merge PRs. The PR bot squash-merges them once they're approved, green and up to date, and it
+  then Context / Changes / Testing. Keep save data, personal paths, and game files out of messages.
+- **Merging:** don't merge PRs. The PR bot squash-merges them once they're approved, green, and up to date, and it
   writes the commit message (title, blank line, PR URL). Use a draft or the `hold` label to keep a PR open
   ([CONTRIBUTING.md](CONTRIBUTING.md#how-a-pr-gets-merged)).
