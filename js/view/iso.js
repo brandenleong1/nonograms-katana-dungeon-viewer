@@ -406,12 +406,13 @@ export class IsoView {
 
 	/**
 	 * door leaves follow their wall (walls left/right in x: the leaf spans the x axis); fountain 58 restores MP;
-	 * breakables, containers and treasure chests are drawn by id (a barrel, a vase; herbs, a drum; a purple chest...)
+	 * breakables, containers, treasure chests and the power cauldrons are drawn by id (a barrel; herbs; a purple
+	 * chest; the red cauldron...)
 	 */
 	_objectVariant(o, kind) {
 		if (isDoorKind(kind)) return isWallTile(this._cellA(o.x - 1, o.y)) || isWallTile(this._cellA(o.x + 1, o.y)) ? 'x' : 'y';
 		if (kind === 'fountain' && o.id === 58) return 'mp';
-		if (kind === 'breakable' || kind === 'container' || kind === 'chest') return String(o.id);
+		if (kind === 'breakable' || kind === 'container' || kind === 'chest' || kind === 'special') return String(o.id);
 		return '';
 	}
 

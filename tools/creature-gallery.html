@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- Dev tool: every creature with a drawing (js/view/creatures.js) on a floor tile, at map size and small, by role;
-     the people (NPCs), the breakable objects, the containers and the treasure chests (js/view/objects.js) on their own rows.
+     the people (NPCs), the breakable objects, the containers, the treasure chests and the power cauldrons (js/view/objects.js) on their own rows.
      http://127.0.0.1:8765/tools/creature-gallery.html?theme=dark -->
 <html><head><meta charset="utf-8"><title>Creature gallery</title>
 <style>body{margin:0;background:#16161a;color:#ddd;font:12px system-ui}body.light{background:#ece9e2;color:#222}canvas{display:block}</style></head>
@@ -110,6 +110,11 @@ const containers = [
 const chests = [
 	[21, 'chest', 'Purple chest'], [37, 'chest', 'Golden chest'], [94, 'chest', 'Black sarcophagus'], [999, 'chest', 'no drawing'],
 ];
+// the power cauldrons (by object id), then the pedestal for a special object without a drawing
+const cauldrons = [
+	[85, 'special', 'Red power cauldron'], [86, 'special', 'Green power cauldron'], [87, 'special', 'Blue power cauldron'],
+	[999, 'special', 'no drawing'],
+];
 const dpr = window.devicePixelRatio || 1;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const hw = +(new URLSearchParams(location.search).get('hw') || 50);
@@ -117,7 +122,7 @@ const cols = 10, cell = hw * 3, rowH = hw * 3.5;
 // each list starts on a new row
 const placed = [];
 let row = 0;
-for (const list of [entries, npcs, breakables, containers, chests]) {
+for (const list of [entries, npcs, breakables, containers, chests, cauldrons]) {
 	list.forEach((entry, i) => placed.push([entry, i % cols, row + ((i / cols) | 0)]));
 	row += Math.ceil(list.length / cols);
 }

@@ -5,6 +5,7 @@
 // vase a jar mimic. Each container shows what you find in it (herbs, mushrooms, a crystal, honey...); the five
 // crystal rocks share one drawing in their own colours. The purple and golden treasure chests share the wooden
 // chest's drawing in their own wood and gold; the black sarcophagus is its own.
+// The three power cauldrons are drawn alike, their fire and brew in their own colour.
 //
 // Units and origin as in creatures.js: u = half tile width / 32, the tile centre at 0, y up negative. A floor tile
 // spans ±32u sideways and ±16u down and up; a single object stands about 20u tall, a group about 28u (a goblin: 34u).
@@ -465,6 +466,52 @@ function wheel(P, x, y, r, color) {
 
 const CRYSTAL = { 66: '#e8b42a', 67: '#d8323a', 68: '#34a84a', 69: '#3a86e0', 70: '#8a46d8' };
 
+// ---- power cauldrons ---------------------------------------------------------------------------------------------
+/**
+ * a power cauldron: a black iron pot with ring handles on three short legs, over embers in a ring of stones. The game
+ * draws the three alike; here the embers and the brew glow in the cauldron's own colour, so the map tells them apart.
+ */
+function cauldron(P, fire) {
+	const iron = '#3a3b40', stone = '#b9b4aa';
+	P.shadow(14, 6.5);
+	// the stones round the fire: the far ones first, then the embers, the pot and the near stones
+	const stones = Array.from({ length: 11 }, (_, k) => {
+		const a = (Math.PI * 2 * k) / 11 + 0.2;
+		return [12 * Math.cos(a), 5.6 * Math.sin(a)];
+	});
+	const rock = ([sx, sy]) => {
+		P.ellipse(sx, sy - 1.3, 2.8, 2.1, shade(stone, sy < 0 ? -0.15 : 0));
+		P.ellipse(sx - 0.5, sy - 2.1, 1.5, 0.8, shade(stone, 0.25), { flat: true, line: false });
+	};
+	stones.filter(([, sy]) => sy < 0).forEach(rock);
+	P.ellipse(0, 0, 9.5, 4.4, shade(fire, -0.45), { flat: true, line: false });
+	P.ellipse(0, 0.2, 7, 3.2, fire, { flat: true, line: false });
+	P.ellipse(0, 0.4, 3.8, 1.7, shade(fire, 0.5), { flat: true, line: false });
+	P.glow(0, -1, 13, fire, 0.55);
+	// short legs
+	for (const lx of [-5.8, 5.8]) P.line([[lx, -4], [lx * 1.08, 0]], iron, 1.5);
+	// the pot: a deep belly sitting low over the fire, under a wide thick rim
+	P.shape((p) => {
+		p.m(-8.4, -21); p.q(-11.8, -16, -10.8, -9); p.q(-9.6, -2.2, 0, -2);
+		p.q(9.6, -2.2, 10.8, -9); p.q(11.8, -16, 8.4, -21);
+	}, iron, -11.5, 11.5);
+	// ring handles on both sides
+	for (const sx of [-1, 1]) P.thin(Array.from({ length: 13 }, (_, k) => {
+		const a = (Math.PI * 2 * k) / 12;
+		return [sx * (11.8 + 1.7 * Math.cos(a)), -14 + 2.3 * Math.sin(a)];
+	}), shade(iron, 0.15), 0.9);
+	// the fire's light on the belly
+	P.glow(0, -3, 8, fire, 0.4);
+	// the rim, the dark inside and the glowing brew
+	P.ellipse(0, -21, 9, 3.2, shade(iron, 0.2));
+	P.ellipse(0, -21, 7.4, 2.4, '#141418', { flat: true, line: false });
+	P.ellipse(0, -20.5, 6.2, 1.7, fire, { flat: true, line: false });
+	P.ellipse(-1, -20.7, 2.8, 0.7, shade(fire, 0.55), { flat: true, line: false });
+	P.glow(0, -21.5, 7, fire, 0.45);
+	P.gloss(-7.4, -13, 1.3, 3.2, 0.22);
+	stones.filter(([, sy]) => sy >= 0).forEach(rock);
+}
+
 // ---- the drawings, by object id ----------------------------------------------------------------------------------
 const DRAW = {
 	// Big barrel
@@ -638,6 +685,11 @@ const DRAW = {
 	37(P) { chest(P, 0, 1, '#b25a2c', '#d4a640', '#e8c35a'); },
 	// Black sarcophagus
 	94(P) { sarcophagus(P, 0, 1); },
+
+	// ---- power cauldrons: drawn alike in the game, here each glows in its own colour ----
+	85(P) { cauldron(P, '#f0442c'); },   // Red power cauldron
+	86(P) { cauldron(P, '#3ccf4e'); },   // Green power cauldron
+	87(P) { cauldron(P, '#3a8ef5'); },   // Blue power cauldron
 	// Drum: a short red barrel drum lying on top of a tall dark wooden stand, its pale skin facing down to the right
 	7(P) {
 		P.shadow(12, 6);

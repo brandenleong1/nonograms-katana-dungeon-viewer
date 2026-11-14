@@ -580,7 +580,9 @@ const PAINTERS = {
 		g.fillStyle = 'rgba(255,250,220,0.9)'; g.beginPath(); g.ellipse(fx, fy + 0.5 * u, 1.2 * u, 2 * u, 0, 0, Math.PI * 2); g.fill();
 		gloss(g, -2.5 * u, -20 * u, 1 * u, 3.5 * u, 0.3);
 	},
+	// the power cauldrons (js/view/objects.js, variant = object id) are drawn as themselves, anything else as a pedestal
 	special(g, e) {
+		if (hasObject(e.variant)) return paintObject(g, e, e.variant);
 		const { u, lw } = e;
 		shadow(g, e, 14, 7);
 		box(g, e, { ex: 0.24, ey: 0.24, height: 4, color: '#7d7888' });
