@@ -22,6 +22,7 @@ npm test        # = node tools/run-tests.mjs: every standalone suite in test/
 | `test/questlines.mjs` | The Your progress questlines: every quest the generator reads is on a slider, every position round-trips through a profile, and part 3 of Once Upon a Forest brings 3C's mini-boss. | ~1 s |
 | `test/astar.mjs` | `hw.t_` (A*) against a copy of the version before it stopped allocating, on about 10,000 calls over real mid-dungeon states (free, blocked, occupied, revealed or not, doors, teams, regions): same cost, same path (so the same tie-break among equal costs), same scratch point, open list emptied. It fails if the heap order changes. | ~10 s |
 | `test/solve.mjs` | Solver: resource ledger, route walker, the wiki's first-strike rule, robust and exact solves on small budgets, MP top-ups (including mid-fight), the plan schema, the worker pool. Use `--quick` to skip the slow cases and `--no-workers` to skip the pool. | ~1 min |
+| `test/pr-bot.mjs` | The PR bot against a fake GitHub (`test/fixtures/pr-bot-github.mjs`): a stacked PR (based on another PR's branch) waits with "Stacked on #N" however ready it looks, a PR based on another branch is told to change its base, and a ready PR based on `main` is merged. | ~1 s |
 | `test/exact-workers.mjs` | Exact mode gives the same plan with 2, 4 and 8 workers as with the inline pool, and the look-ahead cache changes nothing: a run that re-walks every cache hit finds no difference (`1A-1429008869`, small search). | ~20 s |
 
 `npm test` must pass before a pull request is merged.
