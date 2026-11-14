@@ -135,6 +135,10 @@ const VIEWS = [
 	// part 3 of Once Upon a Forest in progress brings 3C's mini-boss (test/questlines.mjs); the map then says so
 	view('popup-progress-edited', { size: SIZES.tall, steps: [...openPopup('progress'), chooseQuestPosition('Once Upon a Forest', 5)] }),
 	view('popup-progress-edited-map', { steps: [...openPopup('progress'), chooseQuestPosition('Once Upon a Forest', 5), closePopup('progress')] }),
+
+	// empty: the page with no label and no save, "No Dungeon Loaded" (an empty label opens it with no hash)
+	view('empty-light', { label: '' }),
+	view('empty-dark', { label: '', theme: 'dark' }),
 ];
 
 function view(name, { label = LABELS['3c'], theme = 'light', size = SIZES.wide, steps = [] } = {}) {
@@ -343,7 +347,7 @@ async function shoot(browser, base, v) {
 	await context.addInitScript((threads) => Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: () => threads }), HARDWARE_THREADS);
 	const page = await context.newPage();
 	try {
-		await openDungeon(page, `${base}/index.html#${v.label}`);
+		await openDungeon(page, v.label ? `${base}/index.html#${v.label}` : `${base}/index.html`, { empty: !v.label });
 		for (const step of v.steps) {
 			await step(page);
 			await settle(page);
@@ -357,9 +361,10 @@ async function shoot(browser, base, v) {
 }
 
 /** Load the page and wait until the dungeon is drawn with the site's font, with every fade turned off. */
-async function openDungeon(page, url) {
+async function openDungeon(page, url, { empty = false } = {}) {
 	await page.goto(url, { waitUntil: 'networkidle' });
-	await page.waitForFunction(() => window.nkd && window.nkd.state.level && [...document.fonts].some((f) => f.family.includes('Proxima Nova') && f.status === 'loaded'), null, { timeout: 60000 });
+	// a page with no label and no save opens on "No Dungeon Loaded": there is no level to wait for
+	await page.waitForFunction((noDungeon) => window.nkd && (noDungeon ? document.querySelector('#map-section.no-dungeon') : window.nkd.state.level) && [...document.fonts].some((f) => f.family.includes('Proxima Nova') && f.status === 'loaded'), empty, { timeout: 60000 });
 	// the themes fade colours over 0.5 s (lib/utils transition.css), and popups fade in over 1 s (lib/utils Animate):
 	// a shot mid-fade differs from run to run
 	await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; caret-color: transparent !important; }' });

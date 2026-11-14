@@ -46,7 +46,7 @@ async function checkSave(file) {
 	page.on('pageerror', (e) => errors.push(e.message));
 	try {
 		await page.goto(`${base}/index.html`);
-		await page.waitForFunction(() => window.nkd && window.nkd.state.level && window.nkd.solve, null, { timeout: 60000 });
+		await page.waitForFunction(() => window.nkd && window.nkd.state.hero && window.nkd.solve, null, { timeout: 60000 });   // a bare page shows no dungeon
 		await page.setInputFiles('#hero-file', file);
 		await page.waitForFunction(() => window.nkd.solve.saveDungeon && window.nkd.solve.saveDungeon(), null, { timeout: 30000 });
 		await page.evaluate(() => window.nkd.solve.setOption('mode', 'exact'));
