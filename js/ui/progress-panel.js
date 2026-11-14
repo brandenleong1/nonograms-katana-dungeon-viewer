@@ -1,9 +1,10 @@
 // "Your progress": the player progress maps are built with, editable. For players without a save (set what you
 // have done) and for what-ifs on top of an imported save. Only what dungeon generation reads is shown
 // (js/gen/progress-reads.js): questlines with a slider each (js/ui/questlines.js), then bosses beaten and the
-// items, buildings and counts generation checks. The edits are overrides (absolute values per quest / bit / count) on top of the base, which is the
+// items, buildings, and counts generation checks. The edits are overrides (absolute values per quest / bit / count) on top of the base, which is the
 // new game or the imported save ("Use my progress for maps"); they are kept in localStorage (the save itself stays
-// in sessionStorage, js/hero.js).
+// in sessionStorage, js/hero.js). Three buttons write the same overrides for everything at once: all quests done,
+// all bosses beaten, or both (markQuestsDone, markBossesBeaten).
 //
 //   const edits = new ProgressEdits();       // localStorage 'nkd-progress'
 //   edits.spec(base) -> progress spec (js/gen/progress-spec.js) that puts the overrides on profile `base`
@@ -121,6 +122,7 @@ export class ProgressPanel {
 		this.names = null;
 		this.lines = null;          // questlines (js/ui/questlines.js), built once the names are loaded
 		this.openParts = new Set(); // questlines whose part list is unfolded, kept across re-renders
+		this.notice = '';           // what the last "mark ... done" button did, until the next change
 	}
 
 	async render() {
@@ -131,7 +133,7 @@ export class ProgressPanel {
 		const type = this.opts.getType();
 		if (!this.lines) this.lines = buildQuestlines(V, this.names);
 		const focused = focusSelector(box);
-		box.innerHTML = `${this.toolbarHtml()}${this.previewHtml(V, type)}
+		box.innerHTML = `${this.toolbarHtml()}${this.markHtml()}${this.previewHtml(V, type)}
 			<div class="pg-cols">
 				<div class="pg-col pg-col-wide">${this.questlinesHtml(V, type)}</div>
 				<div class="pg-col">${this.peopleHtml(V, type)}${this.bossesHtml(V)}${this.countsHtml(V)}</div>
@@ -152,15 +154,26 @@ export class ProgressPanel {
 		const hasSave = !!H.profile;
 		const base = H.use && hasSave ? 'save' : 'new';
 		const nEdits = H.edits.count();
-		const choices = [['new', 'New game', 'Start from a new game'], ['save', 'Your save', hasSave ? 'Start from your imported save' : 'Import your save first (Your hero)']];
-		const seg = `<div class="seg" role="radiogroup" aria-label="Start from">${choices.map(([v, t, ti]) =>
+		const choices = [['new', 'New game', 'Build on a new game'], ['save', 'Your save', hasSave ? 'Build on your imported save' : 'Import your save first (Your hero)']];
+		const seg = `<div class="seg" role="radiogroup" aria-label="Using">${choices.map(([v, t, ti]) =>
 			`<div class="button-positive-2 seg-btn${v === base ? ' selected' : ''}${v === 'save' && !hasSave ? ' disabled' : ''}" role="radio" aria-checked="${v === base}" tabindex="0" data-base="${v}" title="${esc(ti)}">${t}</div>`).join('')}</div>`;
 		const count = nEdits ? `<span class="profile-badge custom">${nEdits} change${nEdits === 1 ? '' : 's'}</span>` : '<span class="muted small">No changes</span>';
 		return `<div class="pg-toolbar">
-			<span class="muted">Start from</span>${seg}
-			<div class="button-positive-2 pg-reset" data-reset="new" title="Forget every change and use a new game">Reset to new game</div>
-			${hasSave ? '<div class="button-positive-2 pg-reset" data-reset="save" title="Forget every change and use your save">Reset to my save</div>' : ''}
+			<span class="muted">Using</span>${seg}
 			<span class="pg-count">${count}</span>
+			<div class="button-positive-2 pg-reset${nEdits ? '' : ' disabled'}" role="button" tabindex="0" aria-disabled="${!nEdits}" data-clear title="Forget every change; keep using ${base === 'save' ? 'your save' : 'a new game'}">Clear changes</div>
+		</div>`;
+	}
+
+	/** The "mark ... done" buttons, what the last one did, and what they leave alone. */
+	markHtml() {
+		const buttons = MARK_BUTTONS.map((b) =>
+			`<div class="button-positive-2 pg-mark-btn" role="button" tabindex="0" data-mark="${b.key}" title="${esc(b.title)}">${b.text}</div>`).join('');
+		const result = this.notice ? `<div class="pg-mark-result" role="status">${esc(this.notice)}</div>` : '';
+		return `<div class="pg-mark">
+			<div class="pg-mark-buttons" role="group" aria-label="Mark as done">${buttons}</div>
+			${result}
+			<div class="pg-help">Items, buildings, and counts stay as you set them. Quests normally need some bosses beaten first, so “Mark everything done” sets both.</div>
 		</div>`;
 	}
 
@@ -173,7 +186,7 @@ export class ProgressPanel {
 
 	/** One line of the preview: why the current dungeon has (or lacks) a quest NPC, boss, guardian or merchants. */
 	reasonHtml(r) {
-		const quest = (id) => `<b>${esc(partTitle(id, this.names))}</b>`;
+		const quest = (id) => this.questHtml(id);
 		if (r.kind === 'npc') {
 			const p = r.person;
 			const where = p && p.where === 'boss room' ? ' in the boss room' : p && p.where === 'entrance' ? ' at the entrance' : '';
@@ -267,20 +280,28 @@ export class ProgressPanel {
 
 	// ---- the other progress: quest NPCs by dungeon, bosses, counts ----------------------------------------------------
 
-	/** Each dungeon's quest NPC now (x30.O's pick), for the dungeons any quest NPC can be in. */
+	/** Each dungeon's quest NPC now (x30.O's pick), in the rows the game lists its dungeons in; ← here marks this one. */
 	peopleHtml(V, type) {
-		const npcs = npcQuests(V);
-		const picks = [];
-		for (let t = 0; t < 27; t++) {
-			if (!npcs.some((q) => q.types.includes(t))) continue;
-			const p = questAt(V, t);
-			const who = p ? `${esc(partTitle(p.q.a, this.names))} <span class="muted">${p.active ? 'in progress' : 'can start'}</span>` : '<span class="muted">nobody</span>';
-			picks.push(`<div class="pg-pick${t === type ? ' pg-cur' : ''}"${p ? ` title="quest ${p.q.a}"` : ''}><b>${typeLabel(t)}</b> <span>${who}</span></div>`);
-		}
+		const rows = DUNGEON_ROWS.map((types) =>
+			`<div class="pg-pick-row" role="group" aria-label="${typeLabel(types[0])} to ${typeLabel(types[types.length - 1])}">${types.map((t) => this.pickHtml(V, t, { here: t === type })).join('')}</div>`).join('');
 		return `<div class="pg-section"><div class="content-header-2">Quest NPCs by dungeon</div>
-			<div class="pg-help">Each dungeon has at most one quest NPC. With this progress, this is who you'll meet in each: one who gives you a quest, or one a quest in progress sends you to. If several quests qualify, the game picks one by its own fixed order.</div>
-			<div class="pg-picks">${picks.join('')}</div>
+			<div class="pg-help">Each dungeon has at most one quest NPC. With this progress, this is who you'll meet in each: one who gives you a quest, or one a quest in progress sends you to. If several quests qualify, the game picks one by its own fixed order. “← here” marks the dungeon on the map.</div>
+			<div class="pg-picks">${rows}</div>
 		</div>`;
+	}
+
+	/** One dungeon of the grid: its label, then who you meet there (or nobody). */
+	pickHtml(V, t, { here }) {
+		const p = questAt(V, t);
+		const who = p ? `${this.questHtml(p.q.a)} <span class="muted">${p.active ? 'in progress' : 'can start'}</span>` : '<span class="muted">nobody</span>';
+		const mark = here ? '<span class="pg-here" role="img" aria-label="this dungeon, the one on the map" title="The dungeon on the map">← here</span>' : '';
+		const attrs = `${here ? ' aria-current="location"' : ''}${p ? ` title="quest ${p.q.a}"` : ''}`;
+		return `<div class="pg-pick${here ? ' pg-cur' : ''}"${attrs}><div class="pg-pick-head"><b>${typeLabel(t)}</b>${mark}</div><div>${who}</div></div>`;
+	}
+
+	/** A quest's title in bold, as every quest name in the panel's sentences is shown. */
+	questHtml(id) {
+		return `<b>${esc(partTitle(id, this.names))}</b>`;
 	}
 
 	bossesHtml(V) {
@@ -296,25 +317,30 @@ export class ProgressPanel {
 			<div class="pg-help">Until you beat it, the boss of 1C brings a companion; so can the bosses of 6C and EA, depending on questlines. Otherwise a boss you haven't beaten only carries a different drop.</div>
 			${grid(0, 'Dungeons')}${grid(1, 'Forest (boss and mini-boss)')}${grid(2, 'Caves')}
 			<div class="sub-head">Mini-bosses of 2C–5C</div>
-			<div class="pg-help">They appear while ${esc(partTitle(27, this.names))} or ${esc(partTitle(30, this.names))} is in progress, until you beat them.</div>
+			<div class="pg-help">The 2C mini-boss appears while ${this.questHtml(27)} is in progress. Those of 3C, 4C, and 5C appear while ${this.questHtml(30)} is, each once the one before it is beaten. Each stays until you beat it.</div>
 			<div class="pg-grid">${minis}</div>
 		</div>`;
 	}
 
+	/** Items, building levels, and counters generation reads, each group with where the game shows it. */
 	countsHtml(V) {
 		const item = (id) => (this.names.items && this.names.items[id]) || `item ${id}`;
 		const building = (id) => (this.names.buildings && this.names.buildings[id]) || `building ${id}`;
 		const levels = [...buildingsQuestsNeed(V)].sort((a, b) => a[0] - b[0]).map(([id, need]) =>
 			this.numHtml({ key: `bld:${id}`, label: `${building(id)} level`, value: V.o[id].B0, path: ['buildings', id, 'B0'], max: 99, note: `quests need ${need}` })).join('');
-		return `<div class="pg-section"><div class="content-header-2">Items, buildings and counts</div>
-			${this.numHtml({ key: 'item:114', label: item(114), value: V.L0_(114), path: ['items', 114], max: 99, note: `${partTitle(38, this.names)}: its NPC is in F1, one dungeon further per card (up to F4)` })}
+		const group = (title, where) => `<div class="sub-head">${title}</div><div class="pg-help">${where}</div>`;
+		return `<div class="pg-section"><div class="content-header-2">Items, buildings, and counts</div>
+			${group('Items', IN_GAME.items)}
+			${this.numHtml({ key: 'item:114', label: item(114), value: V.L0_(114), path: ['items', 114], max: 99, noteHtml: `${this.questHtml(38)}: its NPC is in F1, one dungeon further per card (up to F4)` })}
 			${this.checkHtml({ key: 'item:256', label: `Own a ${item(256)}`, on: V.L0_(256) > 0, path: ['items', 256], title: 'Changes only the 6C extra boss’s drop' })}
 			${this.numHtml({ key: 'item:305', label: item(305), value: V.L0_(305), path: ['items', 305], max: 99, note: '2 or more: the tomb guardian drops something else' })}
+			${group('Buildings', IN_GAME.buildings)}
 			${levels}
-			${this.checkHtml({ key: 'bstep:4:1', label: `${building(4)}: step 2 done`, on: V.o[4].h0_(2), path: ['buildings', 4, 'C0', 1], title: 'More finds in F3 and F4' })}
-			${this.numHtml({ key: 'stat:b:115', label: `${item(115)}s found`, value: V.N.b.j_(115), path: ['stats', 'b', 115], max: 999, note: 'none (and 20 F4 dungeons cleared): a special NPC is likelier in F3 and F4' })}
+			${this.checkHtml({ key: 'bstep:4:1', label: `${building(4)}: ${SHOP_TECHNOLOGY_2} researched`, on: V.o[4].h0_(2), path: ['buildings', 4, 'C0', 1], title: 'More finds in F3 and F4' })}
+			${group('Counts', IN_GAME.counts)}
+			${this.numHtml({ key: 'stat:b:115', label: `${item(115)} looted`, value: V.N.b.j_(115), path: ['stats', 'b', 115], max: 999, note: 'none (and 20 F4 dungeons cleared): a special NPC is likelier in F3 and F4' })}
 			${this.numHtml({ key: 'stat:f:18', label: 'F4 dungeons cleared', value: V.N.f_(18), path: ['stats', 'f', 18], max: 9999 })}
-			${this.numHtml({ key: 'stat:x', label: 'Trades with merchants', value: V.N.x | 0, path: ['stats', 'x'], max: 9999, note: '3 or more: in 3B–4C, F3, EB and EC the merchant may be a fake (12%) that turns into a monster' })}
+			${this.numHtml({ key: 'stat:x', label: 'Persons rescued', value: V.N.x | 0, path: ['stats', 'x'], max: 9999, note: '3 or more: in 3B–4C, F3, EB, and EC a lost adventurer may be a fake (12%) that turns into a monster' })}
 		</div>`;
 	}
 
@@ -335,9 +361,10 @@ export class ProgressPanel {
 		return `<div class="layer-row pg-check" role="checkbox" tabindex="0" aria-checked="${!!on}" data-c="${key}"${title ? ` title="${esc(title)}"` : ''}><div class="checkbox${on ? ' selected' : ''}"></div><span>${esc(label)}${mark}</span></div>`;
 	}
 
-	numHtml({ key, label, value, path, max, note = '' }) {
+	/** A number field; its note is plain text (note) or already-escaped HTML (noteHtml). */
+	numHtml({ key, label, value, path, max, note = '', noteHtml = esc(note) }) {
 		const mark = this.changed(path) ? CHANGED_MARK : '';
-		return `<div class="pg-num"><span>${esc(label)}${mark}</span><input type="number" min="0" max="${max}" step="1" value="${value}" data-n="${key}" aria-label="${esc(label)}">${note ? `<div class="pg-note">${esc(note)}</div>` : ''}</div>`;
+		return `<div class="pg-num"><span>${esc(label)}${mark}</span><input type="number" min="0" max="${max}" step="1" value="${value}" data-n="${key}" aria-label="${esc(label)}">${noteHtml ? `<div class="pg-note">${noteHtml}</div>` : ''}</div>`;
 	}
 
 	wire(box) {
@@ -357,8 +384,9 @@ export class ProgressPanel {
 		for (const el of box.querySelectorAll('[data-bar]')) el.onkeydown = (e) => this.slideByKey(e, +el.dataset.bar);
 		for (const el of box.querySelectorAll('select[data-where]')) el.onchange = () => this.setPosition(+el.dataset.where, +el.value);
 		for (const el of box.querySelectorAll('details[data-parts]')) el.ontoggle = () => this.rememberOpen(+el.dataset.parts, el.open);
-		for (const el of box.querySelectorAll('[data-base]')) act(el, () => { if (el.dataset.base === 'save' && !H.profile) return; H.setUse(el.dataset.base === 'save'); });
-		for (const el of box.querySelectorAll('[data-reset]')) act(el, () => H.resetEdits(el.dataset.reset));
+		for (const el of box.querySelectorAll('[data-base]')) act(el, () => { if (el.dataset.base === 'save' && !H.profile) return; this.notice = ''; H.setUse(el.dataset.base === 'save'); });
+		for (const el of box.querySelectorAll('[data-clear]')) act(el, () => { if (!H.edits.count()) return; this.notice = ''; H.resetEdits(H.use && H.profile ? 'save' : 'new'); });
+		for (const el of box.querySelectorAll('[data-mark]')) act(el, () => this.mark(el.dataset.mark));
 	}
 
 	rememberOpen(key, open) {
@@ -391,6 +419,16 @@ export class ProgressPanel {
 	}
 
 	// ---- edits: each control change becomes an override on the base, then the map is rebuilt ----------------------
+
+	/** One of the "mark ... done" buttons (MARK_BUTTONS): the same overrides the sliders and ticks write, for everything at once. */
+	mark(which) {
+		const marks = {
+			quests: (o, V) => markedText({ quests: markQuestsDone(o, V, this.lines) }),
+			bosses: (o, V) => markedText({ bosses: markBossesBeaten(o, V) }),
+			all: (o, V) => markedText({ quests: markQuestsDone(o, V, this.lines), bosses: markBossesBeaten(o, V) }),
+		};
+		this.edit(marks[which]);
+	}
 
 	setPosition(key, position) {
 		const line = this.lineByKey(key);
@@ -432,10 +470,14 @@ export class ProgressPanel {
 		});
 	}
 
-	/** Run change(overrides, effective profile), drop overrides equal to the base, keep them, and regenerate. */
+	/**
+	 * Run change(overrides, effective profile), drop overrides equal to the base, keep them, and regenerate. A change
+	 * may return a sentence saying what it did; it stays under the "mark ... done" buttons until the next change.
+	 */
 	edit(change) {
 		const H = this.opts.hero;
-		change(H.edits.o, H.effectiveProfile().vj0);
+		const said = change(H.edits.o, H.effectiveProfile().vj0);
+		this.notice = typeof said === 'string' ? said : '';
 		H.edits.normalize(H.baseProfile());
 		H.edits.save();
 		H.progressChanged();
@@ -443,7 +485,35 @@ export class ProgressPanel {
 }
 
 const CHANGED_MARK = ' <span class="pg-changed" title="Changed from the base">●</span>';
-const FOCUS_KEYS = ['bar', 'where', 'c', 'n', 'base', 'reset'];
+const FOCUS_KEYS = ['bar', 'where', 'c', 'n', 'base', 'clear', 'mark'];
+
+/**
+ * The dungeons in the rows the game lists them in (its Statistics, kl0.J0): tombs, forest, floors 1 to 5, and caves.
+ * Every dungeon is shown, with "nobody" where no quest NPC can be.
+ */
+const DUNGEON_ROWS = [[23, 24, 25, 26], [15, 16, 17, 18], [0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11], [12, 13, 14], [19, 20, 21, 22]];
+
+/**
+ * Where the game shows the values of "Items, buildings, and counts", by group, in its own words: the Adventurers Guild
+ * page has the Warehouse and Depository grids (vj0.K and vj0.L: generation counts both), the Territory map whose
+ * buildings open a window with "Level N" and Technologies (ni0.B0, C0), and the Other section with Statistics (pj0: the
+ * "Loot!" list N.b, the Dungeon list N.f per dungeon, and Persons rescued N.x). From the game's layout guild.xml and kl0.J0.
+ */
+const IN_GAME = {
+	items: 'In the game: Adventurers Guild → Warehouse (and Depository).',
+	buildings: 'In the game: Adventurers Guild → Territory, tap a building: its level and Technologies.',
+	counts: 'In the game: Adventurers Guild → Other → Statistics.',
+};
+
+/** The Shop's second technology (ni0 4, tj0 2), the step generation reads; data/names.json has no technology names. */
+const SHOP_TECHNOLOGY_2 = 'Glass recycling';
+
+/** The "mark ... done" buttons, in order: what `mark(key)` does, its label and a plain-words title. */
+const MARK_BUTTONS = [
+	{ key: 'quests', text: 'Mark all quests done', title: 'Move every questline to its end, all parts done. Bosses, items, buildings, and counts stay as they are.' },
+	{ key: 'bosses', text: 'Mark all bosses beaten', title: 'Mark every boss and mini-boss as beaten. Quests, items, buildings, and counts stay as they are.' },
+	{ key: 'all', text: 'Mark everything done', title: 'Move every questline to its end and mark every boss beaten. Items, buildings, and counts stay as they are.' },
+];
 
 /** A selector that finds the focused control again after the panel is re-rendered (or null). */
 function focusSelector(box) {
@@ -461,6 +531,52 @@ function writeQuestState(o, q, state) {
 	(o.quests = o.quests || {})[q.a] = [((q.j0 & 255) & ~144) | bits, q.k0 & 255];
 }
 
+/**
+ * "Mark all quests done": every questline gets all its parts done, whatever it was at. Questlines already done are
+ * left as they are. Writes overrides into o; returns { changed, already } in questlines.
+ *
+ * None has to stay behind: the game's start conditions (jj0.c) only ask for more progress (a quest started, a step
+ * done, a quest done, a boss count, a building level) and finishing a quest takes nothing from another, so no
+ * questlines exclude each other.
+ */
+export function markQuestsDone(o, V, lines) {
+	const todo = lines.filter((line) => !partStates(V, line).every((state) => state === 'done'));
+	for (const line of todo) for (const part of line.parts) writeQuestState(o, V.Y0_(part.id), 'done');
+	return { changed: todo.length, already: lines.length - todo.length };
+}
+
+/**
+ * "Mark all bosses beaten": every boss and mini-boss of the Bosses beaten list, that is the J0 bits (classic, forest,
+ * caves) and the 2C–5C mini-boss flags in I0. Bosses already beaten are left as they are. Returns { changed, already }
+ * in bosses.
+ */
+export function markBossesBeaten(o, V) {
+	const flags = [...bossBits().map((b) => ['J0', b.bit]), ...MINI.map((m) => ['I0', m.bit])];
+	const todo = flags.filter(([field, bit]) => !((V[field] >>> bit) & 1));
+	for (const [field, bit] of todo) (o[field] = o[field] || {})[bit] = 1;
+	return { changed: todo.length, already: flags.length - todo.length };
+}
+
+/**
+ * The one-line result of a "mark ... done" button, from what markQuestsDone and markBossesBeaten returned (either may
+ * be missing): "16 questlines moved to done. 30 bosses marked beaten."
+ */
+export function markedText({ quests, bosses }) {
+	const results = [
+		quests && { ...quests, one: 'questline', many: 'questlines', did: 'moved to done', was: 'done' },
+		bosses && { ...bosses, one: 'boss', many: 'bosses', did: 'marked beaten', was: 'beaten' },
+	].filter(Boolean);
+	if (results.length > 1 && results.every((r) => !r.changed)) return 'Everything was already done.';
+	return results.map(resultText).join(' ');
+}
+
+function resultText({ changed, already, one, many, did, was }) {
+	const noun = (n) => (n === 1 ? one : many);
+	if (!changed) return `All ${already} ${many} were already ${was}.`;
+	const rest = already ? `; ${already} ${already === 1 ? 'was' : 'were'} already ${was}` : '';
+	return `${changed} ${noun(changed)} ${did}${rest}.`;
+}
+
 /** "Map: 2C, F1–F4 · drops: 6C" */
 function whereText(types) {
 	const parts = [];
@@ -471,7 +587,12 @@ function whereText(types) {
 
 function effectsHtml(effects) {
 	if (!effects.length) return '<div class="pg-note">Changes no dungeon.</div>';
-	return `<ul class="pg-effects">${effects.map((e) => `<li><span class="pg-when">${esc(e.when)}:</span> ${esc(e.text)}</li>`).join('')}</ul>`;
+	return `<ul class="pg-effects">${effects.map((e) => `<li><span class="pg-when">${esc(e.when)}:</span> ${piecesHtml(e.pieces)}</li>`).join('')}</ul>`;
+}
+
+/** An effect's words (js/ui/questlines.js pieces), escaped, with each quest title in bold. */
+function piecesHtml(pieces) {
+	return pieces.map((p) => (typeof p === 'string' ? esc(p) : `<b>${esc(p.quest)}</b>`)).join('');
 }
 
 /** Building levels the quest people's start conditions check: id -> the highest level any of them needs. */
