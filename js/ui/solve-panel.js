@@ -33,8 +33,8 @@ const OPTION_HELP = {
 		},
 	},
 	heroSrc: {
-		profile: { title: 'The hero picked in Your hero, with its own gear, skills, pack and mental power' },
-		manual: { title: 'A made-up hero: choose a level, gear and kit' },
+		profile: { title: 'The hero picked in Your hero, with its own gear, skills, pack, and mental power' },
+		manual: { title: 'A made-up hero: choose a level, gear, and kit' },
 	},
 	exactSrc: {
 		save: { title: 'Play on from the state in your save, with the game\'s own dice' },
@@ -65,7 +65,7 @@ const KIT_TEXT = {
 	none: 'No kit: only what a new-game hero carries',
 	// js/combat/setup.js KIT_ITEMS / KIT2_ITEMS
 	kit: 'Basic kit: 5 healing potions, 2 Mechanical spiders, 5 kunai, 3 Greek grenades, 2 nets, 2 grappling hooks, 1 Ambrosia; 60 mental power; basic skills',
-	kit2: 'Full kit: healing, energy and mental-power potions, 2 Ambrosia, grenades, flamethrowers, golden kunai, food and more; full mental power; most skills',
+	kit2: 'Full kit: healing, energy, and mental-power potions, 2 Ambrosia, grenades, flamethrowers, golden kunai, food, and more; full mental power; most skills',
 };
 const GEAR_TEXT = ['Tier 1 (starter)', 'Tier 2', 'Tier 3', 'Tier 4 (best)'];
 const SKILL_NAMES_FALLBACK = { 20001: 'Wait', 20002: 'Smashing blow', 20003: 'Round kick', 20004: 'Demoralization', 20005: 'Charge of motivation', 20006: 'Doctor', 20007: 'Divine protection' };
@@ -308,7 +308,7 @@ export class SolvePanel {
 		const H = this.heroPanel();
 		if (!(H && H.profile)) return '';   // no save yet: the mode's description says where the dice come from
 		if (H.dungeon && H.dungeon.kind === 'ew') return 'Your save holds an autonomous run (the hero is exploring alone), which has no fight to solve.';
-		return 'Your save was made in town: no dungeon is in progress, so the dice (the combat RNG state) are not in it. Enter the dungeon in the game, export again (Settings → Export) and import that file to solve your real run.';
+		return 'Your save was made in town: no dungeon is in progress, so the dice (the combat RNG state) are not in it. Enter the dungeon in the game, export again (Settings → Export), and import that file to solve your real run.';
 	}
 
 	/** the hero settings: your imported hero, or the what-if fields (the save's own hero has none: see solveTargetHtml) */
@@ -720,8 +720,8 @@ export class SolvePanel {
 			? `Solve puzzles for about <b>${mp.toSolve}</b> mental power during this run. In a dungeon, puzzle MP goes straight to the hero, up to its max${mp.max != null ? ` (${mp.max})` : ''}.`
 			: 'The hero\'s mental power covers this run: no puzzles needed.');
 		if (mp.topUps.length) lines.push(`<ul class="topup-list">${mp.topUps.map((u) => `<li>${esc(topUpText(u, plan))}</li>`).join('')}</ul>`);
-		else if (mp.toSolve > 0) lines.push('<span class="muted">Top up before the seals, sealed doors and chests on the route (the stops list shows them).</span>');
-		const spend = mp.route != null && mp.route !== mp.need ? `This run spends about ${mp.need} MP (the route's seals, sealed doors and chests: ${mp.route})` : `The route's seals, sealed doors and chests take about ${mp.need} MP`;
+		else if (mp.toSolve > 0) lines.push('<span class="muted">Top up before the seals, sealed doors, and chests on the route (the stops list shows them).</span>');
+		const spend = mp.route != null && mp.route !== mp.need ? `This run spends about ${mp.need} MP (the route's seals, sealed doors, and chests: ${mp.route})` : `The route's seals, sealed doors, and chests take about ${mp.need} MP`;
 		lines.push(`<span class="small muted">${spend}${mp.start != null ? `; the hero starts with ${mp.start}${isProfile ? ' (from your stock)' : ''}` : ''}.${isProfile ? ' Puzzles solved in town before you go raise the stock the game hands the hero at entry.' : ''}</span>`);
 		if (itemsForMp && mp.potions.length) lines.push(`<span class="small muted">With "Use items for mental power" on, the plan also uses ${mp.potions.map((p) => `${p.bring}× ${esc(p.name || this.item(p.id))}`).join(', ')}.</span>`);
 		if (mp.value) lines.push(`<span class="small muted">${esc(mp.value)}</span>`);

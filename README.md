@@ -7,12 +7,12 @@ You get:
 
 - **Every object and creature**, with layers you can toggle: monsters and people, chests and pages, doors and
   levers, ladders/hatches/portals, puzzle rooms, plus spoilers (puzzle solutions, hidden traps).
-- **Links:** click a ladder, hatch, portal, lever or gate to highlight what it connects to.
+- **Links:** click a ladder, hatch, portal, lever, or gate to highlight what it connects to.
 - **A route** that clears every objective in few steps. It opens what blocks the way (levers before gates,
   the gold monster before a locked door) and walks the floor nonogram.
 - **Your hero:** import the game's export (Settings → Export, `NonogramsKatana.zip`, or a bare `guild.dat`) by
   dropping it on the page or picking it. You see your heroes and their levels, the chosen hero's health, energy, mental
-  power, attack, defence, action points, skills and equipment, the pack it would take into the dungeon on screen
+  power, attack, defence, action points, skills, and equipment, the pack it would take into the dungeon on screen
   (items, mental power, familiars, entry fee: the game's own entry rules) and your progress. While "Use my progress"
   is on, maps are built with your quests and bosses beaten, so quest people and mini-bosses match your game. A save
   made inside a dungeon shows that dungeon in progress. The file is read in your browser only; nothing is uploaded. It
@@ -30,7 +30,7 @@ You get:
   dungeon (or a made-up `xseed` to experiment), and gives a step-by-step script: ← / → step through it on the map,
   Page Up / Page Down jump between fights. Use your imported hero or a what-if hero (level, gear, kit, skills). The plan
   shows expected items (and p95), mental power needed against what the hero brings, death risk, the pack, and per
-  fight the foes, the tactic in plain words and every tactic it compared. Solves run in Web Workers.
+  fight the foes, the tactic in plain words, and every tactic it compared. Solves run in Web Workers.
 
 Labels: `1A`–`5C` dungeons, `F1`–`F4` forest, `6A`–`6D` caves, `EA`–`ED` tombs. The number after the dash
 is the dungeon's seed.
@@ -43,7 +43,7 @@ is the dungeon's seed.
 | `versionName` / `versionCode` | `22.11` / `22110` (from the APK's `AndroidManifest.xml`) |
 | Package | `com.ucdevs.jcross` |
 
-The generator, combat engine, save reader and `data/` all follow this version. The site shows it in Help, from
+The generator, combat engine, save reader, and `data/` all follow this version. The site shows it in Help, from
 `data/game-version.json`; `test/version.mjs` fails if that file and this table disagree. The game shows its version
 on its About screen. If yours is newer and a dungeon doesn't match, the game may have changed: please open an issue. Updating
 to a new version is one `[Game] Sync:` PR ([docs/pr_guidelines.md](docs/pr_guidelines.md#game-version-syncs)), and
@@ -99,17 +99,17 @@ in the repo, and the generator and combat engine only change to match the game m
 The original code in this repository is released under the [MIT License](LICENSE). That covers the viewer and
 renderer, the sprites, the route planner, the solver, the user interface, the save reader, and the tests and tools.
 
-The MIT License does not cover the game. *Nonograms Katana* belongs to its developer: its name, its item, quest and
+The MIT License does not cover the game. *Nonograms Katana* belongs to its developer: its name, its item, quest, and
 skill names (`data/names.json`), its numeric tables (`data/tables.json`), and the dungeon generation and combat rules
 that `js/gen/` and `js/combat/` reproduce. They are here only so the site can show dungeons exactly as the game builds
-them. The game's art, sounds and app are not included, and all graphics are drawn procedurally.
+them. The game's art, sounds, and app are not included, and all graphics are drawn procedurally.
 
 The creature and object names in `data/catalog.json` come from the
 [Nonograms Katana Wiki](https://nonograms-katana.fandom.com), whose text is licensed under
 [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/). That file is shared under the same licence, separately
 from the MIT-licensed code (see [NOTICE.md](NOTICE.md)).
 
-See [display catalog additions](docs/display_catalog.md) for contents, hidden-creature warnings and item distinctions.
+See [display catalog additions](docs/display_catalog.md) for contents, hidden-creature warnings, and item distinctions.
 
 This is an unofficial fan project. It is not affiliated with or endorsed by the developer of Nonograms Katana. If you
 are the developer and would like anything changed or removed, please open an issue and it will be taken down.

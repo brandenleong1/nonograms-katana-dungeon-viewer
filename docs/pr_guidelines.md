@@ -25,7 +25,7 @@ Format: `[Area][Sub-area] Qualifier: Title Case Summary`. The sub-area is option
 | `[Tools]` | developer tools |
 | `[CI]` | workflows |
 | `[Docs]` | documentation |
-| `[Game]` | a new game version, across the ports, data and save reader (with `Sync:`) |
+| `[Game]` | a new game version, across the ports, data, and save reader (with `Sync:`) |
 
 **Qualifier** (required): one of
 
@@ -34,11 +34,11 @@ Format: `[Area][Sub-area] Qualifier: Title Case Summary`. The sub-area is option
 | `Parity:` | the ports disagreed with the game, e.g. a wrong room, monster, loot, or fight result |
 | `Fix:` | any other bug: a crash, a broken control, a wrong route or plan |
 | `Feature:` | something new: a tactic, a panel, a map layer, an option |
-| `Performance:` | faster solving, rendering or loading, or less memory |
+| `Performance:` | faster solving, rendering, or loading, or less memory |
 | `Refactor:` | restructuring with no change in behaviour |
 | `Sync:` | following a new version of the game: re-ported code, regenerated `data/`, a new save format |
 
-For docs, tests, tools and CI, use `Feature:` when the change adds something and `Fix:` when it corrects something.
+For docs, tests, tools, and CI, use `Feature:` when the change adds something and `Fix:` when it corrects something.
 
 **Summary:** Title Case and imperative. Say what the change *does*, not what was wrong. The whole title is at most 80
 characters.
@@ -78,7 +78,7 @@ description isn't copied into the commit; the commit links to it, so write it fo
 **Keep personal and sensitive detail out.** PRs are public and linked from the git history for good.
 
 - **Never include:** anyone's save file, or values read from one (hero names, inventory, profile dumps).
-- **Never include:** personal paths (`/home/<you>/…`, `C:\Users\<you>\…`), tokens or credentials.
+- **Never include:** personal paths (`/home/<you>/…`, `C:\Users\<you>\…`), tokens, or credentials.
 - **Never include:** game code or game files.
 - **Fine to include:** dungeon labels, since they're only a dungeon type and a seed.
 - If a bug only shows up with a particular save, describe it in words (e.g. "a profile with quest 25 active and every
@@ -95,7 +95,7 @@ helps.
 Open with one sentence saying what the change does, and in which situation. Then cover, in one or two short
 paragraphs:
 
-- **The problem:** which part does what wrong, on what kind of dungeon, fight or input. Describe the mechanism, not
+- **The problem:** which part does what wrong, on what kind of dungeon, fight, or input. Describe the mechanism, not
   just the symptom.
 - **Why it matters:** what a player sees (a wrong map, a bad route, a plan that dies, a frozen page).
 - **The fix:** how the change solves it, and why this is the right place. If there's an obvious alternative you
@@ -113,7 +113,7 @@ Show the smallest case that demonstrates the change, before and after:
 - **The output on `main` and with this change.** Run both; don't write the "before" from memory.
 - **Performance:** a small before/after table of the numbers that move.
 - **Features:** a short before/after (what the panel or plan shows).
-- **No example** for refactors, renames, docs and CI changes.
+- **No example** for refactors, renames, docs, and CI changes.
 
 ### Keep it short
 
@@ -147,10 +147,10 @@ Better:
 
 ### Game version syncs
 
-A `Sync:` PR moves everything to a new game version in one go. The ports, `data/` and the parity suites only make
+A `Sync:` PR moves everything to a new game version in one go. The ports, `data/`, and the parity suites only make
 sense together, so don't split it.
 
-- **Context:** the old and new version (e.g. 22.11 → 22.12), and what changed in the game's rules, tables or save
+- **Context:** the old and new version (e.g. 22.11 → 22.12), and what changed in the game's rules, tables, or save
   format, in plain words. If a change affects players (new dungeons, different spawns, a changed formula), say so.
 - **Changes:** per area: which ported methods changed, which tables, and the save format version, if it moved.
 - **Testing:** every oracle suite rebuilt against the new version, with results ([testing.md](testing.md)). Also
@@ -169,9 +169,9 @@ https://github.com/brandenleong1/nonograms-katana-dungeon-viewer/pull/12
 ```
 
 - **Subject:** the PR title, exactly, without the ` (#12)` GitHub appends (the link replaces it).
-- **Body:** only the PR's URL. Context, changes and testing live in the PR.
+- **Body:** only the PR's URL. Context, changes, and testing live in the PR.
 
-**The PR bot writes it.** People don't merge: once a PR is approved, green and up to date, the bot squash-merges it
+**The PR bot writes it.** People don't merge: once a PR is approved, green, and up to date, the bot squash-merges it
 with exactly this message ([CONTRIBUTING.md](../CONTRIBUTING.md#how-a-pr-gets-merged)). The postcommit
 `commit-format` check flags any commit on `main` that doesn't follow it. That can only happen through an admin's
 manual merge, and `tools/merge-pr.sh` writes the message for those.
@@ -187,5 +187,5 @@ titled `Auto-Bump [Utils] Submodule (-> <sha>)` are from before `main` was prote
 
 - [ ] The title and every section follow this guide.
 - [ ] `npm test` passes; parity changes say whether the oracle suites were run.
-- [ ] No save data, personal paths or game files in the diff or the description.
+- [ ] No save data, personal paths, or game files in the diff or the description.
 - [ ] For UI changes: the Screenshots comment looks right, and anything it doesn't show is in the description.

@@ -27,7 +27,7 @@ player progress (what changes the map):
 | `init.js` | Page chrome shared with the maintainer's other sites: theme, popups, fonts. |
 | `js/` | All site code, as ES modules (below). |
 | `data/tables.json` | Numeric game tables the generator and engine read: room shapes, object and creature definitions, items, decoration weights, a new player's profile. Generated; don't edit by hand ([infra.md](infra.md#data-files)). |
-| `data/names.json` | English display names for items, skills and quests. Generated. |
+| `data/names.json` | English display names for items, skills, and quests. Generated. |
 | `data/catalog.json` | What each creature and object is called (names from the Nonograms Katana Wiki, CC BY-SA 3.0) and the kind the map draws it as. Includes [item distinctions and contents evidence](display_catalog.md). Kept by hand ([infra.md](infra.md#data-files)). |
 | `data/game-version.json` | The game version everything follows; shown in Help, and kept equal to the README's table by `test/version.mjs`. |
 | `lib/utils/` | Git submodule [brandenleong1/utils](https://github.com/brandenleong1/utils): layout CSS, themes, popups, cookies. |
@@ -106,7 +106,7 @@ Rules and file ownership are in [js/combat/PORTING.md](../js/combat/PORTING.md);
 | `tools/bench.mjs`, `tools/coverage.mjs` | Engine and clone benchmarks; V8 coverage summary for the ports. |
 | `tools/check-pr.mjs`, `tools/pr-bot.mjs` | PR policy check (title, description, branch, commit message); the PR bot (ready-to-merge status, branch cleanup). |
 | `tools/screenshots.mjs`, `tools/screenshot-comment.mjs` | The screenshot bot: shoot the main views of two checkouts and keep what changed; post them on the PR (trusted, from `main`). |
-| `tools/run-tests.mjs` | Runs every standalone suite in `test/` (the files with a `// Standalone suite:` line): `npm test`, precommit and postcommit. |
+| `tools/run-tests.mjs` | Runs every standalone suite in `test/` (the files with a `// Standalone suite:` line): `npm test`, precommit, and postcommit. |
 | `tools/static-server.mjs`, `tools/chromium.mjs` | A loopback static server and headless Chromium, for the smoke test and the screenshots. |
 | `tools/merge-pr.sh`, `tools/github-setup.sh` | Squash-merge a PR with the right commit message; apply the repository's GitHub settings and rulesets. |
 | `tools/sprite-gallery.html` | Every sprite on a tile, per theme: `/tools/sprite-gallery.html?theme=dark`. |
