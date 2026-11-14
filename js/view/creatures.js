@@ -7031,7 +7031,7 @@ const DRAW = {
 		P.gloss(-1, -41, 0.7, 1.4, 0.5);
 	},
 	// Merytsah: a queen in a white pleated dress with a gold sash, a sheer white shawl, a gold vulture headdress over long
-	// black hair, a red crown base with two tall gold plumes, a green papyrus staff in her hand; looks left
+	// black hair, a red crown base with two short gold plumes, a green papyrus staff in her hand; looks left
 	642(P) {
 		P.shadow(11, 4.5);
 		const skin = '#c88a5a', gold = '#d9a83a', white = '#f4f1ea', red = '#c8302a', green = '#2f7a4a', hair = '#1a1414';
@@ -7067,10 +7067,10 @@ const DRAW = {
 		P.eyes(-0.6, -25, 2.1, 1.15, '#1a1010', -1);
 		for (const s of [-1, 1]) P.thin([[-0.6 + s * 2.1 - 1.4, -25.8], [-0.6 + s * 2.1 + 1.6, -26]], '#1a1010', 0.45);
 		P.ellipse(-0.6, -21.6, 1, 0.45, '#a83030', { line: false });
-		// the crown: a red base, two tall gold plumes
+		// the crown: a red base, two gold plumes, kept short so the unique monster's crown floats clear of them
 		P.shape((p) => { p.m(-3.6, -31); p.l(3.6, -31); p.l(3.2, -34); p.l(-3.2, -34); }, red, -3.6, 3.6);
-		for (const x of [-1.5, 1.5]) P.shape((p) => { p.m(x - 1.4, -34); p.l(x - 1.4, -44); p.q(x, -46.4, x + 1.4, -44); p.l(x + 1.4, -34); }, gold, x - 1.4, x + 1.4);
-		P.thin([[-1.5, -35], [-1.5, -43.4]], shade(gold, -0.3), 0.3); P.thin([[1.5, -35], [1.5, -43.4]], shade(gold, -0.3), 0.3);
+		for (const x of [-1.5, 1.5]) P.shape((p) => { p.m(x - 1.4, -34); p.l(x - 1.4, -38.6); p.q(x, -41, x + 1.4, -38.6); p.l(x + 1.4, -34); }, gold, x - 1.4, x + 1.4);
+		P.thin([[-1.5, -35], [-1.5, -38.2]], shade(gold, -0.3), 0.3); P.thin([[1.5, -35], [1.5, -38.2]], shade(gold, -0.3), 0.3);
 	},
 	// ---- creatures that spawn during play: mimics and a summoned imp ----
 	// Fire beetle (the vase mimic, outside the caves): a low green spiny bug facing right, dragging a great glowing
