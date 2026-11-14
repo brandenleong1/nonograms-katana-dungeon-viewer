@@ -9,7 +9,7 @@
 //   paintCreature(g, env, species, scale = 1)   -> draw it (env as in sprites.js: { u, lw })
 
 /** species drawn the same as another (one picture in the game) */
-const SAME_AS = { 276: 210, 277: 212, 278: 234, 279: 236, 285: 224, 267: 268, 280: 265, 281: 266, 282: 244, 283: 246, 270: 255, 271: 255, 272: 256 };
+const SAME_AS = { 276: 210, 277: 212, 278: 234, 279: 236, 285: 224, 267: 268, 280: 265, 281: 266, 282: 244, 283: 246, 270: 255, 271: 255, 272: 256, 385: 351, 386: 352, 382: 354, 383: 354, 392: 359, 395: 359, 391: 370, 372: 371, 384: 375, 388: 378, 389: 394, 390: 394, 397: 258 };
 
 const drawingOf = (id) => DRAW[SAME_AS[id] ?? id];
 
@@ -2344,5 +2344,1287 @@ const DRAW = {
 		P.dot(10.8, -35.4, 0.8, '#c8202a');
 		P.thin([[8.2, -37.3], [12.4, -36.5]], shade(scale, -0.5), 0.7);
 		P.gloss(6.6, -36.6, 1.4, 0.7, 0.4);
+	},
+	// ---- caves (6A-6D) ----
+	// Giant fly: a brown insect standing hunched on two jointed legs, a ridged brown wing-case over its back, a gauzy golden
+	// wing behind, a round head with one big glowing yellow eye and feathery golden antennae, clawed forelegs held up front
+	351(P) {
+		P.shadow(12, 5);
+		const brown = '#8a6a3a', dark = '#5e4526', tan = '#b8955a', gold = '#e8c060';
+		// a gauzy wing behind the back
+		P.shape((p) => { p.m(-5, -24); p.q(-17, -24, -17, -7); p.q(-12, -8, -5, -17); }, '#ecd890', -17, -5, { alpha: 0.75 });
+		for (const [x, y] of [[-14, -10], [-12, -16], [-9, -21]]) P.thin([[-5.5, -19], [x, y]], shade(gold, -0.3), 0.3);
+		// jointed legs joined under the abdomen
+		for (const [hx, kx, fx, c] of [[-3, -6.5, -4.5, shade(brown, -0.12)], [2, 5.5, 5, brown]]) {
+			taper(P, [[hx, -11], [kx, -7], [fx, -2]], 3.4, 2.2, c);
+			P.dot(kx - 0.3, -7.2, 1.3, shade(c, -0.15));
+			P.ellipse(fx + 0.8, -1.2, 2.6, 1.3, dark);
+		}
+		// a segmented tan thorax and belly
+		P.ellipse(1, -15.5, 6.5, 7.5, tan);
+		for (const y of [-12, -15, -18]) P.thin([[-3.5, y], [5.5, y + 0.6]], shade(tan, -0.35), 0.4);
+		// the ridged wing-case arching over the back
+		P.shape((p) => { p.m(-9, -9); p.q(-12, -24, -2, -27.5); p.q(4, -28, 5, -23.5); p.q(-3, -21, -5.5, -9); p.q(-7.5, -7.6, -9, -9); }, brown, -12, 5);
+		P.thin([[-7.5, -11], [-8, -20], [-2, -25.5]], shade(brown, -0.35), 0.45);
+		P.thin([[-4.8, -11], [-4.5, -19], [1.5, -24.5]], shade(brown, -0.35), 0.4);
+		P.gloss(-6, -21.5, 2, 1.1, 0.4);
+		// clawed forelegs held up in front of the chest
+		for (const [y, c] of [[-20, brown], [-15, shade(brown, -0.1)]]) {
+			taper(P, [[4, y], [10, y + 1], [10.5, y + 5]], 2.6, 1.8, c);
+			for (const d of [-1, 0, 1]) taper(P, [[10.5, y + 5], [11.5 + d * 1.2, y + 7], [12.5 + d * 1.6, y + 6.2]], 1, 0.3, gold);
+		}
+		// feathery antennae
+		for (const [ax, tx, ty] of [[6.5, 9, -43], [9, 15.5, -40]]) {
+			P.line([[ax, -33], [(ax + tx) / 2 + 1, (ty - 33) / 2 - 3], [tx, ty]], gold, 0.6);
+			for (let t = 0.35; t < 1; t += 0.16) { const x = ax + (tx - ax) * t, y = -33 + (ty + 33) * t; P.thin([[x, y], [x + 2.2, y + 1.4]], gold, 0.45); P.thin([[x, y], [x - 1, y - 1.6]], gold, 0.4); }
+		}
+		// the head: a round brown head, a little mandible, one big glowing eye
+		P.circle(7, -27.5, 6.5, '#9c7a46');
+		P.gloss(4.5, -31, 1.8, 1, 0.45);
+		P.poly([[10.5, -23], [13, -22], [10.8, -21]], '#5e4526');
+		P.glow(8.8, -28.5, 4.5, '#ffd23f', 0.45);
+		P.circle(8.8, -28.5, 3.2, '#f6cf3e');
+		P.dot(9.4, -28.2, 1.4, '#5a3a10');
+		P.dot(7.8, -29.8, 0.8, '#ffffff');
+	},
+	// Shark attack: a hunched blue shark man, the whole upper body one great shark's head with a dorsal fin, jaws gaping
+	// to the right over rows of white teeth and an orange throat, a pale belly, dark blue legs, and a bone club in each fist
+	352(P) {
+		P.shadow(14, 5);
+		const blue = '#3f98c8', belly = '#cfe6ee', legc = '#33507e', bone = '#e6dcc2';
+		// a bone cleaver: a short grip held at (x0, y0), then a flat blade flaring out to a broad, slanted, hollowed end
+		const club = (x0, y0, x1, y1) => {
+			const dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy), ux = dx / l, uy = dy / l, nx = -uy, ny = ux;
+			const at = (t, w) => [x0 + ux * t + nx * w, y0 + uy * t + ny * w];
+			P.line([at(-2, 0), at(2.6, 0)], shade(bone, -0.2), 1.3);
+			P.shape((p) => { p.m(...at(2.4, -1.2)); p.l(...at(l - 1.2, -2.4)); p.l(...at(l + 0.6, -3.4)); p.q(...at(l - 0.6, 0), ...at(l - 1.4, 3.2)); p.l(...at(l - 2.6, 2.2)); p.l(...at(2.4, 1.2)); }, bone, Math.min(x0, x1) - 3, Math.max(x0, x1) + 3);
+			P.thin([at(3.4, 0.2), at(l - 2.4, 0.4)], shade(bone, -0.25), 0.4);
+			P.ellipse(...at(2.4, 0), 0.9, 1.6, shade(bone, -0.3), { rot: Math.atan2(uy, ux) });
+		};
+		for (const [hx, kx, fx, c] of [[-4, -8, -6, shade(legc, -0.1)], [4, 8, 6.5, legc]]) {
+			taper(P, [[hx, -13], [kx, -7], [fx, -2]], 5, 3.4, c);
+			P.ellipse(fx + 0.8, -1.3, 3, 1.4, shade(legc, -0.2));
+		}
+		// tail fin behind
+		P.poly([[-9, -15], [-15, -18], [-13.5, -12]], blue);
+		// the shark body-head: back curving up to the dorsal fin, jaws open to the right
+		P.poly([[-4, -36], [-6, -45], [2, -38]], shade(blue, -0.05));
+		P.shape((p) => { p.m(-9, -12); p.q(-13, -24, -6, -34); p.q(2, -41, 10, -39); p.q(17, -36, 18, -33); p.l(6, -30); p.l(17, -18); p.q(14, -12, 8, -10); p.q(0, -8, -9, -12); }, blue, -13, 18);
+		P.shape((p) => { p.m(-5, -13); p.q(-2, -22, 6, -26); p.l(14, -18); p.q(12, -12, 6, -10.6); p.q(0, -9.6, -5, -13); }, belly, -5, 14, { line: false });
+		for (const [x, y] of [[-5, -23], [-3.8, -21], [-2.6, -19]]) P.thin([[x, y], [x + 1.4, y - 3]], shade(blue, -0.4), 0.4);
+		P.gloss(-5, -31, 2.6, 1.3, 0.45);
+		// the open mouth: orange throat, teeth on both jaws
+		P.shape((p) => { p.m(17.6, -33); p.q(9, -33.5, 4, -29); p.q(9, -22, 16.6, -18.6); p.q(10, -24, 17.6, -33); }, '#e0603a', 4, 17.6);
+		P.ellipse(8.6, -27, 3, 2.4, '#a8301e', { line: false });
+		for (let i = 0; i < 6; i++) {
+			const t = i / 5, x = 16.6 - t * 11, y = -32.8 + t * 1.6 + t * t * 2;
+			P.poly([[x - 0.75, y], [x + 0.75, y], [x - 0.1, y + 2.2]], '#fffaf0');
+			const bx = 16 - t * 10, by = -19 + t * -4 - t * t * 4;
+			P.poly([[bx - 0.75, by], [bx + 0.75, by], [bx + 0.3, by - 2]], '#fffaf0');
+		}
+		P.dot(7.6, -36, 1.1, '#141a24'); P.dot(7.3, -36.4, 0.35, '#ffffff');
+		// arms hanging low, a bone cleaver in each fist: the far one hangs across in front of the legs, the near one points
+		// straight out ahead
+		taper(P, [[-4, -25], [-10, -19], [-9.4, -13.6]], 5.4, 3.8, shade(blue, -0.1));
+		club(-9.6, -13.4, 6.4, -1.4);
+		P.circle(-9.4, -13.4, 2.4, shade(blue, -0.1));
+		taper(P, [[1, -23], [6, -16], [10.4, -12.4]], 5.6, 4, blue);
+		club(10.6, -12.2, 26, -12);
+		P.circle(10.6, -12.4, 2.5, blue);
+		for (const d of [-0.8, 0, 0.8]) P.thin([[9.6 + d, -13.6], [10.8 + d, -10.8]], shade(blue, -0.45), 0.3);
+	},
+	// Demogorgon: a sinewy brown humanoid, a little hunched, whose head is a flower of flesh, dark petals with red insides
+	// opening on a round cream mouth ringed with teeth; long arms with big claws, a purple bracelet, a long purple loincloth
+	353(P) {
+		P.shadow(13, 5);
+		const skin = '#b47c52', dark = '#8e5a38', petal = '#7a3a24', inner = '#c84a32', purple = '#6a3aa8', gold = '#d9b04a';
+		// bent legs
+		for (const [hx, kx, fx, c] of [[-3, -7, -5.5, dark], [3, 7, 5.5, skin]]) {
+			taper(P, [[hx, -13], [kx, -7], [fx, -2]], 4.6, 3, c);
+			P.ellipse(fx + 1, -1.3, 3.2, 1.4, shade(c, -0.2));
+			for (const k of [-1, 0, 1]) P.thin([[fx + 3, -1.4 + k * 0.5], [fx + 4.4, -0.9 + k * 0.7]], shade(c, -0.45), 0.45);
+		}
+		// far arm, long, hanging to a big claw
+		P.ellipse(-7.5, -24, 3.6, 3.4, dark);
+		taper(P, [[-7.5, -24], [-13.5, -17], [-12, -10]], 4.6, 3.2, dark);
+		for (const k of [-1, 0, 1]) taper(P, [[-12, -10], [-12.9 + k * 1.6, -7.4], [-11.9 + k * 2.2, -5.6]], 1.2, 0.25, shade(dark, -0.2));
+		// sinewy torso with a ribbed chest
+		P.shape((p) => { p.m(-8.5, -24); p.q(-6, -28.5, 0, -28); p.q(6, -28.5, 8.5, -24.5); p.q(7, -18, 3.2, -12.5); p.l(-3.2, -12.5); p.q(-7, -18, -8.5, -24); }, skin, -8.5, 8.5);
+		for (const y of [-22, -19.5, -17]) { P.thin([[-4, y], [-1, y + 0.6]], shade(skin, -0.35), 0.4); P.thin([[1.8, y + 0.6], [4.6, y]], shade(skin, -0.35), 0.4); }
+		P.thin([[0.4, -25], [0.4, -13.5]], shade(skin, -0.3), 0.4);
+		P.gloss(-3.6, -23, 1.8, 0.9, 0.35);
+		// purple belt and a long loincloth strip with gold trim
+		P.line([[-3.6, -12.8], [3.8, -12.8]], purple, 1.3);
+		P.shape((p) => { p.m(-1.6, -12.4); p.l(2, -12.4); p.l(1.8, -4.4); p.l(0.2, -5.6); p.l(-1.4, -4.4); }, purple, -1.6, 2);
+		P.thin([[-1.2, -11.4], [1.6, -11.4]], gold, 0.5); P.thin([[0.2, -11], [0.2, -6.4]], shade(purple, 0.3), 0.35);
+		// near arm reaching forward to a big claw, a purple bracelet with gold studs on the wrist
+		P.ellipse(7.5, -23.5, 3.8, 3.6, skin);
+		taper(P, [[7.5, -23.5], [13.5, -19], [13.5, -12]], 4.8, 3.4, skin);
+		P.line([[11.6, -15.4], [14.8, -14.8]], purple, 1.1);
+		P.dot(13.2, -15.1, 0.4, gold);
+		for (const k of [-1, 0, 1]) taper(P, [[13.5, -12], [14.4 + k * 1.8, -9], [15.6 + k * 2, -7.6]], 1.3, 0.25, shade(skin, -0.15));
+		// neck up to the flower head
+		taper(P, [[0.6, -26], [1.2, -30]], 3.6, 3.2, skin);
+		// petals around a round toothy mouth facing the viewer, the head tipped to the right
+		const cx = 1.6, cy = -35.5;
+		for (const a of [-2.75, -1.6, -0.45, 0.7, 1.95, 3.15]) {
+			const R = 12.5, tx = cx + Math.cos(a) * R, ty = cy + Math.sin(a) * R * 0.9, nx = -Math.sin(a), ny = Math.cos(a);
+			P.shape((p) => { p.m(cx + nx * 4, cy + ny * 4); p.q(cx + Math.cos(a) * 8 + nx * 5, cy + Math.sin(a) * 8 + ny * 5, tx, ty); p.l(cx + Math.cos(a) * 9.5 - nx * 1.4, cy + Math.sin(a) * 9.5 - ny * 1.4); p.q(cx + Math.cos(a) * 7 - nx * 4.6, cy + Math.sin(a) * 7 - ny * 4.6, cx - nx * 4, cy - ny * 4); }, petal, cx - 12, cx + 12);
+			P.shape((p) => { p.m(cx + nx * 2.8, cy + ny * 2.8); p.q(cx + Math.cos(a) * 6.5 + nx * 3, cy + Math.sin(a) * 6.5 + ny * 3, cx + Math.cos(a) * 10, cy + Math.sin(a) * 9); p.q(cx + Math.cos(a) * 6.5 - nx * 3, cy + Math.sin(a) * 6.5 - ny * 3, cx - nx * 2.8, cy - ny * 2.8); }, inner, cx - 10, cx + 10, { line: false });
+		}
+		P.circle(cx, cy, 5.4, '#f2e6cc');
+		P.circle(cx, cy, 3, '#3a0e0a', { line: false });
+		for (let k = 0; k < 12; k++) { const a = k * Math.PI / 6; P.poly([[cx + Math.cos(a - 0.2) * 5, cy + Math.sin(a - 0.2) * 5], [cx + Math.cos(a + 0.2) * 5, cy + Math.sin(a + 0.2) * 5], [cx + Math.cos(a) * 2.4, cy + Math.sin(a) * 2.4]], '#fffaf0', { line: false }); }
+		P.gloss(cx - 2.4, cy - 3, 1.4, 0.7, 0.5);
+	},
+	// Death crow: a big shaggy mass of blue-grey feathers crouched on bony bird legs, a bird skull for a head with a
+	// glowing yellow eye and a long cream beak pointing right, a skeletal clawed arm hanging in front
+	354(P) {
+		P.shadow(15, 5);
+		const fea = '#4a5c94', bone = '#e6dcc0';
+		// bony crouched legs with big clawed feet
+		for (const [hx, kx, fx] of [[-5, -10, -6], [2, 6.5, 3]]) {
+			P.line([[hx, -10], [kx, -6], [fx, -2]], bone, 1.8);
+			P.dot(kx, -6, 1.3, bone);
+			for (const k of [-1, 0, 1]) P.line([[fx, -1.6], [fx + 3 + k * 0.3, -0.8 + k * 0.8]], bone, 0.8);
+		}
+		// the shaggy feather mass: ragged feather tufts round an oval body
+		const cx = -3, cy = -23;
+		for (let k = 0; k < 22; k++) {
+			const a = Math.PI * 2 * k / 22 + 0.1, r1 = 9, r2 = 14.5 + (k % 3) * 1.4;
+			const bend = 0.35;
+			taper(P, [[cx + Math.cos(a) * r1, cy + Math.sin(a) * r1 * 1.1], [cx + Math.cos(a + bend * 0.5) * (r2 - 2), cy + Math.sin(a + bend * 0.5) * (r2 - 2) * 1.1], [cx + Math.cos(a + bend) * r2, cy + Math.sin(a + bend) * r2 * 1.1]], 5, 0.4, k % 2 ? fea : shade(fea, -0.12));
+		}
+		P.ellipse(cx, cy, 11.5, 12.5, fea, { line: false });
+		for (let k = 0; k < 12; k++) {
+			const a = Math.PI * 2 * k / 12 + 0.4, r = 6 + (k % 2) * 2.5;
+			const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+			taper(P, [[x, y], [x + 1.4, y + 2], [x + 0.8, y + 4.6]], 2.4, 0.3, shade(fea, (k % 2 ? 0.08 : -0.08)), { line: false });
+			P.thin([[x, y], [x + 1.2, y + 3.6]], shade(fea, -0.35), 0.35);
+		}
+		P.gloss(-8, -30, 3, 1.6, 0.3);
+		// skeletal arm hanging in front, bony claw
+		P.line([[4, -19], [8, -13], [7.5, -6]], bone, 1.6);
+		P.dot(8, -13, 1.2, bone);
+		for (const k of [-1, 0, 1]) taper(P, [[7.5, -6], [8.2 + k * 1.3, -4], [9.4 + k * 1.3, -3.2]], 1, 0.3, bone);
+		// a fringe of feathers behind the skull
+		for (const [x, y, tx, ty] of [[4, -34, 0, -40], [6, -35, 4, -42], [8, -35, 8.5, -41.5], [3, -31, -2, -34]]) taper(P, [[x, y], [tx, ty]], 2.6, 0.4, fea);
+		// the bird skull: cranium, a dark socket with a glowing yellow eye, a long hooked beak, a toothed jaw
+		P.shape((p) => { p.m(10, -33.4); p.q(17, -33.6, 22, -29); p.q(23.5, -25.6, 21.6, -23.6); p.q(21, -27, 17.6, -27.8); p.q(13.4, -27.8, 10, -26.8); }, bone, 10, 23.5);
+		P.thin([[12, -29], [19.6, -28.6]], shade(bone, -0.4), 0.4);
+		P.shape((p) => { p.m(10.4, -26.4); p.q(14.6, -27, 18.6, -26.6); p.q(15.4, -24.4, 10.4, -24.2); }, shade(bone, -0.08), 10.4, 18.6);
+		for (const x of [12.6, 14.4, 16.2]) P.poly([[x - 0.45, -26.6], [x + 0.45, -26.6], [x, -25.4]], '#fffaf0', { line: false });
+		P.circle(8, -31, 5.8, bone);
+		P.ellipse(9, -31.4, 2.4, 2.4, '#1c1612', { line: false });
+		P.glow(9, -31.4, 3.2, '#ffcc30', 0.7); P.dot(9, -31.4, 1.3, '#ffd84a'); P.dot(9.3, -31.4, 0.5, '#3a2a08');
+		P.ellipse(6.4, -27.2, 1.2, 0.8, '#3a3026', { line: false });
+		P.gloss(5.6, -34.2, 1.5, 0.7, 0.5);
+	},
+	// Brown bomber: a grinning goblin with tan skin, big pointed ears and a leather cap with two dark horns and goggles, a
+	// strap across the chest, a belt with a skull buckle and a ragged loincloth, a round bomb in one fist and a forked
+	// stick in the other, a thin tail
+	355(P) {
+		P.shadow(12, 5);
+		const skin = '#c9a24a', leather = '#6a4a2a', dark = '#4a3220', bomb = '#5a3a24';
+		taper(P, [[-3, -9], [-10, -6], [-13, -3]], 1.4, 0.5, skin);
+		for (const sd of [-1, 1]) {
+			taper(P, [[sd * 2.6, -11], [sd * 4.5, -7], [sd * 4.5, -2.5]], 3.6, 3, sd < 0 ? shade(skin, -0.1) : skin);
+			P.thin([[sd * 4.5 - 1.6, -5], [sd * 4.5 + 1.6, -5.5]], leather, 1);
+			P.ellipse(sd * 5, -1.3, 2.8, 1.3, shade(skin, -0.15));
+		}
+		// a small body, a strap, the belt with its skull buckle, a ragged loincloth
+		torso(P, -20, 4.5, -10, 5.5, skin);
+		P.thin([[-4, -19.5], [4.5, -11]], leather, 1.2);
+		P.poly([[-4.5, -11], [4.5, -11], [3.5, -5.5], [1.5, -7], [0, -5], [-1.5, -7], [-3.5, -5.5]], dark);
+		P.line([[-5.4, -11], [5.4, -11]], leather, 1.4);
+		skull(P, 0, -11, 1.8, '#efe4c8');
+		// the arms: a forked stick held up on one side, a round fused bomb on the other
+		P.circle(-5.5, -18.5, 2.2, skin);
+		taper(P, [[-5.5, -18.5], [-9.5, -17], [-10.5, -22]], 2.8, 2.2, skin);
+		P.line([[-10.5, -20], [-11, -29]], '#5a3a24', 1);
+		P.line([[-11, -27], [-13, -30]], '#5a3a24', 0.8); P.line([[-11, -27.5], [-9, -31]], '#5a3a24', 0.8);
+		P.circle(-10.6, -22.4, 1.9, skin);
+		P.thin([[-12, -23], [-9.2, -23.5]], leather, 0.8);
+		P.circle(5.5, -18.5, 2.2, skin);
+		taper(P, [[5.5, -18.5], [9.5, -15.5], [11, -12]], 2.8, 2.2, skin);
+		P.circle(12.5, -9, 3.6, bomb);
+		P.line([[12, -12.4], [13, -12.6]], '#8a909a', 1.4);
+		P.thin([[13, -13], [14.5, -15]], '#3a2a1a', 0.4);
+		P.glow(14.6, -15.2, 1.6, '#ffb040', 0.7);
+		P.gloss(11, -10.4, 1.1, 0.6, 0.45);
+		P.circle(10.8, -12.2, 1.9, skin);
+		// big pointed ears, the head, horned cap with goggles, a toothy grin
+		for (const sd of [-1, 1]) P.shape((p) => { p.m(sd * 5, -30); p.q(sd * 12, -32, sd * 15, -30); p.q(sd * 11, -27, sd * 5.5, -26.5); }, skin, sd < 0 ? -15 : 5, sd < 0 ? -5 : 15);
+		head(P, -28, 7, skin);
+		for (const sd of [-1, 1]) taper(P, [[sd * 3.5, -34.5], [sd * 6, -38.5], [sd * 4.5, -42]], 2.4, 0.4, '#3a2a22');
+		P.shape((p) => { p.m(-7, -29.5); p.q(-7, -36.5, 0, -36.5); p.q(7, -36.5, 7, -29.5); p.q(0, -32, -7, -29.5); }, leather, -7, 7);
+		for (const sd of [-1, 1]) { P.circle(sd * 2.6, -33, 1.7, '#8a909a'); P.dot(sd * 2.6, -33, 1.1, '#9fd0e0'); }
+		P.eyes(0, -27.5, 2.6, 1.4, '#3a2a08');
+		P.shape((p) => { p.m(-3, -24.5); p.q(0, -23.6, 3, -24.5); p.q(0, -21.4, -3, -24.5); }, '#4a1a10', -3, 3, { line: false });
+		P.thin([[-2.2, -24.2], [2.2, -24.2]], '#f6efe0', 0.5);
+	},
+	// Armored beetle: a dark brown beetle on many spiky legs, a shell of jagged plates and spikes, orange soft parts showing
+	// under the shell, two curved cream tusks in front, glowing yellow eyes and long antennae
+	356(P) {
+		P.shadow(15, 5.5);
+		const shell = '#5a4434', dark = '#3e2e22', orange = '#d9883a', tusk = '#e8dcc0';
+		// far legs behind the body: out to a spiky knee, down to a pointed foot
+		const leg = (x, dx, c) => {
+			const kx = x + dx * 0.55, fx = x + dx;
+			taper(P, [[x, -8], [kx, -12.5]], 2.6, 2.2, c);
+			taper(P, [[kx, -12.5], [fx, -1]], 2.2, 0.5, c);
+			P.poly([[kx - 0.8, -12], [kx + Math.sign(dx) * 1.6, -15], [kx + 0.8, -13]], c);
+		};
+		for (const [x, dx] of [[-9, -8], [-3, -6], [4, 7]]) leg(x, dx, dark);
+		// the body: an orange underside, then the shell of plates
+		P.ellipse(-1, -11, 11, 5, orange);
+		for (const x of [-7, -3, 1, 5]) P.thin([[x, -14], [x - 0.5, -7]], shade(orange, -0.35), 0.4);
+		P.shape((p) => { p.m(-14, -11); p.q(-15, -24, -3, -26); p.q(7, -26.5, 9, -16); p.q(2, -13, -14, -11); }, shell, -15, 9);
+		for (const [x, y, a] of [[-12, -18, -2.4], [-9, -23, -2], [-4, -25.5, -1.6], [1.5, -25.6, -1.2], [6, -22, -0.8]]) {
+			const dx = Math.cos(a), dy = Math.sin(a);
+			P.poly([[x - dy * 1.6, y + dx * 1.6], [x + dx * 5, y + dy * 5], [x + dy * 1.6, y - dx * 1.6]], shade(shell, -0.1));
+		}
+		// overlapping plates
+		for (const [x0, x1] of [[-12, -7], [-6.5, -1], [-0.5, 5]]) P.thin([[x0, -13], [(x0 + x1) / 2 - 1, -21], [x1, -24]], shade(shell, -0.45), 0.5);
+		P.thin([[-12, -14], [-6, -17], [4, -16]], shade(shell, -0.4), 0.5);
+		P.gloss(-6, -21, 2.6, 1.2, 0.35);
+		// near legs in front of the belly
+		for (const [x, dx] of [[-6, -7], [-1, -4], [3, 5.5]]) leg(x, dx, shell);
+		// head: antennae, a dark armoured head, two curved tusks, glowing eyes
+		P.thin([[11, -15], [14, -22], [18, -25]], dark, 0.6);
+		P.thin([[12.5, -14], [17, -19], [21, -20]], dark, 0.6);
+		P.ellipse(11, -11.5, 5.6, 4.6, shell);
+		P.gloss(9.5, -14, 1.4, 0.7, 0.4);
+		taper(P, [[13, -9], [18, -7], [20.5, -11]], 2, 0.4, tusk);
+		taper(P, [[11, -8], [15, -4], [18.5, -5.5]], 2, 0.4, shade(tusk, -0.1));
+		P.glowEyes(12.2, -12.6, 1.8, 0.7, '#ffcc40');
+	},
+	// Purple eye spider: a soft purple sac of a head bulging up and back, one great dark eye staring from the top, pink
+	// mottling, a little fanged face at the front and long jointed purple spider legs
+	357(P) {
+		P.shadow(16, 5);
+		const skin = '#6a52b0', dark = '#43317a', pink = '#e486b8';
+		const leg = (x, y, kx, ky, fx, c, w = 2.6) => {
+			taper(P, [[x, y], [(x + kx) / 2, ky - 2], [kx, ky]], w, w * 0.75, c);
+			taper(P, [[kx, ky], [fx + (fx - kx) * 0.15, ky * 0.5], [fx, 0]], w * 0.75, 0.6, c);
+			P.circle(kx, ky, w * 0.42, c);
+			P.poly([[kx - 0.5, ky - 0.6], [kx + (fx > kx ? 1.6 : -1.6), ky - 2.4], [kx + 0.5, ky + 0.2]], c);
+		};
+		for (const [x, kx, ky, fx] of [[-6, -15, -21, -24], [-2, -9, -23, -17], [4, 14, -21, 24], [1, 8, -23, 17]]) leg(x, -12, kx, ky, fx, dark);
+		// the sac: a big bulb leaning back, a fleshy body under it
+		P.shape((p) => { p.m(-1, -12); p.q(-9, -14, -13, -20); p.q(-19, -29, -14, -36); p.q(-8, -42, -1, -39); p.q(7, -36, 8, -29); p.q(10, -21, 9, -15); p.q(5, -10.6, -1, -12); }, skin, -17, 10);
+		for (const [x, y, r] of [[-12, -30, 1.4], [-14.5, -24, 1.1], [-8, -36, 1], [4, -20, 0.9], [-10, -18, 1.2]]) P.ellipse(x, y, r * 1.3, r, pink, { line: false, alpha: 0.6 });
+		P.thin([[-15, -20], [-8, -16], [0, -16]], shade(skin, -0.35), 0.45);
+		P.gloss(-11, -35, 3, 1.4, 0.4);
+		// the eye on top: a pink lid ring, a dark glossy eyeball
+		P.circle(0, -35, 5.4, shade(skin, 0.1));
+		P.circle(0, -35, 4, '#1c1030');
+		P.circle(0.6, -35, 2.4, '#6a2a9a', { line: false });
+		P.dot(0.6, -35, 1.2, '#0a0610');
+		P.dot(-1.2, -36.8, 0.9, '#ffffff');
+		// the little face at the front: fanged mouth parts
+		P.ellipse(8.5, -15, 3.6, 3, shade(skin, -0.05));
+		for (const [x, tx] of [[7.4, 8], [10, 11.4]]) taper(P, [[x, -13], [tx + 0.6, -10.6], [tx - 0.4, -9.4]], 1.2, 0.3, pink);
+		// near legs in front
+		for (const [x, kx, ky, fx] of [[-3, -12, -17, -21], [4, 13, -17, 22], [2, 6, -14, 11]]) leg(x, -11, kx, ky, fx, skin, 2.8);
+	},
+	// Desert spider: a huge pale beige stitched-up sac of a body with two small brass eye lenses, carried on eight
+	// segmented orange-brown legs round a small armoured head underneath
+	358(P) {
+		P.shadow(17, 5);
+		const leg = '#b8682a', dark = '#8a4a1e', sac = '#e2d2a8';
+		// segmented legs splaying out from under the body
+		const legOf = (s, kx, ky, fx, c) => {
+			P.line([[s * 3, -13], [s * kx, ky], [s * fx, -0.6]], c, 1.6);
+			P.dot(s * kx, ky, 1.4, shade(c, 0.1));
+			for (const t of [0.35, 0.7]) P.thin([[s * (kx + (fx - kx) * t) - 1, ky + (-0.6 - ky) * t], [s * (kx + (fx - kx) * t) + 1, ky + (-0.6 - ky) * t]], shade(c, -0.4), 0.4);
+			P.poly([[s * fx - 0.8, -1.2], [s * fx + 0.8, -1.2], [s * fx + s * 0.4, 0.6]], shade(c, -0.3));
+		};
+		for (const s of [-1, 1]) for (const [kx, ky, fx] of [[19, -24, 25], [13, -25, 17]]) legOf(s, kx, ky, fx, dark);
+		for (const s of [-1, 1]) for (const [kx, ky, fx] of [[16, -19, 21], [9, -19, 11]]) legOf(s, kx, ky, fx, leg);
+		// the small armoured head under the sac
+		P.ellipse(0, -12, 5, 4, leg);
+		for (const x of [-2, 0, 2]) P.thin([[x, -15], [x, -9.6]], shade(leg, -0.35), 0.4);
+		for (const s of [-1, 1]) P.poly([[s * 1.2, -9], [s * 2.4, -9], [s * 1.4, -7]], '#f2e2c8');
+		// the stitched sac
+		P.ellipse(0, -29, 14, 12.5, sac);
+		P.shape((p) => { p.m(-2, -41); p.q(-6, -30, -1, -17); p.l(1, -17); p.q(-3.5, -30, 0.5, -41.4); }, shade(sac, -0.12), -6, 1, { line: false });
+		P.thin([[-1, -41.2], [-4, -30], [0, -17]], shade(sac, -0.45), 0.5);
+		for (let y = -38; y < -19; y += 3) { const x = -4 + Math.abs(y + 29) * 0.2; P.thin([[x - 1.4, y - 0.4], [x + 1.4, y + 0.4]], shade(sac, -0.5), 0.35); }
+		P.thin([[-13.5, -30], [-6, -34], [-3.4, -33]], shade(sac, -0.4), 0.4);
+		P.thin([[13.4, -26], [6, -22], [-2, -23]], shade(sac, -0.4), 0.4);
+		for (const [x, y] of [[-10, -32.6], [-7, -33.6], [8, -23.2], [4, -22.4], [10, -24.4]]) P.thin([[x, y - 1], [x, y + 1]], shade(sac, -0.45), 0.3);
+		P.gloss(-6, -36, 4, 2, 0.45);
+		// two brass eye lenses
+		for (const [x, y, r] of [[-12.4, -27, 1.8], [12, -24, 2.2]]) {
+			P.circle(x, y, r, '#a8783a');
+			P.circle(x, y, r * 0.55, '#2a1a10', { line: false });
+			P.glow(x, y, r, '#ffb040', 0.5);
+			P.dot(x - r * 0.25, y - r * 0.25, r * 0.2, '#ffffff');
+		}
+	},
+	// Green squid: a green sea thing rearing up on curling tentacles, a crest of lime spines and webbed fins, two eyes
+	// on stalks, and a cluster of fiery orange feelers round its mouth at the front
+	359(P) {
+		P.shadow(15, 5);
+		const green = '#4caa38', dark = '#2e7a26', lime = '#a8d84a', fire = '#f08a24';
+		// curling tentacles along the ground
+		for (const t of [[[-4, -10], [-12, -6], [-17, -3], [-20, -6]], [[-1, -9], [-6, -3], [-10, -1], [-11, -3.4]], [[2, -9], [4, -3], [9, -1], [12, -3]], [[5, -11], [11, -8], [16, -4], [19, -6]]]) taper(P, t, 3.4, 0.9, dark);
+		// webbed fins at the back
+		P.shape((p) => { p.m(-7, -26); p.l(-19, -30); p.l(-15, -25); p.l(-21, -21); p.l(-14, -18); p.l(-18, -12); p.l(-7, -14); }, shade(green, -0.1), -21, -7);
+		// the body, a lime belly
+		P.shape((p) => { p.m(-8, -12); p.q(-12, -24, -6, -32); p.q(0, -38, 6, -32); p.q(11, -26, 9, -16); p.q(5, -9, -8, -12); }, green, -12, 11);
+		P.shape((p) => { p.m(-2, -14); p.q(-4, -24, 2, -30); p.q(7, -24, 6, -15); p.q(2, -12, -2, -14); }, lime, -4, 7, { line: false });
+		for (const y of [-26, -22, -18]) P.thin([[-1.5, y], [5.5, y - 0.4]], shade(lime, -0.3), 0.35);
+		// the spiny crest
+		for (const [x, y, tx, ty] of [[-6, -31, -11, -37], [-2, -34, -4, -42], [3, -34, 5, -40], [7, -29, 12, -33]]) P.poly([[x - 1.6, y + 1], [tx, ty], [x + 1.6, y]], lime);
+		P.gloss(-5, -28, 2, 1.1, 0.4);
+		// eyes on stalks
+		for (const [x, tx, ty, c] of [[-2, -6, -43, shade(green, -0.08)], [3, 7, -44, green]]) {
+			taper(P, [[x, -31], [x + (tx - x) * 0.3, -38], [tx, ty]], 2.2, 1.6, c);
+			P.circle(tx, ty, 3, '#d4e86a');
+			P.dot(tx + 0.7, ty + 0.2, 1.4, '#1a2410');
+			P.dot(tx - 0.6, ty - 1, 0.6, '#ffffff');
+		}
+		// fiery feelers round the mouth
+		for (const [ey, tx, ty] of [[-24, 18, -27], [-21, 19, -19], [-18, 17, -12], [-22, 14, -10], [-25, 14, -31]]) taper(P, [[7, ey], [(7 + tx) / 2 + 1, (ey + ty) / 2 + 2], [tx, ty]], 2.2, 0.5, fire);
+		P.ellipse(8.4, -21, 2.6, 3.6, shade(fire, -0.15));
+		P.glow(9, -21, 4, '#ffd040', 0.4);
+	},
+	// Faceless assassin: a blue-violet hood with nothing but darkness inside, a short cape over a violet tunic and leather
+	// belt, wrapped boots, a curved steel dagger in each hand held out ready
+	360(P) {
+		P.shadow(12, 5);
+		const violet = '#4a3a9a', hood = '#3a48c0', dark = '#2a2060', leather = '#6a4a2a';
+		// legs and wrapped boots
+		for (const sd of [-1, 1]) {
+			taper(P, [[sd * 3, -11], [sd * 4.5, -6], [sd * 5, -2.5]], 4.2, 3.6, sd < 0 ? shade(violet, -0.12) : violet);
+			for (const y of [-5, -3.6]) P.thin([[sd * 5 - 2, y], [sd * 5 + 2, y - 0.4]], shade(violet, -0.4), 0.4);
+			P.ellipse(sd * 5.6, -1.3, 3, 1.4, dark);
+		}
+		// tunic with a long front flap, belt and pouch
+		torso(P, -21, 5.5, -9, 7, violet);
+		P.poly([[-3, -10], [3, -10], [2.4, -4], [-2.4, -4]], shade(violet, -0.15));
+		P.line([[-6.6, -12], [6.6, -12]], leather, 1.3);
+		P.circle(3.5, -11.5, 1.4, '#3a6ad0');
+		// arms out to the sides, a curved dagger in each fist
+		for (const sd of [-1, 1]) {
+			const c = sd < 0 ? shade(violet, -0.12) : violet;
+			P.circle(sd * 6.5, -20, 2.8, c);
+			taper(P, [[sd * 6.5, -20], [sd * 11, -16], [sd * 12.5, -19.5]], 3.4, 2.8, c);
+			P.line([[sd * 12.5, -18], [sd * 12.5, -22]], leather, 1);
+			P.shape((p) => { p.m(sd * 12, -22); p.q(sd * 11, -28, sd * 15.5, -31); p.q(sd * 13.5, -27, sd * 13.5, -22); }, '#b8c4d4', sd < 0 ? -15.5 : 11, sd < 0 ? -11 : 15.5);
+			P.circle(sd * 12.6, -19.5, 2, c);
+			P.thin([[sd * 11, -20.5], [sd * 14, -20.5]], leather, 0.7);
+		}
+		// the cape over the shoulders and the big hood, empty and dark inside but for two faint glints
+		P.shape((p) => { p.m(-8, -19); p.q(-8.5, -24, -5, -24.5); p.l(5, -24.5); p.q(8.5, -24, 8, -19); p.q(0, -21, -8, -19); }, hood, -8.5, 8.5);
+		P.shape((p) => { p.m(-8, -24); p.q(-9, -36, -2, -40); p.q(4, -43, 7, -38); p.q(9.5, -33, 8, -24); p.q(0, -22, -8, -24); }, hood, -9.5, 9.5);
+		P.shape((p) => { p.m(-5.5, -25); p.q(-6, -34, 0, -35.5); p.q(6, -34, 5.5, -25); p.q(0, -23.5, -5.5, -25); }, '#0e0a24', -6, 6, { flat: true });
+		P.thin([[-6.5, -25], [-6.6, -33], [-1, -37]], shade(hood, 0.3), 0.5);
+		for (const x of [-2, 2.4]) { P.glow(x, -30, 1.6, '#8090ff', 0.35); P.dot(x, -30, 0.45, '#b0c0ff'); }
+		P.gloss(-4, -37, 2, 1, 0.35);
+	},
+	// Capricorn archer: a lean tan goat-man crouched to shoot, long ridged horns sweeping back, a goat's head with a long
+	// muzzle facing right and a pale eye, a shaggy fur vest, a quiver of arrows on the back, hoofed legs, a wooden bow held
+	// out in front and a tufted tail
+	361(P) {
+		P.shadow(14, 5);
+		const fur = '#c8964e', dark = '#9a6a34', vest = '#7a5430', horn = '#a07a50', wood = '#7a4a24';
+		// tail
+		taper(P, [[-5, -13], [-11, -14], [-13, -9]], 1.6, 0.8, dark);
+		P.ellipse(-13, -8.4, 1.6, 2.2, shade(dark, -0.2));
+		// the quiver on the back, arrows sticking up
+		for (const x of [-9.4, -8, -6.6]) { P.line([[x + 1, -26], [x - 1, -34]], '#d8c8a8', 0.4); P.poly([[x - 1.6, -33.4], [x - 0.4, -36.4], [x - 0.2, -33.6]], '#c84a2a'); }
+		P.shape((p) => { p.m(-8, -14); p.l(-12, -27); p.l(-7.4, -28.6); p.l(-4, -15.6); }, wood, -12, -4);
+		// digitigrade legs to small hooves
+		for (const [hx, kx, ax, fx, c] of [[-3, -6, -4.5, -6, dark], [3, 7, 4, 5.5, fur]]) {
+			P.line([[hx, -13], [kx, -8.6], [ax, -4.4], [fx, -1.6]], c, 2.8);
+			for (const y of [-11.6, -10]) P.thin([[hx + (kx - hx) * 0.5 - 1.6, y], [hx + (kx - hx) * 0.5 + 1.6, y]], vest, 0.6);
+			P.poly([[fx - 1.6, -2.4], [fx + 1.8, -2.4], [fx + 2, 0], [fx - 1.6, 0]], '#4a3424');
+		}
+		// lean body leaning forward, a shaggy fur vest
+		P.shape((p) => { p.m(-5, -12); p.q(-7, -20, -3, -26); p.q(3, -29, 7, -24); p.q(7, -17, 4, -12); p.q(0, -10.5, -5, -12); }, fur, -7, 7);
+		P.shape((p) => { p.m(-6, -13); p.q(-7.6, -21, -3.6, -26.4); p.q(-0.6, -27, 0.4, -24); p.l(-0.4, -20); p.l(1, -16); p.l(-0.6, -12); p.q(-3, -11, -6, -13); }, vest, -7.6, 1);
+		for (const [x, y] of [[-6.6, -16], [-5.8, -21], [-3.2, -25]]) P.thin([[x, y], [x - 1.2, y + 1.6]], shade(vest, -0.35), 0.4);
+		P.line([[-5.8, -13.6], [4.6, -13.2]], '#4a3424', 1);
+		P.thin([[2, -22], [4.6, -21]], shade(fur, -0.35), 0.4);
+		// far arm drawing the string back
+		P.ellipse(-1, -23.6, 2.4, 2.4, dark);
+		taper(P, [[-1, -23.6], [3, -18], [7, -19]], 2.6, 2, dark);
+		// the bow held out in front, its string back to the drawing hand
+		P.shape((p) => { p.m(13, -30); p.q(19, -20, 13, -8); p.q(17.4, -20, 12, -29.6); }, wood, 12, 19);
+		P.thin([[13, -30], [7, -19], [13, -8]], '#f0e8d8', 0.3);
+		P.thin([[7, -19], [15.6, -19]], '#d8c8a8', 0.35); P.poly([[15.2, -20.2], [17.6, -19], [15.2, -17.8]], '#c8d0dc');
+		// near arm holding the bow
+		P.ellipse(5, -23, 2.8, 2.6, fur);
+		taper(P, [[5, -23], [10, -20.5], [14.6, -19.6]], 2.8, 2.2, fur);
+		P.circle(15, -19.6, 1.6, fur);
+		// horns sweeping back, ridged
+		for (const [x0, mx, my, tx, ty, c] of [[2, -4, -44, -10, -42, shade(horn, -0.15)], [5, 1, -45, -6, -46, horn]]) {
+			taper(P, [[x0, -34], [mx, my], [tx, ty]], 3, 0.6, c);
+			for (let t = 0.2; t < 0.85; t += 0.15) { const x = x0 + (mx - x0) * t * 1.4, y = -34 + (my + 34) * t * 1.1; P.thin([[x - 1, y + 0.6], [x + 0.8, y - 0.6]], shade(c, -0.4), 0.35); }
+		}
+		// goat head: long muzzle to the right, beard, ears, a pale eye with a slit pupil
+		P.ellipse(-0.6, -32, 3.2, 1.4, fur, { rot: 0.4 });
+		P.circle(3.6, -31, 5, fur);
+		P.shape((p) => { p.m(4, -34.6); p.q(10, -34, 13.6, -29.4); p.q(14, -27, 12, -26.4); p.q(8, -26, 4, -27); }, fur, 4, 14);
+		P.ellipse(13, -28.6, 0.6, 0.5, '#3a2414', { line: false });
+		P.thin([[8.6, -27], [12.4, -27.2]], shade(fur, -0.45), 0.35);
+		P.shape((p) => { p.m(5, -27); p.q(7, -26.4, 9, -26.6); p.q(7.6, -23, 6, -21.6); p.q(5, -24, 5, -27); }, '#e8d4a8', 5, 9);
+		P.gloss(1.6, -33.4, 1.3, 0.7, 0.4);
+		P.ellipse(6.8, -31.4, 2, 1.5, '#f6ecd0');
+		P.ellipse(7.2, -31.4, 1, 1.1, '#b8402a', { line: false });
+		P.ellipse(7.2, -31.4, 0.35, 0.9, '#1a0a04', { line: false });
+		P.thin([[5, -33.2], [8.4, -32.6]], shade(fur, -0.5), 0.5);
+	},
+	// Rail troll: a hulking blue troll hunched under a huge patched brown sack on its back, a pale grey-blue face with
+	// yellow eyes, tusks and a long nose, a gold ring in its pointed ear, a shaggy dark mane, a fur loincloth, and a big
+	// pick with a curved steel blade gripped low in front
+	362(P) {
+		P.shadow(15, 5.5);
+		const blue = '#4a62a8', face = '#a8b8cc', sack = '#7a5a3a', hair = '#4a4258', steel = '#c0ccd8';
+		// the huge sack on its back
+		P.shape((p) => { p.m(-4, -16); p.q(-18, -18, -18, -32); p.q(-17, -44, -4, -43); p.q(6, -42, 4, -30); p.q(2, -20, -4, -16); }, sack, -18, 6);
+		P.thin([[-15, -38], [-11, -40], [-7, -41]], shade(sack, -0.4), 0.5);
+		for (const x of [-14, -11.5, -9]) P.thin([[x - 0.8, -40.5 + (x + 14) * 0.2], [x + 0.6, -38.8 + (x + 14) * 0.2]], shade(sack, 0.3), 0.4);
+		P.gloss(-12, -36, 2.4, 1.2, 0.35);
+		// legs
+		for (const [hx, kx, fx, c] of [[-3, -7, -5, shade(blue, -0.12)], [3, 7, 6, blue]]) {
+			taper(P, [[hx, -12], [kx, -7], [fx, -2]], 5, 3.6, c);
+			P.ellipse(fx + 1, -1.3, 3.4, 1.5, shade(blue, -0.2));
+		}
+		// body hunched forward, a fur loincloth
+		P.shape((p) => { p.m(-6, -26); p.q(2, -31, 9, -26); p.q(10, -17, 5, -11); p.q(-1, -9.5, -6, -12); p.q(-9, -19, -6, -26); }, blue, -9, 10);
+		P.shape((p) => { p.m(-1, -24); p.q(5, -25, 7, -20); p.q(6, -16, 2, -15); p.q(-1.4, -18, -1, -24); }, face, -1.4, 7, { line: false, alpha: 0.55 });
+		P.shape((p) => { p.m(-6.5, -14); p.l(6, -14); p.l(6.6, -8); p.l(4, -9.6); p.l(2, -7.4); p.l(-0.4, -9.4); p.l(-3, -7.6); p.l(-6.6, -9); }, '#6a4a3a', -6.6, 6.6);
+		// the weapon: a short wrapped haft held low across the knees, ending in a broad hooked blade that sweeps down
+		// and round to a point, a spur on its back
+		P.line([[-7, -8.6], [10, -10.6]], '#6a4a2a', 1.5);
+		for (const x of [-4.6, -3.2, -1.8]) P.thin([[x, -9.8], [x + 0.4, -7.6]], '#3a2a1a', 0.4);
+		P.circle(-7.4, -8.6, 1.3, '#8a909a');
+		P.shape((p) => { p.m(9, -12.2); p.q(12.6, -12.6, 14, -8.6); p.q(16.4, -3.4, 21.6, -5); p.q(23.6, -6.4, 24, -10); p.q(25, -3.4, 19.6, -1.4); p.q(13, -0.6, 11, -6.4); p.q(10.4, -8.4, 9.4, -9); }, '#a4b2c2', 9, 25);
+		P.poly([[10, -12], [9.2, -15.6], [12.2, -12.6]], '#a4b2c2');
+		P.thin([[12.2, -7.4], [14.6, -3], [19.6, -2.2], [23.6, -5.6]], '#f0f6fc', 0.45);
+		P.circle(10, -10.6, 1.3, '#8a909a');
+		// thick arms: the back one over the sack strap, the front gripping the haft
+		taper(P, [[-4, -25], [-9, -21], [-5, -16]], 4.4, 3.4, shade(blue, -0.1));
+		P.circle(-4, -16, 2.4, shade(blue, -0.1));
+		taper(P, [[5, -25], [9, -18], [7, -11.6]], 4.8, 3.6, blue);
+		P.ellipse(8.4, -16.8, 2.6, 1.2, '#7a5a3a', { rot: 1.2 });
+		P.circle(6.6, -10.4, 2.6, blue);
+		// a shaggy dark mane over the shoulders, the head thrust forward
+		P.shape((p) => { p.m(4, -35); p.q(-3, -37, -6, -31); p.l(-8.6, -30); p.l(-6.4, -27.6); p.l(-9, -25); p.l(-5.4, -24); p.l(-6.6, -20.4); p.q(-1, -22, 3, -26); }, hair, -9, 4);
+		for (const [x, y] of [[-4, -31], [-5, -26.4], [0, -33]]) P.thin([[x + 2, y - 0.6], [x - 1.6, y + 1.6]], shade(hair, 0.25), 0.4);
+		head(P, -29, 5.8, face, 5);
+		P.shape((p) => { p.m(0, -31); p.q(-4, -34, -7, -36); p.q(-4, -29, 0, -28); }, face, -7, 0);
+		P.ellipse(-0.6, -27.8, 1, 1, '#d8a830', { line: false });
+		P.dot(-0.6, -27.8, 0.45, face);
+		P.shape((p) => { p.m(-0.5, -33); p.q(4, -36, 9, -33.4); p.q(5, -33.8, -0.5, -31); }, hair, -0.5, 9);
+		for (const x of [3.2, 7]) { P.dot(x, -30.4, 1.1, '#2a2a20'); P.dot(x, -30.4, 0.7, '#ffd23f'); }
+		P.shape((p) => { p.m(5, -29.6); p.q(9, -29.6, 10, -27); p.q(8, -26.8, 6, -27.4); }, shade(face, -0.12), 5, 10);
+		P.shape((p) => { p.m(1.6, -26.2); p.q(5, -24.4, 8.6, -25.6); p.q(5, -23, 1.6, -26.2); }, '#3a1a3a', 1.6, 8.6, { line: false });
+		for (const x of [2.6, 7.4]) P.poly([[x - 0.5, -25.2], [x + 0.5, -25.2], [x, -27.2]], '#f8f0d8');
+	},
+	// Zombie pharaoh: a hunched, bony green zombie with a spiny ridge down its back, a tall black and gold pharaoh's
+	// crown with a gold eye, a gaping mouth, a big gold-rimmed wooden shield and a curved bronze khopesh held low
+	363(P) {
+		P.shadow(14, 5.5);
+		const green = '#7e8f52', dark = '#5a6a38', gold = '#d8b048', wood = '#5e3a20', black = '#24241e', steel = '#c4bc98';
+		// skinny legs folded in a deep crouch, knees high, long toes
+		for (const [hx, kx, ky, fx, c] of [[-4, -10, -9, -7, dark], [0, 5, -10.4, 3, green]]) {
+			taper(P, [[hx, -14], [kx, ky], [fx, -2]], 2.8, 1.8, c);
+			P.circle(kx, ky, 1.5, c);
+			for (const d of [-1, 0, 1]) taper(P, [[fx, -2], [fx + 2.6 + d * 0.3, -0.7 + d * 0.6]], 1, 0.3, shade(c, -0.1));
+		}
+		// the far arm, reaching round to the back of the shield
+		taper(P, [[-1, -29], [-5, -23], [1, -17]], 2.2, 1.7, dark);
+		// a spiny ridge down the bent back
+		for (const [x, y] of [[-6.6, -17], [-8, -21], [-8, -25], [-6.6, -28.8], [-4, -32], [-0.6, -34.4]]) P.poly([[x + 1.6, y + 1.4], [x - 2.8, y - 1], [x + 1, y - 1.8]], dark);
+		// thin torso leaning forward, ribs showing, a ragged wrap at the waist
+		P.shape((p) => { p.m(-5, -14); p.q(-8.4, -24, -4, -31); p.q(0, -35.6, 5, -32); p.q(5, -25, 1.4, -19); p.q(0, -15, 0, -13); p.q(-3, -12, -5, -14); }, green, -8.4, 5);
+		for (const y of [-27, -24.4, -21.8]) P.thin([[-4.6, y], [0.4, y - 1.2]], shade(green, -0.35), 0.4);
+		P.shape((p) => { p.m(-5.6, -15); p.l(0.6, -14); p.l(1, -10); p.l(-0.8, -11); p.l(-2.4, -9.2); p.l(-3.8, -11); p.l(-6, -10.4); }, '#8a7a5a', -6, 1);
+		// the shield held low in front: dark wood, a gold rim and gold straps
+		P.shape((p) => { p.m(3, -22); p.l(13, -24); p.l(15, -14); p.l(13.6, -5.6); p.l(5, -4); p.q(2, -12, 3, -22); }, wood, 2, 15);
+		P.thin([[3, -22], [13, -24], [15, -14], [13.6, -5.6], [5, -4], [2.6, -12], [3, -22]], gold, 0.8);
+		for (const y of [-18.6, -12.4]) P.thin([[3.2, y + 0.8], [14, y - 1.2]], gold, 0.6);
+		P.thin([[8.4, -23], [9.4, -4.8]], shade(wood, -0.4), 0.5);
+		P.gloss(5.6, -19.6, 1.1, 1.6, 0.25);
+		// near arm: bony, the elbow out, reaching down over the shield to the khopesh
+		P.circle(3, -30, 2, green);
+		taper(P, [[3, -30], [8, -24], [5.4, -13.4]], 2.4, 1.9, green);
+		P.circle(8, -24, 1.3, green);
+		// the khopesh: a short grip and a dark bronze blade sweeping out and hooking down to a point
+		P.line([[3.6, -13.4], [8.4, -12.4]], '#4a2e18', 1);
+		P.shape((p) => { p.m(8.2, -13.6); p.q(14.4, -16, 18.4, -12); p.q(21.6, -7.6, 20, -2.4); p.q(19, -6.6, 16, -9.2); p.q(12.6, -12, 8.4, -11.4); }, steel, 8.2, 21.6);
+		P.thin([[9.6, -13.6], [15, -14], [18.8, -10.6]], '#f4f0e0', 0.35);
+		P.circle(5.4, -13, 1.7, green);
+		// the gold-trimmed black side flap of the headdress, behind the face
+		P.shape((p) => { p.m(4, -40); p.l(8, -40); p.l(8.4, -32); p.l(5.6, -28.4); p.l(3.6, -32.6); }, black, 3.6, 8.4);
+		P.thin([[8, -39.6], [8.4, -32], [5.6, -28.4]], gold, 0.7);
+		// the gaunt, skull-like head thrust forward: sunken eye, nose slits, a grinning jaw full of teeth
+		P.ellipse(9, -35.6, 4.2, 4.2, green);
+		P.shape((p) => { p.m(7, -33.4); p.q(12, -32.2, 15.4, -34.2); p.q(15.4, -29, 11, -28.2); p.q(7.8, -29, 7, -33.4); }, green, 7, 15.4);
+		P.shape((p) => { p.m(9, -32.6); p.q(12, -31.8, 14.6, -33.4); p.q(13.8, -30, 11.2, -29.8); p.q(9.4, -30.2, 9, -32.6); }, '#2a1008', 9, 14.6, { line: false });
+		for (let x = 9.8; x < 14.4; x += 1.1) P.poly([[x - 0.4, -32.6 - (x - 9.8) * 0.18], [x + 0.4, -32.6 - (x - 9.8) * 0.18], [x, -31.4 - (x - 9.8) * 0.18]], '#ece4c0', { line: false });
+		for (let x = 10.4; x < 13.8; x += 1.1) P.poly([[x - 0.4, -30.2], [x + 0.4, -30.2], [x, -31.3]], '#ece4c0', { line: false });
+		P.ellipse(11.4, -36.4, 1.7, 1.4, '#1a1a10', { line: false });
+		P.dot(11.7, -36.4, 0.6, '#e8e070');
+		P.thin([[10, -38.4], [13.4, -37.4]], shade(green, -0.4), 0.45);
+		P.dot(14.2, -35, 0.35, '#1a1a10');
+		// the tall black crown flaring to the top, gold bands and a gold eye
+		P.shape((p) => { p.m(4.6, -39.2); p.l(14, -39.8); p.l(16.6, -51); p.l(3.8, -50); }, black, 3.8, 16.6);
+		P.thin([[4.6, -40.8], [14.3, -41.4]], gold, 1);
+		P.thin([[3.8, -50], [16.6, -51]], gold, 0.8);
+		P.circle(13.8, -45.2, 1.5, gold);
+		P.dot(13.8, -45.2, 0.6, '#1a1a10');
+		P.gloss(6.4, -46.2, 0.9, 2.4, 0.25);
+	},
+	// Fallen angel: a pale, muscular angel in a dark closed helm, great dark grey feathered wings rising behind, a long dark
+	// slate robe from the waist to the ground, both hands gripping a dark iron trident across the body
+	364(P) {
+		P.shadow(13, 5);
+		const skin = '#d8d4c4', wing = '#5a6070', robe = '#4a5066', iron = '#3a3e4a';
+		// wings: two broad dark wings rising behind the shoulders, scalloped feather edges
+		for (const [sd, c] of [[-1, shade(wing, -0.15)], [1, wing]]) {
+			const o = sd < 0 ? -4 : 3;
+			P.shape((p) => { p.m(o, -26); p.q(o + sd * 4, -40, o + sd * 13, -43); p.q(o + sd * 12, -36, o + sd * 13.5, -32); p.l(o + sd * 10.5, -31); p.l(o + sd * 12, -26); p.l(o + sd * 9, -25.5); p.l(o + sd * 10, -20); p.l(o + sd * 6.5, -20.5); p.l(o + sd * 6.5, -15); p.q(o + sd * 2, -20, o, -22); }, c, sd < 0 ? o - 13.5 : o, sd < 0 ? o : o + 13.5);
+			for (const [k, y] of [[0.45, -36], [0.6, -30], [0.5, -24]]) P.thin([[o + sd * 2, -26], [o + sd * 13 * k + sd * 3, y]], shade(c, -0.35), 0.4);
+		}
+		// the long robe, flaring and ragged at the hem, a sash
+		P.shape((p) => { p.m(-5, -15); p.l(5, -15); p.q(8, -8, 11, -1.5); p.l(7, -2.6); p.l(4, -1); p.l(0, -2.4); p.l(-4, -1); p.l(-8, -2.4); p.l(-10, -1.5); p.q(-8, -8, -5, -15); }, robe, -10, 11);
+		for (const x of [-4, 0, 4]) P.thin([[x * 0.5, -13], [x * 1.4, -3]], shade(robe, -0.35), 0.45);
+		P.line([[-5.4, -14.6], [5.4, -14.6]], shade(robe, -0.25), 1.6);
+		// a bare muscular torso
+		P.shape((p) => { p.m(-6.5, -25); p.q(0, -27, 6.5, -25); p.q(6.5, -19, 5, -15); p.l(-5, -15); p.q(-6.5, -19, -6.5, -25); }, skin, -6.5, 6.5);
+		P.thin([[-3.5, -22], [0, -21], [3.5, -22]], shade(skin, -0.3), 0.45); P.thin([[0, -21], [0, -16]], shade(skin, -0.3), 0.4);
+		P.thin([[-2.4, -18.4], [2.4, -18.4]], shade(skin, -0.25), 0.35);
+		// the trident held across the body, top right to bottom left
+		P.line([[-8, -6], [13, -32]], iron, 1.1);
+		for (const o of [-1.8, 0, 1.8]) P.line([[12.4 + o * 0.8, -31.6 + o * 0.6], [14.5 + o * 0.8, -36 + o * 0.6]], iron, 0.8);
+		P.line([[11.2, -32.4], [14.8, -29.6]], iron, 0.9);
+		// thick arms from round shoulders, both fists on the haft
+		for (const [sd, fx, fy, c] of [[-1, 2, -17.5, shade(skin, -0.1)], [1, 8, -25, skin]]) {
+			P.circle(sd * 6.5, -24, 2.8, c);
+			taper(P, [[sd * 6.5, -24], [sd * 6 + (sd < 0 ? -1 : 5), -19], [fx, fy]], 3.2, 2.6, c);
+			P.circle(fx, fy, 2, c);
+			P.thin([[fx - 1, fy + 1.2], [fx + 1, fy - 1.2]], iron, 0.5);
+		}
+		// a neck and the dark closed helm with a crest
+		P.line([[0, -26], [0.5, -28]], skin, 3.2);
+		P.shape((p) => { p.m(-5, -29); p.q(-6, -38, 0, -39); p.q(6, -39, 6.5, -32); p.q(6.5, -28, 3, -27.5); p.l(-3, -27.5); p.q(-5, -27.5, -5, -29); }, iron, -6, 6.5);
+		P.shape((p) => { p.m(-2, -38.6); p.q(1, -43, 4, -41); p.q(2, -40, 2, -38.6); }, iron, -2, 4);
+		P.thin([[1.5, -33.5], [6.2, -33.5]], '#0e1018', 1);
+		P.glow(4.4, -33.5, 1.8, '#a0c0ff', 0.4); P.dot(4.4, -33.5, 0.45, '#d0e0ff');
+		P.thin([[3, -32], [3, -28.5]], shade(iron, 0.3), 0.4);
+		P.gloss(-2.5, -36, 1.8, 0.9, 0.35);
+	},
+	// Lava golem (the cave one): a hulking golem of dark grey boulders with glowing orange cracks between them, a flame
+	// burning on its low head, glowing orange eyes, molten patches on its chest and one shoulder, long rocky arms
+	365(P) {
+		P.shadow(15, 6);
+		const rock = '#4a4248', hot = '#ff9030';
+		const boulder = (x, y, rx, ry, k, c = rock) => {
+			const pts = [];
+			for (let i = 0; i < 7; i++) { const a = i * Math.PI * 2 / 7 + k, f = 0.85 + 0.18 * Math.sin(k * 5 + i * 2.3); pts.push([x + Math.cos(a) * rx * f, y + Math.sin(a) * ry * f]); }
+			P.poly(pts, c);
+			P.gloss(x - rx * 0.35, y - ry * 0.4, rx * 0.3, ry * 0.18, 0.25);
+		};
+		// a glow behind everything, so the gaps between the boulders shine
+		P.glow(0, -20, 18, hot, 0.25);
+		// one solid rocky mass underneath: legs, arms, body, head
+		for (const sd of [-1, 1]) {
+			taper(P, [[sd * 5, -12], [sd * 5.5, -6], [sd * 5.5, -2]], 7, 6.5, shade(rock, -0.2));
+			taper(P, [[sd * 8, -25], [sd * 14, -19], [sd * 14.5, -9]], 7, 6.5, shade(rock, -0.2));
+		}
+		P.shape((p) => { p.m(-6, -10); p.q(-10, -14, -9.5, -20); p.q(-12, -27, -5, -27); p.q(-4, -35, 0.5, -35.5); p.q(5.5, -35, 5.5, -27); p.q(12, -27, 10.5, -20); p.q(10, -13, 6, -10); p.q(0, -8, -6, -10); }, shade(rock, -0.2), -12, 12);
+		// legs
+		for (const sd of [-1, 1]) { boulder(sd * 5, -9, 4, 3.4, sd + 1); boulder(sd * 5.5, -3.5, 4.4, 3, sd + 2); }
+		// arms: three boulders each down to a big fist
+		for (const sd of [-1, 1]) {
+			const c = sd < 0 ? shade(rock, -0.08) : rock;
+			boulder(sd * 12, -24, 4.4, 4, sd + 3, c); boulder(sd * 14, -17, 3.8, 3.6, sd + 4, c); boulder(sd * 14.5, -9.5, 4.4, 4, sd + 5, c);
+		}
+		// the body: big chest and belly boulders, the low head
+		boulder(0, -14, 7, 5, 1); boulder(-4, -22, 6, 5, 2); boulder(4.5, -22, 6, 5.5, 3);
+		boulder(0.5, -31, 5.5, 4.6, 4);
+		// molten patches and glowing cracks
+		const molten = (x, y, r) => { P.glow(x, y, r * 2.2, hot, 0.5); P.ellipse(x, y, r, r * 1.2, '#ff7a20', { line: false }); P.ellipse(x, y, r * 0.5, r * 0.6, '#ffe080', { line: false }); };
+		molten(5, -21, 2.2); molten(-14, -17, 1.8);
+		for (const pts of [[[-1, -26], [0, -22], [-1, -18], [1, -15]], [[-9, -20], [-6, -17], [-3, -17]], [[3, -10], [4, -13], [7, -15]], [[13, -20], [15, -18], [14, -14]]]) { P.thin(pts, '#ff8a20', 0.8); P.thin(pts, '#ffe080', 0.3); }
+		// a flame on the head and glowing eyes
+		P.shape((p) => { p.m(-3, -34); p.q(-4, -39, -1, -41); p.q(-1, -38.5, 1, -38); p.q(1, -42, 3.5, -45); p.q(3.5, -40, 5.5, -38.5); p.q(6, -35.5, 4, -34); }, '#ff6a20', -4, 6, { line: false });
+		P.shape((p) => { p.m(-1, -34); p.q(0, -37.5, 2.5, -40); p.q(3, -37, 3.5, -34); }, '#ffd84a', -1, 3.5, { line: false });
+		P.glowEyes(1.5, -30.5, 2.2, 0.75, '#ffa030');
+	},
+	// Wild shaman: a hunched pink-magenta goat-demon with a great shaggy white mane, short dark horns, red eyes and
+	// fangs, a fringed loincloth, gourd flasks at its hip, a tufted tail, a tall wooden staff with a gourd and feathers
+	// at its head gripped in front
+	366(P) {
+		P.shadow(14, 5.5);
+		const pink = '#c4508a', mane = '#ece2d2', wood = '#9a6a3a', gourd = '#a88a3a', horn = '#3a2a2a';
+		// tufted tail
+		taper(P, [[-6, -14], [-13, -14], [-15, -19]], 1.6, 0.8, pink);
+		for (const k of [-1, 0, 1]) P.poly([[-15, -19], [-17.5 + k * 1.4, -22.5 + Math.abs(k) * 0.6], [-14.2 + k * 0.6, -20]], mane);
+		// legs: furry fetlocks, hooves
+		for (const [hx, kx, fx, c] of [[-4, -9, -7, shade(pink, -0.12)], [2, 6, 4, pink]]) {
+			taper(P, [[hx, -12], [kx, -7], [fx, -2.5]], 4.2, 3, c);
+			P.ellipse(fx, -3, 2.8, 1.8, mane);
+			P.ellipse(fx + 0.6, -1, 2.6, 1.1, horn);
+		}
+		// hunched body, loincloth, gourds at the hip, a strap
+		P.shape((p) => { p.m(-8, -14); p.q(-11, -25, -3, -29); p.q(4, -31, 7, -25); p.q(7, -17, 4, -12); p.q(-3, -10, -8, -14); }, pink, -11, 7);
+		P.shape((p) => { p.m(-7, -14); p.l(4.6, -13); p.l(5, -7); p.l(2.6, -8.6); p.l(0.4, -6.6); p.l(-2, -8.6); p.l(-4.6, -6.8); p.l(-7.4, -8.4); }, '#7a5a3a', -7.4, 5);
+		P.thin([[-7, -13.6], [4.6, -12.6]], mane, 0.5);
+		for (const [x, y] of [[-7.6, -16], [-4.6, -14.6]]) { P.circle(x, y + 1, 2, gourd); P.circle(x, y - 1.6, 1.3, gourd); P.gloss(x - 0.6, y + 0.4, 0.6, 0.4, 0.4); }
+		P.thin([[-6, -26], [3, -15]], '#8a6a2a', 0.8);
+		// back arm
+		taper(P, [[-4, -25], [-8, -20], [-6, -16]], 3.2, 2.6, shade(pink, -0.12));
+		// the staff, gourd and feathers at its head
+		P.line([[13, -2], [12.4, -38]], wood, 1.6);
+		for (const y of [-34, -31]) P.thin([[11.2, y], [13.6, y + 0.4]], '#6a4a2a', 0.5);
+		P.circle(12.6, -40, 2.6, gourd);
+		for (const [tx, ty] of [[9, -45], [12, -46], [15.6, -44.6]]) taper(P, [[12.6, -42], [tx, ty]], 1.4, 0.4, '#8ab040');
+		P.dot(12.6, -40, 0.9, '#f0d040');
+		// front arm gripping the staff
+		taper(P, [[4, -25], [9, -22], [12, -24]], 3.4, 2.8, pink);
+		P.circle(12.6, -24.4, 2.1, pink);
+		// the great shaggy white mane round the head, flowing back over the shoulders
+		const maneP = [];
+		for (let k = 0; k < 28; k++) {
+			const a = Math.PI * 0.3 + k / 28 * Math.PI * 1.75, r = k % 2 ? 0.8 : 1.06;
+			maneP.push([3 + Math.cos(a) * 11 * r, -30 + Math.sin(a) * 10 * r]);
+		}
+		maneP.push([5, -24], [3, -22]);
+		P.poly(maneP, mane);
+		for (const [x, y] of [[-6, -34], [-8, -29], [-6, -24], [-2, -36], [-3, -27], [-7, -21]]) P.thin([[x + 1.6, y - 1], [x - 1.6, y + 2]], shade(mane, -0.25), 0.4);
+		// horns, and the goatish demon face looking right out of the mane
+		for (const [x, tx] of [[2, -1], [5, 6]]) taper(P, [[x, -35], [x - 1, -39], [tx, -42]], 1.8, 0.4, horn);
+		P.shape((p) => { p.m(1, -34.4); p.q(5, -36.6, 8, -33); p.q(10.6, -30.6, 10.4, -27.6); p.q(8.6, -24.6, 5.4, -25); p.q(1.4, -25.6, 0.6, -29); p.q(0, -32.6, 1, -34.4); }, pink, 0, 10.6);
+		P.shape((p) => { p.m(1, -31); p.q(-2.4, -32.4, -3.6, -34); p.q(-1.6, -30, 0.8, -29.4); }, pink, -3.6, 1);
+		P.gloss(2.6, -33.4, 1.2, 0.6, 0.4);
+		P.ellipse(5.6, -31.2, 1.5, 1.1, '#fbf2e8');
+		P.dot(6, -31.2, 0.7, '#c81a1a');
+		P.thin([[4, -32.8], [7.6, -32.2]], shade(pink, -0.5), 0.45);
+		P.dot(10, -29.2, 0.4, '#3a0a1a');
+		P.shape((p) => { p.m(4.4, -27.6); p.q(7.6, -26.6, 10, -27.4); p.q(7.6, -25, 4.4, -27.6); }, '#4a0a1a', 4.4, 10, { line: false });
+		for (const x of [5.6, 8.6]) P.poly([[x - 0.45, -27.2], [x + 0.45, -27.2], [x, -25.4]], '#fff6e0', { line: false });
+	},
+	// Purple round mage: a big round pink-red blob of a body pitted with craters, one bloodshot eye and a huge grimace of
+	// square teeth, a purple robe at the bottom, a dark book under one arm, a gnarled dark staff topped by a red orb
+	367(P) {
+		P.shadow(14, 5.5);
+		const pink = '#d04a68', robe = '#4a3a6a', staff = '#3a2a40';
+		// stubby legs and the robe hem
+		for (const x of [-5, 4]) { taper(P, [[x, -8], [x, -2.5]], 3.6, 3.4, shade(pink, -0.1)); P.ellipse(x + 1, -1.4, 3, 1.4, shade(pink, -0.2)); }
+		P.shape((p) => { p.m(-11, -14); p.q(0, -10, 10, -14); p.l(9, -6.4); p.l(5, -7.6); p.l(1, -5.6); p.l(-3, -7.6); p.l(-7, -6); p.l(-11, -7.6); }, robe, -11, 10);
+		// the staff behind the front hand, its red orb
+		P.line([[15, -1], [14, -37]], staff, 1.4);
+		for (const [y, d] of [[-30, 1], [-22, -1], [-14, 1]]) P.line([[14.4, y], [14.4 + d * 1.6, y - 2]], staff, 0.6);
+		P.glow(14, -40.5, 5, '#ff3a4a', 0.4);
+		P.circle(14, -40.5, 3.4, '#8a1020');
+		P.circle(13.6, -40.2, 1.9, '#c8303a', { line: false });
+		P.dot(12.8, -41.6, 0.9, '#ffffff');
+		// the big round cratered body
+		P.circle(-1, -24, 13, pink);
+		for (const [x, y, r] of [[-9, -31, 1.4], [-6, -34, 1.1], [-11, -26, 1.2], [-3, -35.6, 0.9], [-10, -20, 1], [-7, -28, 0.8], [3, -34, 0.8]]) {
+			P.ellipse(x, y, r, r * 0.8, shade(pink, -0.4), { line: false });
+			P.ellipse(x + r * 0.2, y + r * 0.2, r * 0.6, r * 0.45, shade(pink, -0.6), { line: false });
+		}
+		P.gloss(-6, -32, 3.4, 1.6, 0.35);
+		// one eye, a huge grimace of square teeth
+		P.ellipse(5, -30, 2.8, 2.4, '#fbf2e8');
+		P.dot(5.4, -30, 1.3, '#8a1010');
+		P.dot(5.4, -30, 0.6, '#1a0606');
+		P.thin([[2, -33.4], [7.6, -32.4]], shade(pink, -0.5), 0.6);
+		P.shape((p) => { p.m(-0.6, -25.6); p.q(5, -27, 10.4, -25); p.q(10, -19.4, 4.4, -19.4); p.q(-0.4, -20, -0.6, -25.6); }, '#3a0a10', -0.6, 10.4);
+		for (let i = 0; i < 5; i++) { const x = 0.6 + i * 2; P.ellipse(x + 0.9, -24.4 + Math.abs(i - 2) * 0.2, 0.9, 1.1, '#f6ecd0', { line: false }); P.ellipse(x + 0.9, -21.2 - Math.abs(i - 2) * 0.1, 0.9, 1, '#e8dcbc', { line: false }); }
+		// arms: the back one with the book, the front one gripping the staff
+		P.shape((p) => { p.m(-14, -12); p.l(-7, -15); p.l(-5.6, -8); p.l(-12.6, -5.4); }, '#3a3a4a', -14, -5.6);
+		P.poly([[-13, -11.6], [-7.4, -14], [-7, -12.6], [-12.6, -10.4]], '#e8e0d0');
+		taper(P, [[-10, -20], [-11, -15], [-9, -11]], 3.4, 2.8, shade(pink, -0.08));
+		taper(P, [[9, -19], [12, -16], [14, -18]], 3.2, 2.8, pink);
+		P.circle(14.4, -18.4, 2.2, pink);
+	},
+	// Pot of greed: an olive iron cauldron for a head, green smoke curling from its rim and ring handles on its sides, a
+	// skull face moulded on the front with a long yellow tongue lolling out, a stout body of tan stone blocks with big
+	// fists, and a pool of dripping green slime for legs
+	368(P) {
+		P.shadow(14, 5);
+		const iron = '#6a6a3a', stone = '#c8b080', slime = '#b8c030';
+		// the slime pool and its drips running down from the body
+		P.shape((p) => { p.m(-6, -11); p.q(-7, -5, -11, -2.5); p.q(-12, -0.5, -7, -0.5); p.q(-3, 0.5, 0, -0.8); p.q(5, 0.5, 9, -0.6); p.q(13, -1.6, 9, -3); p.q(6, -5, 6, -11); }, slime, -12, 13);
+		for (const [x, y] of [[-3, -4], [3, -6], [-8, -1.5]]) P.ellipse(x, y, 0.9, 1.6, shade(slime, 0.4), { line: false });
+		// the stone body: big blocks
+		for (const [x, y, w, h] of [[-8, -22, 8, 7], [0, -22, 8, 7], [-7, -15.5, 7, 6], [0, -15.5, 7, 6]]) P.shape((p) => { p.m(x + 1, y); p.l(x + w - 0.5, y + 0.3); p.l(x + w, y + h - 1); p.l(x + w - 1, y + h); p.l(x + 0.5, y + h - 0.3); p.l(x, y + 1); }, stone, x, x + w);
+		// arms of stone blocks, big fists
+		for (const sd of [-1, 1]) {
+			const c = sd < 0 ? shade(stone, -0.1) : stone;
+			P.ellipse(sd * 10, -20, 3.2, 3, c);
+			P.ellipse(sd * 12, -14.5, 3, 3.2, c);
+			P.ellipse(sd * 12.5, -9, 3.6, 3.4, c);
+			for (const k of [-1, 0, 1]) P.thin([[sd * 12.5 + k * 1.2, -7], [sd * 12.5 + k * 1.2, -5.8]], shade(stone, -0.45), 0.4);
+		}
+		// green smoke curling up out of the pot
+		for (const [x, y, r] of [[-2, -40, 2.4], [1, -43, 2], [-1, -45.5, 1.5], [3, -39.5, 1.8]]) P.circle(x, y, r, '#a8b498', { alpha: 0.6, line: false });
+		// the cauldron head: ring handles, a rim, a skull face, the tongue
+		for (const sd of [-1, 1]) { P.circle(sd * 9, -30, 2.2, iron); P.circle(sd * 9, -30, 1.1, '#e0dcc8', { line: false }); }
+		P.shape((p) => { p.m(-8.5, -36); p.l(8.5, -36); p.q(10, -26, 6, -22); p.l(-6, -22); p.q(-10, -26, -8.5, -36); }, iron, -10, 10);
+		P.ellipse(0, -36.5, 9.5, 2.2, shade(iron, -0.1));
+		P.ellipse(0, -36.8, 7.5, 1.3, '#aac040', { line: false });
+		P.glow(0, -37, 5, '#d8ff60', 0.4);
+		P.ellipse(-3, -30, 2.2, 2, '#2a2414', { line: false }); P.ellipse(3, -30, 2.2, 2, '#2a2414', { line: false });
+		P.glowEyes(0, -30, 3, 0.5, '#d8ff60');
+		P.poly([[-0.8, -26.8], [0.8, -26.8], [0, -28]], '#2a2414', { line: false });
+		P.thin([[-4, -24.6], [4, -24.6]], '#2a2414', 0.8);
+		for (const x of [-3, -1.5, 0, 1.5, 3]) P.thin([[x, -25.4], [x, -23.8]], '#2a2414', 0.3);
+		P.shape((p) => { p.m(-1.4, -24.4); p.q(-2, -19, 2, -18.5); p.q(6, -19, 5, -22); p.q(3.6, -20.8, 2.6, -21.5); p.q(2, -23.5, 1.4, -24.4); }, '#e8c838', -2, 6);
+		P.gloss(-5, -33.5, 2, 1, 0.35);
+	},
+	// Walking pot of greed: what is left of the pot of greed once it is beaten down: the olive iron cauldron alone, green
+	// smoke curling from it, its moulded skull face and lolling yellow tongue, tottering on two stubby iron feet with a
+	// the moulded skull face with its fangs bared
+	369(P) {
+		P.shadow(11, 4.5);
+		const iron = '#6a6a3a', bone = '#ece4c4';
+		// stubby feet
+		for (const sd of [-1, 1]) {
+			taper(P, [[sd * 4, -6], [sd * 4.6, -1.8]], 3, 2.4, shade(iron, -0.15));
+			P.ellipse(sd * 4.6 + 0.8, -1.1, 2.8, 1.2, shade(iron, -0.3));
+		}
+		// green smoke curling up out of the pot
+		for (const [x, y, r] of [[-2, -31, 2.6], [1.4, -34, 2.2], [-0.6, -37, 1.6], [3.4, -30.4, 2]]) P.circle(x, y, r, '#a8b498', { alpha: 0.6, line: false });
+		// ring handles, the cauldron, its rim and the glowing green brew
+		for (const sd of [-1, 1]) { P.circle(sd * 11.4, -18, 2.6, iron); P.circle(sd * 11.4, -18, 1.3, '#e0dcc8', { line: false }); }
+		P.shape((p) => { p.m(-10.5, -26); p.l(10.5, -26); p.q(13, -13, 8, -4.4); p.l(-8, -4.4); p.q(-13, -13, -10.5, -26); }, iron, -12, 12);
+		P.ellipse(0, -26.4, 11.4, 2.6, shade(iron, -0.1));
+		P.ellipse(0, -26.7, 9, 1.5, '#aac040', { line: false });
+		P.glow(0, -27, 6, '#d8ff60', 0.45);
+		// the skull face: hollow glowing eyes, a nose hole, clenched teeth
+		P.ellipse(-3.6, -19, 2.6, 2.4, '#2a2414', { line: false }); P.ellipse(3.6, -19, 2.6, 2.4, '#2a2414', { line: false });
+		P.glowEyes(0, -19, 3.6, 0.6, '#d8ff60');
+		P.poly([[-1, -15.2], [1, -15.2], [0, -16.6]], '#2a2414', { line: false });
+		P.shape((p) => { p.m(-5.4, -13.4); p.q(0, -14.6, 5.4, -13.4); p.q(4.4, -8.4, 0, -8); p.q(-4.4, -8.4, -5.4, -13.4); }, '#2a1408', -5.4, 5.4, { line: false });
+		for (const x of [-4, -2, 0, 2, 4]) P.poly([[x - 0.6, -13.6 + Math.abs(x) * 0.1], [x + 0.6, -13.6 + Math.abs(x) * 0.1], [x, -11.4]], bone, { line: false });
+		for (const x of [-3, -1, 1, 3]) P.poly([[x - 0.55, -8.5], [x + 0.55, -8.5], [x, -10.4]], bone, { line: false });
+		// the long yellow tongue lolling out of the corner of the mouth and curling round
+		P.shape((p) => { p.m(1.4, -10.6); p.q(6, -11.4, 9, -8.6); p.q(11.6, -5.6, 9.6, -3.6); p.q(7.4, -2.4, 6.8, -4.6); p.q(8.6, -4.4, 8.6, -6.2); p.q(7.6, -8.6, 2, -8.8); }, '#e8c838', 1.4, 11.6);
+		P.thin([[3, -9.8], [7.4, -8.6], [9, -6.4]], shade('#e8c838', -0.3), 0.4);
+		P.gloss(-6, -22.4, 2.2, 1.1, 0.35);
+	},
+	// Koh: a crouching four-legged beast of raw red flesh carrying a huge cracked stone head, with a calm sleeping mask
+	// set into the top of it, tipped back to look up and a little to the right; bone plates along its flank, and under
+	// the stone a gaping fanged maw with a long lolling red tongue
+	370(P) {
+		P.shadow(15, 5.5);
+		const red = '#b8323a', dark = '#7a1e26', stone = '#e6dcc4', bone = '#efe6d2';
+		// four thick clawed legs, far pair darker
+		for (const [hx, kx, fx, c] of [[-9, -12, -11, dark], [4, 8, 7, dark], [-6, -8, -7, red], [7, 12, 12, red]]) {
+			taper(P, [[hx, -12], [kx, -7], [fx, -2.5]], 5.4, 3.6, c);
+			for (const d of [-1, 0, 1]) taper(P, [[fx, -2.5], [fx + d * 1.4 + 1, -0.6]], 1.4, 0.4, c);
+		}
+		// the body, with bone plates along its back
+		P.shape((p) => { p.m(-13, -12); p.q(-14, -22, -4, -22); p.q(6, -22, 11, -16); p.q(11, -10, 6, -9); p.l(-10, -9); p.q(-13, -9, -13, -12); }, red, -14, 11);
+		for (const [x, y, w] of [[-10, -18, 3], [-5.5, -20, 3.2], [-9, -13.5, 2.6]]) P.ellipse(x, y, w, w * 0.6, bone);
+		for (const [x0, x1] of [[-3, -1], [0, 2], [3, 5]]) P.thin([[x0, -18], [x1, -12]], shade(red, -0.4), 0.45);
+		// the maw under the mask: a fleshy neck, the lower jaw, fangs, the tongue
+		P.shape((p) => { p.m(5, -20); p.q(12, -21, 19, -17); p.q(20, -10, 13, -8.5); p.q(7, -9, 5, -12); }, red, 5, 20);
+		P.shape((p) => { p.m(8, -18.5); p.q(14, -18.5, 18.5, -16); p.q(18, -11.5, 13, -10.8); p.q(9, -11.5, 8, -18.5); }, '#4a0810', 8, 18.5, { line: false });
+		for (const [x, y, up] of [[9.6, -18.2, 0], [12, -18, 0], [14.4, -17.4, 0], [16.8, -16.4, 0], [10.6, -11.2, 1], [13.2, -10.9, 1], [15.8, -11.6, 1]]) P.poly(up ? [[x - 0.8, y], [x + 0.8, y], [x, y - 2.6]] : [[x - 0.8, y], [x + 0.8, y], [x, y + 2.8]], bone);
+		taper(P, [[13, -12], [18, -9.5], [19, -5], [22, -5.5]], 2.8, 1.8, '#e0405a');
+		// the huge stone head: angular cracked blocks at the back, and set into its top and upper front a great calm mask,
+		// tipped back so it looks up, a little to the right and a little toward us (crown at the left, chin at the right)
+		P.shape((p) => { p.m(-7.1, -17.2); p.q(-15, -21.5, -14.6, -29); p.l(-12.6, -36); p.l(-8.6, -41.4); p.l(-3, -44.8); p.q(4, -47.6, 10, -45); p.l(13.6, -43.6); p.l(17.2, -40.6); p.q(20, -37, 21.6, -31.6); p.q(23.8, -29, 23.6, -26.2); p.q(23.4, -23.4, 19.4, -22.6); p.q(12.9, -19.6, 3.9, -19); p.q(-2.5, -16.6, -7.1, -17.2); }, stone, -16, 34);
+		const line = shade(stone, -0.6), crack = shade(stone, -0.45), hollow = shade(stone, -0.18);
+		// the mask's face plane, a little lighter than the rock around it
+		P.shape((p) => { p.m(-1, -43.4); p.q(4, -46.4, 9.6, -44.2); p.l(13.2, -42.8); p.l(16.6, -40); p.q(19.2, -36.6, 20.8, -31.4); p.q(22.8, -28.8, 22.6, -26.4); p.q(22.2, -24, 19, -23.4); p.l(15.6, -21.6); p.l(8, -24); p.l(1.2, -29.6); p.l(-1.6, -36); }, shade(stone, 0.16), -6, 40, { line: false });
+		// cracks: the edge of the mask, and the blocks of the back of the head
+		for (const pts of [[[-1, -44.6], [-1.6, -36], [1.2, -29.6], [8, -24], [15.6, -21.4]], [[-8.6, -41.4], [-6.2, -35.2], [-1.6, -36]], [[-6.2, -35.2], [-8.4, -28], [-14.2, -27.2]], [[-8.4, -28], [-3.6, -23.4], [-4.6, -17.6]], [[-3.6, -23.4], [1.2, -29.6]], [[8, -24], [8.6, -19.6]], [[-12.6, -36], [-10, -33.4]]]) P.thin(pts, crack, 0.6);
+		// the near eye: a shadowed socket under a heavy brow, the lid closed in a long dark slit
+		P.ellipse(4.8, -36.4, 3.6, 2, hollow, { line: false, rot: -0.5 });
+		P.thin([[0.6, -35.6], [2, -38], [4.6, -39.6], [8.8, -39.9]], crack, 0.75);
+		P.shape((p) => { p.m(1.8, -33.8); p.q(5.2, -37.8, 8.6, -37.6); p.q(6, -34.6, 1.8, -33.8); }, line, 0, 1, { flat: true, line: false });
+		// the far eye, a closed slit in its hollow beyond the bridge of the nose
+		P.ellipse(12.8, -42, 2.3, 1.1, hollow, { line: false, rot: 0.45 });
+		P.thin([[10.8, -42.9], [12.6, -42.3], [14.8, -41]], line, 0.8);
+		// the nose rising out of the face: its shadow, the side toward us, the ridge to the tip, a nostril
+		P.poly([[9.2, -38.6], [12.8, -32.6], [10.2, -33], [7.8, -37]], hollow, { line: false, alpha: 0.8 });
+		P.shape((p) => { p.m(9.4, -39); p.l(15.4, -40.4); p.q(17.4, -40.2, 17.6, -38.4); p.l(18, -35); p.q(17.6, -32.8, 15.4, -32.6); p.l(12.8, -32.6); }, shade(stone, 0.2), 4, 40, { line: false });
+		P.shape((p) => { p.m(16.2, -40.2); p.q(17.4, -40.2, 17.6, -38.4); p.l(18, -35); p.q(17.6, -32.8, 15.4, -32.6); p.l(12.8, -32.6); }, shade(stone, -0.14), 0, 1, { flat: true, line: false });
+		P.thin([[9.4, -39], [15.4, -40.4], [16.8, -40.2], [17.6, -38.4], [18, -35], [17.2, -33], [15.4, -32.6], [12.8, -32.6]], crack, 0.7);
+		P.thin([[12.8, -32.6], [9.4, -39]], shade(stone, -0.3), 0.45);
+		P.ellipse(15.9, -35.2, 1.2, 0.75, line, { line: false, flat: true, rot: -0.9 });
+		// full, calm lips, a little parted, and the chin beyond them
+		P.shape((p) => { p.m(14.4, -28.4); p.q(17.2, -32.6, 20.8, -31.2); p.q(17.8, -30, 14.4, -28.4); }, shade(stone, -0.24), 15, 21, { flat: true, line: false });
+		P.shape((p) => { p.m(14.4, -28.4); p.q(17.8, -30, 20.8, -31.2); p.q(20.6, -26.6, 14.4, -28.4); }, shade(stone, 0.3), 15, 21, { flat: true, line: false });
+		P.thin([[14.4, -28.4], [17.6, -29.8], [20.8, -31.2]], line, 0.9);
+		P.thin([[15.6, -26.9], [18.4, -26.5], [20.6, -27.6]], shade(stone, -0.3), 0.5);
+		// a hollow cheek, and the light on the brow and the back of the head
+		P.ellipse(9.4, -28.6, 3.6, 2.2, shade(stone, -0.08), { line: false, alpha: 0.6, rot: 0.4 });
+		P.gloss(4, -43, 2.8, 1, 0.5);
+		P.gloss(-9.4, -33, 2, 1.1, 0.35);
+	},
+	// Hooded occultist (the 6B boss): a tall robed cultist in a pointed brown sack hood with dark eye holes, a rust-orange
+	// robe with dark red trim and ragged hem, a bundle of scrolls under one arm and a red tome with a golden sigil held
+	// open in thin grey-green hands
+	371(P) {
+		P.shadow(12, 4.5);
+		const robe = '#c46a24', trim = '#7a2a1a', hood = '#7a5032', hand = '#a8b498', book = '#a01e1e', gold = '#e0b840';
+		// the long robe, ragged at the hem, dark red trim down the front
+		P.shape((p) => { p.m(-6, -28); p.l(6, -28); p.q(9, -14, 11, -1.4); p.l(8, -2.6); p.l(5.4, -0.6); p.l(2.6, -2.4); p.l(0, -0.4); p.l(-2.8, -2.4); p.l(-5.4, -0.6); p.l(-8, -2.6); p.l(-11, -1.4); p.q(-9, -14, -6, -28); }, robe, -11, 11);
+		P.thin([[1, -27], [2, -2]], trim, 1.2);
+		for (const x of [-5, 6]) P.thin([[x * 0.6, -24], [x, -3]], shade(robe, -0.3), 0.45);
+		P.line([[-7, -16.6], [7.4, -16.6]], trim, 1.2);
+		P.gloss(-5, -24, 1.4, 1, 0.3);
+		// the bundle of scrolls under the far arm
+		for (const [x, y, a] of [[-10, -24, -0.5], [-11, -21, -0.3], [-9, -22, -0.7]]) {
+			taper(P, [[x - 2.4 * Math.sin(a), y + 4], [x + 2.4 * Math.sin(a), y - 5]], 2, 2, '#ecdcb4');
+			P.ellipse(x + 2.4 * Math.sin(a), y - 5, 1, 0.6, '#d4c090');
+		}
+		taper(P, [[-5.6, -27], [-10, -21], [-7, -17]], 3.4, 2.6, shade(robe, -0.1));
+		P.circle(-6.6, -17.2, 1.5, hand);
+		// the red tome held in front with both hands
+		taper(P, [[5.6, -27], [10, -22], [8, -18]], 3.4, 2.6, robe);
+		P.poly([[2, -24], [10.6, -26], [12, -15.4], [3.4, -13.6]], shade(book, -0.15));
+		P.poly([[2.6, -23.4], [10, -25.2], [11.2, -15.8], [3.8, -14.2]], book);
+		P.thin([[4.8, -21], [7, -17.6], [9.2, -21.6], [4.8, -21]], gold, 0.45);
+		P.thin([[7, -22.6], [7, -16.6]], gold, 0.35);
+		P.thin([[5.4, -19.6], [9, -19.6]], gold, 0.35);
+		for (const [x, y] of [[3.6, -18], [11, -20]]) {
+			P.circle(x, y, 1.6, hand);
+			for (const d of [-0.5, 0.5]) P.thin([[x - 1, y + d], [x + 1, y + d]], shade(hand, -0.4), 0.3);
+		}
+		// the tall pointed sack hood, eye holes and a stitched seam
+		P.shape((p) => { p.m(-6.4, -26.6); p.q(-7.4, -34, -3.6, -38); p.q(-1, -41, 1.4, -46); p.q(4, -40, 6, -37); p.q(8.6, -32, 7, -26.6); p.q(0, -24.4, -6.4, -26.6); }, hood, -7.4, 8.6);
+		P.thin([[1.4, -45], [0.6, -38], [1.2, -27]], shade(hood, -0.35), 0.45);
+		for (const y of [-41, -38, -35]) P.thin([[0.2, y], [1.8, y + 0.6]], shade(hood, -0.45), 0.35);
+		for (const x of [-2.4, 4]) { P.ellipse(x, -31.6, 1.5, 1.8, '#1a0e08'); P.dot(x + 0.3, -31.4, 0.5, '#ffd060'); }
+		P.gloss(-3.6, -35, 1.2, 1.6, 0.3);
+	},
+	// Purple masked executioner: a tall figure in a stitched purple hood with a floppy pointed top and a gold bell at the
+	// throat, eyeholes in its mask, a layered purple robe tied with a sash, wrapped hands on a long pole with a golden
+	// crescent blade at its lower end
+	373(P) {
+		P.shadow(13, 5);
+		const purple = '#7a5aaa', dark = '#4e3a7a', gold = '#e0b850', sash = '#7a3a6a';
+		// boots under the robe
+		for (const x of [-4, 4]) P.ellipse(x + 1, -1.4, 3.2, 1.6, '#3a2e4a');
+		// the long layered robe
+		P.shape((p) => { p.m(-7, -26); p.q(0, -28, 7, -26); p.q(10, -12, 10, -2); p.l(6, -3.4); p.l(3, -1.6); p.l(0, -3.2); p.l(-3, -1.6); p.l(-6, -3.4); p.l(-10, -2); p.q(-10, -12, -7, -26); }, dark, -10, 10);
+		P.shape((p) => { p.m(-3, -22); p.l(3, -22); p.q(5, -12, 4, -4); p.l(0, -5.4); p.l(-4, -4); p.q(-5, -12, -3, -22); }, purple, -5, 5);
+		P.thin([[-7.6, -16.4], [0, -15], [7.6, -16.4]], sash, 1.6);
+		P.line([[1, -15.2], [2, -10.4]], sash, 0.8);
+		// the pole with its golden crescent blade, held across the body
+		P.line([[13, -22], [-11, -6]], '#6a4a2a', 1.2);
+		P.circle(13.4, -22.4, 1.2, gold);
+		P.shape((p) => { p.m(-8, -10); p.q(-18, -16, -21, -7); p.q(-21, 1, -13, 1.6); p.q(-16, -2, -16.6, -6.4); p.q(-15, -12, -9.6, -7.6); }, gold, -21, -8);
+		P.thin([[-17, -12], [-19.4, -7], [-17, -1.6]], '#fff0b0', 0.4);
+		P.ellipse(-10, -7.6, 1.8, 1.2, gold);
+		// arms crossing to the pole, wrapped hands
+		taper(P, [[-6, -25], [-8, -18], [-4, -13]], 3.4, 2.8, purple);
+		P.circle(-3.6, -12.8, 1.8, '#e0d8c8');
+		taper(P, [[6, -25], [9, -20], [6.6, -17.4]], 3.4, 2.8, purple);
+		P.circle(6.4, -17.4, 1.8, '#e0d8c8');
+		// the hood's ragged mantle over the shoulders
+		P.shape((p) => { p.m(-9, -24); p.q(0, -31, 9, -24); p.l(7, -21); p.l(4, -22.6); p.l(1, -20); p.l(-2, -22.4); p.l(-5, -20.4); p.l(-7.4, -22.2); }, purple, -9, 9);
+		// the hood with its floppy pointed top
+		P.shape((p) => { p.m(-5.6, -26); p.q(-7, -36, -2, -39); p.q(-2, -44, -4.6, -46); p.q(1, -45, 2.6, -40); p.q(7, -37, 6.6, -26); p.q(0.5, -23.6, -5.6, -26); }, purple, -7, 7);
+		P.thin([[0.4, -39], [0.6, -26.4]], shade(purple, -0.45), 0.4);
+		for (const y of [-37, -34, -31, -28]) P.thin([[-0.4, y], [1.4, y + 0.6]], shade(purple, -0.45), 0.35);
+		P.gloss(-3.6, -35, 1.2, 1.8, 0.3);
+		// eyeholes in the mask
+		for (const x of [-2.4, 3.2]) { P.ellipse(x, -32.4, 1.4, 1, '#1a1024', { line: false }); P.dot(x + 0.3, -32.4, 0.45, '#e8d8ff'); }
+		// the gold bell at the throat
+		P.shape((p) => { p.m(-0.6, -27.6); p.q(-2.2, -26.6, -2.4, -23.6); p.l(3.2, -23.6); p.q(3, -26.6, 1.4, -27.6); }, gold, -2.4, 3.2);
+		P.dot(0.4, -23.2, 0.6, '#8a6a20');
+	},
+	// Alien tentacle: a ribbed purple alien hunched on two clawed legs, a long smooth crest of a head with three round
+	// pores along its side and a skeletal grinning jaw, ruffled gill plates round the neck and long tentacles for arms
+	374(P) {
+		P.shadow(14, 5);
+		const purple = '#9a4a8a', dark = '#6a2a5e', light = '#c070b0';
+		// the tail-tentacle behind
+		taper(P, [[-5, -14], [-13, -14], [-16, -9], [-13, -6]], 2.6, 0.5, dark);
+		// legs: thigh, back-bent shin, clawed foot
+		for (const [hx, kx, ax, fx, c] of [[-3, -8, -5, -7, dark], [3, 6, 4, 6, purple]]) {
+			taper(P, [[hx, -13], [kx, -9]], 4.4, 3, c);
+			taper(P, [[kx, -9], [ax, -5], [fx, -2.5]], 3, 2, c);
+			for (const d of [-1, 0, 1]) taper(P, [[fx, -2.5], [fx + d * 1.5 + 1.2, -0.6]], 1.2, 0.3, c);
+		}
+		// the far tentacle arm
+		taper(P, [[-3, -23], [-11, -22], [-14, -15], [-10, -12]], 3, 0.6, dark);
+		// a ribbed, hunched body
+		P.shape((p) => { p.m(-6, -15); p.q(-8, -25, -1, -28); p.q(6, -28, 7, -21); p.q(6, -14, 3, -11.5); p.l(-4, -11.5); p.q(-6, -12, -6, -15); }, purple, -8, 7);
+		for (const y of [-24, -21, -18, -15]) P.thin([[-4, y + 1], [0, y], [4.5, y + 1]], shade(purple, -0.35), 0.5);
+		P.gloss(-3.5, -24, 1.8, 1, 0.35);
+		// ruffled gill plates round the neck
+		for (const [x, y] of [[-6, -27], [-4.5, -30], [-2, -31.5], [-6.5, -23.5]]) P.ellipse(x, y, 3, 1.8, light, { rot: -0.4 });
+		// the head: a long crest swept back, three pores, a skeletal jaw full of teeth
+		P.shape((p) => { p.m(-1, -28); p.q(-4, -38, -1, -43); p.q(3, -42, 6, -36); p.q(12, -33, 15, -28); p.q(13, -25, 9, -25); p.q(3, -24, -1, -28); }, purple, -4, 15);
+		P.thin([[-1, -42], [3, -35], [12, -30]], shade(purple, -0.3), 0.45);
+		for (const [x, y] of [[1, -31.5], [3.6, -31], [6.2, -30.4]]) { P.circle(x, y, 1.2, '#2a0a24'); P.dot(x - 0.3, y - 0.3, 0.35, light); }
+		P.shape((p) => { p.m(9, -27); p.q(13, -27.4, 15, -27.6); p.q(14.5, -23.5, 10.5, -23.2); p.q(8.5, -24, 9, -27); }, '#2a0a1e', 8.5, 15, { line: false });
+		for (const x of [10.6, 12, 13.4]) { P.poly([[x - 0.5, -27.4], [x + 0.5, -27.4], [x, -25.4]], '#f6eee0'); P.poly([[x - 0.45, -23.6], [x + 0.45, -23.6], [x, -25.2]], '#f6eee0'); }
+		P.shape((p) => { p.m(8.5, -24); p.q(12, -21.5, 14.5, -23.4); p.q(13, -20.5, 9.5, -21); }, dark, 8.5, 14.5);
+		// the near tentacle arm curling forward and out
+		taper(P, [[3, -22], [10, -18], [15, -18], [17, -13], [20, -14]], 3.2, 0.6, purple);
+		for (const [x, y] of [[11, -17.4], [14, -17.4], [16.4, -15]]) P.dot(x, y + 0.6, 0.4, light);
+	},
+	// Formless deamon: a hunched sandy demon of bone and sinew, long curved horns and a ridge of spikes down its back,
+	// glowing yellow eyes over a fanged jaw, long arms armoured with orange plates ending in big hooked claws, a spiked tail
+	375(P) {
+		P.shadow(14, 5);
+		const skin = '#c8a464', plate = '#d88a30', bone = '#f0e2c0';
+		// spiked tail
+		taper(P, [[-4, -12], [-12, -10], [-16, -4], [-12, -1.6]], 3, 0.6, skin);
+		for (const [x, y] of [[-11, -11], [-14.6, -7.4]]) P.poly([[x + 1, y], [x - 1.6, y - 3], [x - 0.6, y + 0.6]], bone);
+		for (const [hx, kx, fx, c] of [[-3, -8, -5, shade(skin, -0.12)], [3, 8, 5.5, skin]]) {
+			taper(P, [[hx, -13], [kx, -8], [fx, -2]], 4.4, 2.6, c);
+			P.ellipse(fx + 0.8, -1.3, 2.8, 1.2, shade(skin, -0.25));
+			for (const k of [-1, 0, 1]) P.thin([[fx + 0.8 + k * 1.1, -0.8], [fx + 1.6 + k * 1.2, 0.5]], bone, 0.45);
+		}
+		// spikes along the back, the hunched ribby body
+		for (const [x, y, tx, ty] of [[-7, -20, -14, -22], [-6, -24, -13, -29], [-3, -27, -8, -34], [1, -29, -1, -37]]) taper(P, [[x, y], [tx, ty]], 2.6, 0.3, bone);
+		P.shape((p) => { p.m(-7, -12); p.q(-10, -22, -3, -28); p.q(4, -31, 8, -24); p.q(9, -16, 5, -11.6); p.q(-1, -9.6, -7, -12); }, skin, -10, 9);
+		for (const y of [-22, -19, -16]) P.thin([[-2, y], [5, y + 0.4]], shade(skin, -0.38), 0.45);
+		P.gloss(-5, -22, 1.4, 0.8, 0.3);
+		// long arms hanging forward, the forearms armoured with curved orange plates, big hooked claws near the ground
+		for (const [sx, mx, ex, c] of [[-4, -12, -8, shade(skin, -0.1)], [5, 14.5, 11, skin]]) {
+			taper(P, [[sx, -24], [mx, -19], [ex, -14]], 3.8, 3, c);
+			P.circle(mx, -19, 2, c);
+			taper(P, [[mx, -19], [mx + (ex > 0 ? 0.6 : -0.6), -12], [ex, -6]], 4.4, 2.4, plate);
+			for (const t of [0.35, 0.65]) P.thin([[mx + (ex - mx) * t - 2, -19 + 14 * t], [mx + (ex - mx) * t + 2, -19 + 14 * t - 0.6]], shade(plate, -0.4), 0.5);
+			for (const k of [-1, 0, 1]) taper(P, [[ex + k * 1.4, -6], [ex + k * 2 + (ex > 0 ? 2.6 : -2.6), -2.4], [ex + k * 2 + (ex > 0 ? 4.6 : -4.6), -6]], 2.4, 0.3, '#e8cc98');
+		}
+		// the head low and forward: long horns, glowing eyes, a fanged jaw
+		for (const [x, c] of [[3, shade(bone, -0.15)], [7, bone]]) taper(P, [[x, -33], [x - 1, -40], [x + 2, -45]], 2.8, 0.4, c);
+		P.line([[3, -26], [5, -29]], skin, 3);
+		P.shape((p) => { p.m(1.6, -31); p.q(4, -36, 9, -34.6); p.q(13, -33, 14, -29); p.q(13.6, -26.6, 11, -26.2); p.q(6, -25, 2.4, -27); p.q(1, -29, 1.6, -31); }, skin, 1, 14);
+		P.shape((p) => { p.m(6, -28.4); p.q(10, -28.6, 13.6, -28.6); p.q(12, -26.2, 7, -26.6); }, '#3a1a0a', 6, 13.6, { line: false });
+		for (const x of [8, 10, 12]) P.poly([[x - 0.45, -28.5], [x + 0.45, -28.5], [x, -27.2]], '#fff6e0', { line: false });
+		P.thin([[5, -32.2], [10.6, -31.4]], shade(skin, -0.5), 0.6);
+		for (const x of [6.6, 10]) { P.ellipse(x, -30.6, 1.1, 0.8, '#2a1406', { line: false }); P.glow(x, -30.6, 1.8, '#ffd23f', 0.6); P.dot(x, -30.6, 0.5, '#ffe26a'); }
+		P.gloss(4, -33.4, 1.2, 0.6, 0.4);
+	},
+	// Owl-lion: a lion's tawny body padding along on four big paws, a black mane, a tufted tail, and an owl's head: a cream
+	// feathered facial disc, tall ear tufts, round staring eyes and a small hooked orange beak
+	376(P) {
+		P.shadow(18, 5.5);
+		const tawny = '#b8823e', dark = '#8a5a2a', cream = '#ead6a8', mane = '#3a3028';
+		// tail with a dark tuft
+		taper(P, [[-12, -16], [-19, -18], [-20, -24], [-17, -27]], 1.8, 1, tawny);
+		P.ellipse(-17, -27.6, 2, 1.4, mane, { rot: -0.6 });
+		// far legs
+		for (const [x0, x1] of [[-9, -11], [6, 9]]) { taper(P, [[x0, -12], [x1, -2]], 4.4, 3.4, dark); P.ellipse(x1 + 1, -1.4, 3, 1.4, shade(dark, -0.1)); }
+		// the body
+		P.shape((p) => { p.m(-15, -16); p.q(-15, -24, -6, -24); p.l(6, -26); p.q(12, -24, 12, -16); p.q(10, -10, 4, -10.6); p.l(-9, -10.4); p.q(-15, -10.4, -15, -16); }, tawny, -15, 12);
+		for (const x of [-10, -6, -2]) P.thin([[x, -22], [x - 1, -19]], shade(tawny, -0.3), 0.4);
+		P.gloss(-9, -21.6, 3, 1.2, 0.35);
+		// near legs with big paws
+		for (const [x0, x1] of [[-6, -6], [9, 12]]) {
+			taper(P, [[x0, -14], [x1, -2]], 5, 3.8, tawny);
+			P.ellipse(x1 + 1, -1.4, 3.4, 1.6, shade(tawny, -0.08));
+			for (const k of [0, 1]) P.thin([[x1 + k * 1.4, -2.4], [x1 + k * 1.4 + 0.2, -0.8]], shade(tawny, -0.45), 0.4);
+		}
+		// the black mane round the neck
+		const mn = [];
+		for (let k = 0; k < 18; k++) { const a = Math.PI * 0.55 + k / 17 * Math.PI * 1.3, r = k % 2 ? 0.8 : 1.08; mn.push([8 + Math.cos(a) * 10 * r, -27 + Math.sin(a) * 9 * r]); }
+		mn.push([12, -20]);
+		P.poly(mn, mane);
+		// the owl head: ear tufts, the cream facial disc, staring eyes, the small hooked beak
+		for (const [x, tx] of [[5, 2], [12, 15]]) P.poly([[x - 1.8, -33], [tx, -42], [x + 1.6, -33.6]], tawny);
+		P.circle(9, -29, 6.4, tawny);
+		P.ellipse(10, -28, 5.2, 5, cream);
+		for (const x of [7.6, 12.4]) {
+			P.circle(x, -29.4, 1.9, '#f8f4e8');
+			P.dot(x + 0.3, -29.4, 1, '#1a1208');
+			P.dot(x - 0.2, -29.9, 0.35, '#ffffff');
+			P.thin([[x - 2.4, -31.8], [x + 1.6, -31.2]], dark, 0.4);
+		}
+		P.shape((p) => { p.m(9, -27.8); p.l(11.4, -27.8); p.q(11.6, -25, 10, -24.6); p.q(10.4, -26, 9, -27.8); }, '#e88a3a', 9, 11.6);
+		P.gloss(6, -33, 1.4, 0.7, 0.4);
+	},
+	// Hungry ginny: a squat blue-violet heap of muscle with no head, just lumps, each with its own fanged mouth and dotted
+	// with little bubble warts; gold armbands, a gold necklace with a violet gem, a red loincloth, thick arms to the ground
+	377(P) {
+		P.shadow(16, 5);
+		const blue = '#5a5ac8', dark = '#4242a0', gold = '#e0b040', red = '#a0303a';
+		const mouth = (x, y, w, h) => {
+			P.shape((p) => { p.m(x - w, y); p.q(x, y - h * 0.6, x + w, y); p.q(x, y + h, x - w, y); }, '#3a0e1a', x - w, x + w);
+			for (let k = -1; k <= 1; k++) { P.poly([[x + k * w * 0.55 - 0.45, y - h * 0.22], [x + k * w * 0.55 + 0.45, y - h * 0.22], [x + k * w * 0.55, y + h * 0.3]], '#fff6e0', { line: false }); }
+			for (const k of [-0.3, 0.3]) P.poly([[x + k * w * 1.4 - 0.4, y + h * 0.6], [x + k * w * 1.4 + 0.4, y + h * 0.6], [x + k * w * 1.4, y + h * 0.15]], '#fff6e0', { line: false });
+		};
+		// stubby legs
+		for (const x of [-5, 5]) { taper(P, [[x, -10], [x * 1.1, -2]], 5.4, 4.6, dark); P.ellipse(x * 1.15, -1.4, 3.6, 1.6, shade(dark, -0.2)); }
+		// arms down to big fists, gold armbands
+		for (const [s, c] of [[-1, dark], [1, blue]]) {
+			taper(P, [[s * 11, -24], [s * 17, -16], [s * 15, -6]], 6, 4.6, c);
+			P.ellipse(s * 15, -4.6, 3.6, 3, c);
+			P.line([[s * 13.6, -14], [s * 18, -13]], gold, 1.4);
+		}
+		// the heap of lumps
+		P.ellipse(0, -18, 12, 9, blue);
+		for (const [x, y, r] of [[-8, -28, 6.4], [7, -29, 6.6], [0, -35, 6.2], [-11, -20, 5], [11, -20, 5]]) P.circle(x, y, r, x < 0 ? shade(blue, -0.04) : blue);
+		for (const [x, y, r] of [[-4, -38, 1], [3, -40, 0.9], [-12, -30, 0.8], [11, -33, 1], [-5, -24, 0.9], [4.6, -22.6, 0.8], [-14, -22, 0.7], [14, -22, 0.8], [0, -29, 0.9]]) { P.circle(x, y, r, '#8ab0f0'); P.dot(x - r * 0.3, y - r * 0.3, r * 0.3, '#ffffff'); }
+		P.gloss(-9, -32, 2, 1, 0.4); P.gloss(-2, -39, 1.8, 0.9, 0.4);
+		// the mouths, each with a pair of little eyes
+		for (const [x, y, w, h] of [[0, -33.6, 3.2, 3], [-8.4, -26.6, 2.8, 2.6], [7.4, -27.4, 3, 2.8], [-11.6, -18.6, 2, 2], [11.4, -18.6, 2, 2]]) {
+			mouth(x, y, w, h);
+			for (const s of [-1, 1]) { P.dot(x + s * w * 0.55, y - h * 0.95, 0.75, '#fbf7f0'); P.dot(x + s * w * 0.55 + 0.2, y - h * 0.95, 0.4, '#1a1030'); }
+		}
+		// red loincloth and the gold necklace with a violet gem
+		P.shape((p) => { p.m(-8, -12); p.q(0, -10, 8, -12); p.l(6.6, -6); p.l(3, -7.6); p.l(0, -5); p.l(-3, -7.6); p.l(-6.6, -6); }, red, -8, 8);
+		P.line([[-8.4, -12], [8.4, -12]], shade(red, -0.3), 1);
+		P.thin([[-6, -26], [-3, -20], [0, -18.6], [3, -20], [6, -26]], gold, 0.7);
+		P.circle(0, -18, 1.8, gold); P.circle(0, -18, 1, '#8a3ac8', { line: false });
+	},
+	// Cannon squid (6A boss; also the regular monster): a hulking blue brute with a squid's head, a beard of tentacles round
+	// a small mouth, glowing blue eyes, bubbles of pale spots on its scalp, spiky fins at the shoulders and back, a strap
+	// holding a sack of cannonballs, a long iron cannon cradled in its arms and a tail
+	378(P) {
+		P.shadow(18, 6);
+		const blue = '#4a7ab8', dark = '#3a5a90', iron = '#6a6e74', ball = '#3a3a40';
+		// tail
+		taper(P, [[-6, -8], [-14, -5], [-20, -2]], 4, 0.8, dark);
+		// thick legs
+		for (const [hx, kx, fx, c] of [[-5, -9, -7, dark], [4, 8, 6, blue]]) {
+			taper(P, [[hx, -12], [kx, -7], [fx, -2]], 6, 4.4, c);
+			P.ellipse(fx + 1, -1.4, 3.8, 1.7, shade(c, -0.15));
+			for (const k of [0, 1]) P.dot(fx + 2.2 + k * 1.4, -1, 0.5, '#e8f0f8');
+		}
+		// spiky fins at the back and shoulders
+		for (const [x, y, tx, ty] of [[-9, -26, -17, -32], [-10, -21, -18, -22], [-6, -31, -9, -39], [9, -29, 17, -35], [10, -25, 18, -26]]) taper(P, [[x, y], [(x + tx) / 2, (y + ty) / 2 - 1.6], [tx, ty]], 3.6, 0.4, shade(blue, 0.1));
+		// the broad hunched body
+		P.shape((p) => { p.m(-10, -12); p.q(-14, -26, -6, -31); p.q(3, -34, 10, -29); p.q(14, -20, 9, -11); p.q(0, -8, -10, -12); }, blue, -14, 14);
+		for (const [x, y, r] of [[-7, -22, 1.4], [-4, -17, 1.1], [6, -14, 1.2], [-9, -16, 0.9]]) P.ellipse(x, y, r, r * 0.8, shade(blue, -0.2), { line: false });
+		P.gloss(-6, -27, 3, 1.4, 0.35);
+		// the strap and the sack of cannonballs over the shoulder
+		P.thin([[8, -30], [-2, -18], [-6, -13]], '#6a4a2a', 0.9);
+		P.shape((p) => { p.m(-6, -19); p.q(-1, -22, 5, -19); p.q(5.6, -13, 0, -12.4); p.q(-6.6, -13, -6, -19); }, '#6a4a32', -6.6, 5.6);
+		for (const [x, y] of [[-3, -19.6], [0, -20.6], [3, -19.6], [-1.4, -21.8], [1.6, -22]]) { P.circle(x, y, 1.6, ball); P.dot(x - 0.5, y - 0.5, 0.45, '#9a9aa4'); }
+		// the cannon cradled across the body, pointing down to the right
+		const cdx = Math.cos(0.5), cdy = Math.sin(0.5), cn = (t, o) => [-8 + cdx * t - cdy * o, -24 + cdy * t + cdx * o];
+		P.poly([cn(0, -2.6), cn(27, -3.2), cn(27, 3.2), cn(0, 2.6)], iron);
+		P.ellipse(...cn(27, 0), 1.6, 3.2, shade(iron, 0.15), { rot: 0.5 });
+		P.ellipse(...cn(27.3, 0), 0.9, 2, '#14141a', { line: false, rot: 0.5 });
+		P.thin([cn(1, -1.4), cn(26, -2)], shade(iron, 0.45), 0.5);
+		for (const t of [8, 11, 14]) P.dot(...cn(t, -0.4), 0.55, '#2a2a30');
+		P.circle(...cn(0, 0), 2.4, shade(iron, -0.1));
+		// thick arms holding the cannon
+		taper(P, [[-7, -27], [-11, -20], [-4, -16]], 5, 4, dark);
+		P.circle(-3.4, -16.4, 2.6, dark);
+		taper(P, [[8, -28], [13, -21], [9.6, -14]], 5.4, 4.2, blue);
+		P.circle(9.4, -13.8, 2.8, blue);
+		for (const k of [-1, 0, 1]) taper(P, [[9.4 + k * 1.2, -12], [10 + k * 1.4, -10]], 1.2, 0.4, '#2a3a5a');
+		// the squid head: a bulbous scalp dotted with pale spots, glowing eyes, a beard of tentacles
+		P.shape((p) => { p.m(-1, -30); p.q(-3, -42, 5, -44); p.q(13, -44, 13, -34); p.q(12.6, -29, 8, -28); p.q(2, -27, -1, -30); }, blue, -3, 13);
+		for (const [x, y, r] of [[2, -40, 1], [4.4, -41.6, 0.8], [6.6, -40, 1.1], [3, -37.6, 0.7], [8.8, -41.8, 0.7]]) { P.circle(x, y, r, '#8ab8e0'); P.dot(x - r * 0.3, y - r * 0.3, r * 0.35, '#e0f0ff'); }
+		P.gloss(0.6, -38, 1, 1.6, 0.35);
+		for (const x of [6, 10.4]) { P.glow(x, -34.4, 2.2, '#60d0ff', 0.7); P.dot(x, -34.4, 0.9, '#c0f0ff'); }
+		for (const [x0, x1, y1] of [[4, 2, -21], [6, 5.6, -20], [8, 9, -20.6], [10, 12, -22], [11.6, 14.6, -25]]) taper(P, [[x0, -30], [(x0 + x1) / 2 + 0.6, -26], [x1, y1]], 2, 0.5, shade(blue, 0.05));
+		P.ellipse(8, -30.4, 1.6, 0.8, '#1a2a4a', { line: false });
+	},
+	// Anchor golem: a hulking dark blue sea golem, its domed back and head overgrown with green moss and weed and crusted
+	// with barnacles, a rusty anchor and chain stuck in the top, a little clay pot caught in the weed, glowing blue eyes
+	// peering out from under the moss, long arms with clawed hands
+	379(P) {
+		P.shadow(15, 6);
+		const blue = '#2e4a6a', moss = '#4a8a3a', iron = '#5a6068';
+		// legs
+		for (const sd of [-1, 1]) { taper(P, [[sd * 5, -12], [sd * 6, -6], [sd * 6, -2.5]], 6.4, 5.4, sd < 0 ? shade(blue, -0.12) : blue); P.ellipse(sd * 7, -1.5, 3.8, 1.8, shade(blue, -0.25)); }
+		// the anchor and chain stuck in the top, behind the moss
+		for (const [x, y] of [[-4, -37], [-5, -40], [-5.5, -43]]) P.ellipse(x, y, 1, 1.5, iron);
+		P.line([[3, -33], [5.5, -43]], iron, 2);
+		P.line([[2.4, -40.5], [8, -40]], iron, 1.3);
+		P.shape((p) => { p.m(-1, -38); p.q(1, -33.5, 4, -34); p.q(8, -34, 10, -38.5); p.l(11.5, -37.5); p.q(9, -32, 4, -32); p.q(-1, -32, -2.5, -37); }, iron, -2.5, 11.5);
+		P.circle(5.8, -44.6, 1.4, iron); P.dot(5.8, -44.6, 0.6, '#d8d4c8');
+		// the body: a big domed mass
+		P.shape((p) => { p.m(-8, -10); p.q(-14, -16, -13, -26); p.q(-11, -36, 0, -36); p.q(11, -36, 13, -26); p.q(14, -16, 8, -10); p.q(0, -8, -8, -10); }, blue, -14, 14);
+		// moss draped over the dome, hanging in strands
+		P.shape((p) => { p.m(-13.5, -24); p.q(-12, -36, 0, -36.5); p.q(12, -36, 13.5, -24); p.l(12, -19); p.l(10.5, -23); p.l(8.5, -18); p.l(6, -23); p.l(3.5, -20); p.l(1, -24); p.l(-2, -20.5); p.l(-4.5, -24); p.l(-7, -18.5); p.l(-9, -23); p.l(-11.5, -17.5); }, moss, -13.5, 13.5);
+		for (const [x, y] of [[-9, -31], [-4, -33.5], [2, -34], [8, -31], [10.5, -27], [-11, -27], [-2, -29], [5, -28.5]]) { P.circle(x, y, 0.9, '#d8d0b8'); P.dot(x, y, 0.35, '#5a5040'); }
+		P.ellipse(-9.5, -34, 1.6, 2, '#a8643a');
+		P.gloss(-6, -33, 2.6, 1.2, 0.3);
+		// long arms hanging, clawed hands
+		for (const sd of [-1, 1]) {
+			const c = sd < 0 ? shade(blue, -0.12) : blue;
+			taper(P, [[sd * 11, -24], [sd * 17, -17], [sd * 17, -9]], 5.6, 4.4, c);
+			for (const d of [-1, 0, 1]) taper(P, [[sd * 17, -9], [sd * (17.5 + d * 1.6), -5.5], [sd * (16.5 + d * 2), -4]], 1.6, 0.4, c);
+		}
+		// glowing eyes under the moss, a dark face shadow
+		P.ellipse(0, -19, 6, 2.6, shade(blue, -0.35), { line: false });
+		P.glowEyes(0, -19.5, 2.6, 0.9, '#40c8ff');
+	},
+	// Diamond golem: a golem of grey stone blocks bound together by glowing blue crystal veins, a big blocky head with a
+	// single glowing blue gem eye on one side, broad blocky shoulders, chunky arms and stumpy legs
+	380(P) {
+		P.shadow(15, 6);
+		const stone = '#a8acb0', vein = '#2a60e0', glow = '#60b8ff';
+		const block = (x, y, rx, ry, k, c = stone) => {
+			const pts = [];
+			for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + k * 0.4, f = 0.88 + 0.14 * Math.sin(k * 3 + i * 2.1); pts.push([x + Math.cos(a) * rx * f, y + Math.sin(a) * ry * f]); }
+			P.poly(pts, c);
+			P.gloss(x - rx * 0.3, y - ry * 0.4, rx * 0.3, ry * 0.18, 0.3);
+		};
+		// the blue crystal core binding everything together
+		const core = (pts, w) => taper(P, pts, w, w * 0.85, vein);
+		for (const sd of [-1, 1]) { core([[sd * 4, -14], [sd * 5, -3]], 4.4); core([[sd * 8, -25], [sd * 13, -18], [sd * 13, -9]], 4); }
+		P.shape((p) => { p.m(-6, -11); p.q(-9, -20, -8, -27); p.q(-5, -32, 0, -36); p.q(8, -35, 8, -27); p.q(9, -18, 6, -11); p.q(0, -9, -6, -11); }, vein, -9, 9);
+		P.glow(0, -22, 10, glow, 0.2);
+		// legs and arms of stone blocks
+		for (const sd of [-1, 1]) {
+			const c = sd < 0 ? shade(stone, -0.12) : stone;
+			block(sd * 4.5, -9, 4.2, 3.4, 1 + sd, c); block(sd * 5, -3.5, 4.6, 3.2, 2 + sd, c);
+			block(sd * 10.5, -25, 5.2, 4.6, 3 + sd, c); block(sd * 13, -18.5, 4.2, 3.8, 4 + sd, c); block(sd * 13.5, -10.5, 4.8, 4.6, 5 + sd, c);
+		}
+		// body blocks and the head
+		block(-3.5, -22, 5.6, 5, 1); block(4, -21, 5, 4.8, 2); block(0, -14, 6.2, 3.8, 3);
+		block(1.5, -32, 7, 6, 4);
+		// thin glowing seams between the blocks
+		for (const pts of [[[0.8, -26], [0, -17.6]], [[-6, -17.4], [6, -17]], [[-4, -27], [6, -26.6]]]) { P.thin(pts, glow, 0.7); P.thin(pts, '#e0f4ff', 0.25); }
+		// the gem eye
+		P.glow(4.5, -32.5, 5, glow, 0.55);
+		P.circle(4.5, -32.5, 2.4, vein);
+		P.circle(4.5, -32.5, 1.5, glow, { line: false });
+		P.dot(4.1, -33, 0.6, '#ffffff');
+	},
+	// The White Dragon (6C boss): a pale ivory dragon standing up on its hind legs, great bony wings spread behind, a
+	// cream ridged belly, a long tail curling round, a crest of horns and spines on a head held high with a hooked,
+	// beak-like snout and a golden eye
+	381(P) {
+		P.shadow(15, 5.5);
+		const ivory = '#d8d2c0', dark = '#b0a890', belly = '#f0e2b0', horn = '#f4efe2', web = '#cfc4ac';
+		// wings: a bony arm and webbed panels, spread up and out to the left, the other wing peeking up on the right
+		P.shape((p) => { p.m(4, -28); p.l(12, -38); p.q(13, -33, 11, -28); }, shade(web, -0.08), 4, 13, { alpha: 0.95 });
+		P.line([[4, -28], [12, -38]], dark, 1);
+		P.shape((p) => { p.m(-2, -27); p.q(-10, -40, -19, -42); p.q(-17, -34, -20, -28); p.q(-16, -27, -18, -20); p.q(-13, -21, -14, -14); p.q(-8, -18, -3, -18); }, web, -20, -2, { alpha: 0.95 });
+		P.line([[-2, -27], [-10, -38], [-19, -42]], dark, 1.1);
+		for (const [x, y] of [[-20, -28], [-18, -20], [-14, -14]]) P.thin([[-10, -38], [x, y]], dark, 0.5);
+		// the tail curling round to the left
+		taper(P, [[-4, -9], [-12, -6], [-17, -9], [-14, -13]], 4, 0.6, ivory);
+		for (const [x, y] of [[-10, -8.6], [-14.6, -9.8]]) P.poly([[x - 0.8, y], [x - 0.2, y - 2], [x + 0.8, y - 0.2]], horn);
+		// haunches and clawed feet
+		for (const [x, c] of [[-4, dark], [4, ivory]]) {
+			P.ellipse(x, -9, 4.5, 5, c);
+			taper(P, [[x, -6], [x + 1.5, -2.5]], 3.4, 2.6, c);
+			for (const d of [-1, 0, 1]) taper(P, [[x + 1.5, -2.5], [x + 1.5 + d * 1.6 + 1, -0.6]], 1.3, 0.3, c);
+		}
+		// the body and the ridged belly
+		P.shape((p) => { p.m(-6, -24); p.q(-9, -14, -5, -7); p.q(1, -5, 6, -8); p.q(9, -16, 5, -25); p.q(-1, -28, -6, -24); }, ivory, -9, 9);
+		P.shape((p) => { p.m(0, -24); p.q(6, -22, 6.6, -14); p.q(6, -8.5, 2, -7.4); p.q(-2, -14, 0, -24); }, belly, -2, 6.6);
+		for (const y of [-21, -18, -15, -12, -9.5]) P.thin([[0.2 + Math.abs(y + 15) * 0.2, y], [6.2 - Math.abs(y + 15) * 0.12, y + 0.4]], shade(belly, -0.35), 0.4);
+		P.gloss(-4, -19, 1.8, 1.2, 0.4);
+		// forelegs held in front
+		taper(P, [[1, -21], [5, -17], [7.5, -16]], 2.8, 2, ivory);
+		for (const k of [-1, 0, 1]) P.thin([[7.5, -16], [9, -16.6 + k * 0.8]], horn, 0.4);
+		// the neck curving up, spines down the back of it
+		for (const [x, y] of [[-3, -27], [-2, -31], [0.5, -34.5], [4, -37]]) P.poly([[x + 1.4, y + 1.6], [x - 3, y - 1.2], [x + 2, y - 1]], horn);
+		taper(P, [[1, -21], [-0.5, -28], [2.5, -33], [7, -35]], 7.4, 5.6, ivory);
+		taper(P, [[4, -22], [3, -27], [5, -31], [8, -31.5]], 2.6, 2, belly, { line: false });
+		// the head: a crest of horns, a long hooked beak-like snout, a golden eye
+		for (const [x, tx, ty] of [[5, -1, -45], [7, 2, -46], [9, 6.5, -46]]) taper(P, [[x, -37], [x - 2, -41.5], [tx, ty]], 2, 0.4, horn);
+		P.ellipse(9, -35, 5, 4.2, ivory);
+		P.shape((p) => { p.m(11, -38.5); p.q(17, -38, 19.5, -34); p.q(19.5, -31.5, 18, -31); p.q(17.5, -33, 12, -32.5); }, ivory, 11, 19.5);
+		P.shape((p) => { p.m(11.5, -32.5); p.l(17, -32.2); p.q(15, -29.5, 11.5, -30); }, dark, 11.5, 17);
+		P.thin([[12.5, -32.4], [17.2, -32]], shade(ivory, -0.55), 0.45);
+		P.glow(10.6, -35.6, 2, '#ffc030', 0.5);
+		P.ellipse(10.6, -35.6, 1.4, 1.1, '#ffd040');
+		P.dot(10.9, -35.6, 0.5, '#2a1a08');
+		P.thin([[8.6, -37.3], [12.4, -36.6]], shade(ivory, -0.5), 0.6);
+		P.gloss(7, -37, 1.4, 0.7, 0.45);
+	},
+	// Demon of ignorance (6D boss): a tall, lanky demon split down the middle, blue on one side and green on the other, a
+	// big horned white animal skull worn as its head with a red feather crest, a red tunic with bone fangs strung round
+	// the neck, a ragged orange-and-green loincloth with a skull, a spiked wooden club in one fist
+	394(P) {
+		P.shadow(13, 5);
+		const blue = '#4a9ad8', green = '#3aa84a', bone = '#f0ead8', red = '#c03a2a', orange = '#e07a2a', wood = '#6a3a24';
+		// long legs, blue and green
+		for (const [x, c] of [[-3, blue], [3, green]]) {
+			taper(P, [[x, -13], [x * 1.4, -7], [x * 1.3, -2]], 3.6, 2.6, c);
+			P.ellipse(x * 1.3 + (x < 0 ? -0.6 : 0.6), -1.3, 2.6, 1.3, shade(c, -0.3));
+		}
+		// the far (blue) arm hanging, clawed
+		P.ellipse(-6.4, -26, 2.6, 2.6, blue);
+		taper(P, [[-6.4, -26], [-9.6, -19], [-9, -11]], 2.8, 2.2, blue);
+		for (const k of [-1, 0, 1]) P.thin([[-9, -11], [-9.6 + k * 1, -9]], shade(blue, -0.4), 0.5);
+		// red tunic
+		torso(P, -27, 5.6, -13, 5, red);
+		P.thin([[0, -26], [0, -14]], shade(red, -0.35), 0.4);
+		// ragged loincloth, orange and green, a skull on the belt
+		P.shape((p) => { p.m(-5.4, -14); p.l(0, -14); p.l(0, -5); p.l(-1.6, -7.6); p.l(-3.4, -5.4); p.l(-5, -8); }, orange, -5.4, 0);
+		P.shape((p) => { p.m(0, -14); p.l(5.4, -14); p.l(5, -8); p.l(3.4, -5.4); p.l(1.6, -7.6); p.l(0, -5); }, green, 0, 5.4);
+		P.line([[-5.8, -14.2], [5.8, -14.2]], '#4a2a1a', 1.1);
+		skull(P, 0, -12.6, 1.8, bone);
+		// necklace of bone fangs
+		for (const [x, y] of [[-4, -25.6], [-2, -24.4], [0, -24], [2, -24.4], [4, -25.6]]) P.poly([[x - 0.6, y], [x + 0.6, y], [x, y + 2]], bone);
+		// the near (green) arm down to a spiked club
+		P.ellipse(6.4, -26, 2.6, 2.6, green);
+		taper(P, [[6.4, -26], [10, -20], [10.6, -14]], 2.8, 2.2, green);
+		P.line([[10.4, -15], [12, -3]], wood, 1.4);
+		P.ellipse(12.4, -1.6, 2.6, 3.4, wood, { rot: -0.15 });
+		for (const [dx, dy] of [[-2.6, 0], [2.6, -0.4], [-2, -2.6], [2, -2.8], [0, -4.4], [-1.6, 2], [1.8, 2]]) P.poly([[12.4 + dx * 0.7 - 0.4, -1.6 + dy * 0.7], [12.4 + dx * 1.45, -1.6 + dy * 1.45], [12.4 + dx * 0.7 + 0.4, -1.6 + dy * 0.7]], bone);
+		P.circle(10.6, -14, 1.8, green);
+		P.thin([[9.6, -16.4], [11.8, -16]], '#4a2a1a', 0.7);
+		// neck, half and half
+		P.line([[0, -27], [0, -30]], blue, 2.6);
+		// red feather crest behind the skull
+		for (const [tx, ty, c] of [[-9, -43, red], [-5, -46, '#e0503a'], [-1, -46, red], [4, -45, '#e0503a']]) taper(P, [[-1, -38], [tx, ty]], 2.6, 0.5, c);
+		// the big horned animal skull worn as its head: long snout pointing down and right, dark sockets with red eyes
+		for (const s of [-1, 1]) taper(P, [[s * 4.6, -37], [s * 10, -40], [s * 12, -36]], 2.2, 0.4, bone);
+		P.shape((p) => { p.m(-6, -36); p.q(-6, -42, 0, -42); p.q(6, -42, 6.4, -36); p.q(6, -31, 3, -29); p.l(2.4, -26.4); p.l(-2.4, -26.4); p.l(-3, -29); p.q(-6, -31, -6, -36); }, bone, -6.4, 6.4);
+		for (const x of [-2.6, 2.6]) { P.ellipse(x, -35, 1.7, 1.9, '#1c1612', { line: false }); P.glow(x, -35, 2, '#ff4030', 0.6); P.dot(x, -34.8, 0.55, '#ffb0a0'); }
+		P.poly([[-0.6, -31], [0.6, -31], [0, -32.6]], '#2a2018', { line: false });
+		for (const x of [-1.4, 0, 1.4]) P.thin([[x, -28.4], [x, -26.8]], shade(bone, -0.45), 0.3);
+		P.thin([[-4, -40], [0, -38.6], [4, -40]], shade(bone, -0.3), 0.4);
+		P.gloss(-2.6, -40, 1.6, 0.7, 0.5);
+	},
+	// Scrap shaman: a stooped automaton of olive-green stone slabs and brass rivets, a jade skull mask with glowing green
+	// eyes crowned with jagged orange crystals, a brass gear in its chest with a green eye, a square slab shield on one
+	// arm and a long jointed lever arm reaching forward
+	398(P) {
+		P.shadow(16, 5);
+		const stone = '#6a7a5a', dark = '#4e5c42', brass = '#c8a040', jade = '#9ad8a0', crystal = '#f08a30';
+		// jointed legs
+		for (const [hx, kx, fx, c] of [[-3, -7, -6, dark], [3, 6, 5, stone]]) {
+			P.line([[hx, -12], [kx, -7], [fx, -2]], c, 2.4);
+			P.circle(kx, -7, 1.4, brass);
+			P.poly([[fx - 2.6, -2.6], [fx + 3, -2.6], [fx + 3.4, 0], [fx - 2.6, 0]], c);
+		}
+		// the square slab shield behind on the far arm
+		P.poly([[-17, -26], [-8, -27], [-7.6, -13], [-16.6, -12]], dark);
+		P.poly([[-15.4, -24.4], [-9.6, -25], [-9.4, -14.6], [-15, -14]], stone, { line: false });
+		P.dot(-12.4, -19.6, 1, brass);
+		// the body: a stack of stone slabs
+		P.poly([[-7, -27], [6, -28], [7, -13], [-6, -12]], stone);
+		P.poly([[-5, -12], [5, -12.6], [4, -9], [-4, -9]], dark);
+		for (const [x, y] of [[-6, -26], [5, -27], [-5.4, -13.4], [6, -14]]) P.dot(x, y, 0.5, brass);
+		P.gloss(-4, -24, 1.6, 0.8, 0.3);
+		// the brass gear with a green eye in the chest
+		const gx = 0.4, gy = -20;
+		for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; P.poly([[gx + Math.cos(a - 0.2) * 3.2, gy + Math.sin(a - 0.2) * 3.2], [gx + Math.cos(a - 0.15) * 4.3, gy + Math.sin(a - 0.15) * 4.3], [gx + Math.cos(a + 0.15) * 4.3, gy + Math.sin(a + 0.15) * 4.3], [gx + Math.cos(a + 0.2) * 3.2, gy + Math.sin(a + 0.2) * 3.2]], brass, { line: false }); }
+		P.circle(gx, gy, 3.4, brass);
+		P.circle(gx, gy, 1.8, '#1a2a1a', { line: false });
+		P.glow(gx, gy, 2.4, '#60ff80', 0.6); P.dot(gx, gy, 0.9, '#b0ffb8');
+		// the long jointed lever arm reaching forward
+		P.circle(7.4, -25, 2.2, brass);
+		P.line([[7.4, -25], [13, -20], [20, -21]], dark, 2.2);
+		P.circle(13, -20, 1.4, brass);
+		P.poly([[19, -23.4], [23.4, -22.6], [23.6, -19.4], [19.2, -18.6]], stone);
+		P.dot(21.4, -21, 0.6, brass);
+		// head: a jade skull mask under a crest of jagged orange crystals
+		for (const [x, tx, ty] of [[-3, -6, -45], [-1, -2, -46.6], [1.4, 2, -46], [3.4, 6.4, -44], [-4.4, -8.6, -41]]) {
+			P.poly([[x - 1.4, -37], [tx, ty], [x + 1.4, -37]], crystal);
+			P.thin([[x, -37.4], [tx * 0.5 + x * 0.5, (ty - 37) / 2]], '#ffd0a0', 0.35);
+		}
+		P.glow(0, -41, 5, crystal, 0.3);
+		P.poly([[-6, -37.6], [6, -38], [6.6, -30], [3, -27.6], [-3, -27.6], [-6.4, -30]], jade);
+		P.thin([[-6, -36], [6.2, -36.4]], brass, 0.9);
+		for (const x of [-2.6, 2.6]) { P.ellipse(x, -32.6, 1.8, 1.8, '#1a2a1e', { line: false }); P.glow(x, -32.6, 2, '#40ff70', 0.6); P.dot(x, -32.6, 0.7, '#c0ffc8'); }
+		P.poly([[-0.6, -29.8], [0.6, -29.8], [0, -31]], '#1a2a1e', { line: false });
+		P.poly([[-3, -28.6], [3, -28.6], [3, -27.8], [-3, -27.8]], '#f4f0e0', { line: false });
+		for (const x of [-2, -1, 0, 1, 2]) P.thin([[x, -28.8], [x, -27.6]], '#3a4a3a', 0.25);
+		P.gloss(-3.4, -35.6, 1.4, 0.6, 0.4);
 	},
 };
