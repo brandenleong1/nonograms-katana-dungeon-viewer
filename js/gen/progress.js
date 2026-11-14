@@ -15,8 +15,25 @@ import { cq, pj0, ni0 } from './model.js';
 
 /** Java long value of a field (snapshots carry longs as JSON numbers; callers may set a BigInt). */
 const toLong = (x) => (typeof x === 'bigint' ? BigInt.asIntN(64, x) : BigInt(x));
-/** Java `(1L << b & mask) != 0L` (shift masked to 6 bits like the JVM). */
-const longBit = (b, mask) => ((1n << BigInt(b & 63)) & toLong(mask)) !== 0n;
+/**
+ * Java `(1L << b & mask) != 0L` (shift masked to 6 bits like the JVM).
+ * Speed: vj0.t1 is asked for every damage roll, stat and dungeon build, and the mask (vj0.X) almost never changes, so the
+ * two int32 halves of the last mask are kept and the test is a shift and an AND on one of them. Same answer for every
+ * mask the BigInt form answers for (bits 0..63 of the long, whatever its sign or size); a mask that isn't a number or
+ * a BigInt, and one BigInt() rejects (NaN, 1.5), take the BigInt form and throw as before.
+ */
+let maskKept, maskLo = 0, maskHi = 0;
+const longBit = (b, mask) => {
+	const k = b & 63;
+	if (typeof mask !== 'number' && typeof mask !== 'bigint') return ((1n << BigInt(k)) & toLong(mask)) !== 0n;
+	if (mask !== maskKept) {
+		const v = toLong(mask);
+		maskLo = Number(BigInt.asIntN(32, v));
+		maskHi = Number(BigInt.asIntN(32, v >> 32n));
+		maskKept = mask;
+	}
+	return ((k < 32 ? maskLo >>> k : maskHi >>> (k - 32)) & 1) !== 0;
+};
 
 // zw.s(int): forest dungeon types 15..18
 if (!zw.s_) zw.s_ = (t) => t >= 15 && t < 19;

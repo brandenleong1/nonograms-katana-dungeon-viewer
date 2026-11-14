@@ -19,6 +19,7 @@ import { Util$Point } from '../gen/model.js';
 import { newFight, restoreFight } from '../combat/driver.js';
 import { snapshot } from '../combat/clone.js';
 import { planRoute } from '../plan/planner.js';
+import { PlanCache } from './plan-cache.js';
 
 export const DIR4 = [[-1, 0], [0, -1], [1, 0], [0, 1]];
 const TELEPORTS = new Set([38, 39, 40, 74, 88, 126]);
@@ -146,16 +147,27 @@ export function openNeighbours(h, x, y) { let n = 0; for (const [dx, dy] of DIR4
 
 /**
  * A cheap state key for progress detection (lean step() reports rejections, not no-ops): hero, pools, selection,
- * tap path, turn order head, RNG states, list sizes, used / flag bits of objects.
+ * tap path, turn order head, RNG states, list sizes, then one number mixed from the used / flag bits of objects and the
+ * critters' positions and HP. The key is a list of numbers (it was the same numbers joined into a string, which cost more
+ * to build than to compare); two keys are the same state when sameProgress says so.
  */
 export function progressKey(fight) {
 	const { h, c } = fight;
 	const me = h.f;
-	let k = `${me.b.a},${me.b.b},${me.j.v_()},${me.z.v_()},${me.E_()},${me.n.v_()},${h.x.a},${h.w.a},${h.n.length},${h.o.length},${h.C ? 1 : 0},${c.z.length},${fight.selId()},${h.D.length ? h.o.indexOf(h.D[0]) : -1},${me.D.c.length},${h.F ? 1 : 0}`;
+	const key = [me.b.a, me.b.b, me.j.v_(), me.z.v_(), me.E_(), me.n.v_(), h.x.a, h.w.a, h.n.length, h.o.length, h.C ? 1 : 0, c.z.length, fight.selId(), h.D.length ? h.o.indexOf(h.D[0]) : -1, me.D.c.length, h.F ? 1 : 0];
 	let s = 0;
 	for (let i = 0; i < h.n.length; i++) { const o = h.n[i]; s = (Math.imul(s, 31) + (o.e ? 1 : 0) + (o.d ? 2 : 0) + (o.f ? 4 : 0) + (o.g & 0xff) * 8) | 0; }
 	for (let i = 0; i < h.o.length; i++) { const o = h.o[i]; s = (Math.imul(s, 31) + o.b.a * 131 + o.b.b + o.j.v_() * 7) | 0; }
-	return k + '|' + s;
+	key.push(s);
+	return key;
+}
+
+/** two progressKey results of the same state */
+export function sameProgress(a, b) {
+	const n = a.length;
+	if (n !== b.length) return false;
+	for (let i = 0; i < n; i++) if (a[i] !== b[i]) return false;
+	return true;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -472,6 +484,12 @@ export function levelOf(h) {
 /** what Walker.walk returns when the route moved on without an input: look again (null: the walk is over) */
 const AGAIN = undefined;
 
+/**
+ * Route plans by planner input (plan-cache.js). Shared by every walker in the thread: the solver re-plans from the same
+ * states in each of its samples. A memo only: a plan is the same whether it comes from here or from the planner.
+ */
+export const planCache = new PlanCache();
+
 /** the Walker fields that are not its own state (the fight, the options, the route): what freeze() leaves out of `s` */
 const WALKER_LIVE = new Set(['f', 'h', 'c', 'opts', 'refs', 'route', 'legs']);
 const identities = new WeakMap();
@@ -573,13 +591,43 @@ export class Walker {
 		const options = this.planOptions();
 		let plan;
 		try {
-			plan = planRoute(level, options);
+			plan = this.routePlan(level, options);
 		} catch (e) {
 			this.route = [];
 			this.planError = String(e && e.message || e);
 			return;
 		}
 		this.followPlan(plan);
+	}
+
+	/** what planRoute gives for this input: the cached plan if the planner has run on it before, else a new one */
+	routePlan(level, options) {
+		const key = planCache.keyOf(level, options, this.planKeyExtras(options));
+		if (key === null) return planRoute(level, options);
+		const cached = planCache.get(key, level);
+		if (cached !== null) return cached;
+		const plan = planRoute(level, options);
+		planCache.put(key, level, plan);
+		return plan;
+	}
+
+	/**
+	 * What in planOptions() changes between calls and isn't in the level: the visiting order's limit, the keys held,
+	 * whether the nonogram is solved, and which fountains count as stops (the one live thing objectDef reads).
+	 */
+	planKeyExtras(options) {
+		return [options.exactLimit, options.heldKeys, options.patterns === null ? 0 : 1, this.fountainStops()];
+	}
+
+	/** bit mask over RECOVERY: the fountains objectDef makes stops of now */
+	fountainStops() {
+		let mask = 0, bit = 1;
+		for (const id of RECOVERY.keys()) {
+			const def = zw.Q.get(id) ?? zw.R.get(id) ?? null;
+			if (def !== null && this.objectDef(id) !== def) mask |= bit;
+			bit <<= 1;
+		}
+		return mask;
 	}
 
 	/** the live level as the planner sees it: walled-up cells, done stops used, given-up ones no stops */
@@ -1420,7 +1468,7 @@ export class Run {
 		if (this.log) this.log.push(inp);
 		account(led, before, f.h, inp);
 		if (led !== this.led) account(this.led, before, f.h, inp);
-		const changed = progressKey(f) !== k0;
+		const changed = !sameProgress(progressKey(f), k0);
 		return { r, changed };
 	}
 

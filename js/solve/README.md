@@ -19,6 +19,7 @@ Both modes write the same pure-data plan for the UI.
 | `lookcache.js` | `LookCache`: what the walk after a play-out costs (leftover foes and the look-ahead), kept by the state it starts from, so equal play-outs of one batch walk once. |
 | `worker.js`, `pool.js` | A module worker that hosts one Shard / ExactWorker, and `WorkerPool.create({ size, tables })`. Works in the browser and in Node (`worker_threads`). |
 | `plan.js` | `buildPlan(result, { label, names })`, `validatePlan(plan)` and `describeTactic`. |
+| `plan-cache.js` | `PlanCache`: route plans by planner input, shared by every walker in the thread (`sim.js planCache`). |
 
 Tools:
 - `tools/solve.mjs`: the CLI (robust / exact, report, `--out` plan, `--oracle` check).
@@ -79,6 +80,7 @@ Failure handling:
 - A stop that will not open is given up: it gets type -1, so it still blocks its cell but is no longer a stop. Then the walker re-plans.
 - A door that needs a key gets its leg re-planned, not walled up: there is one key per locked door, and the planner assumes one key opens all.
 - Re-plans after the first plan run Held-Karp only up to 10 stops (the new `planRoute` option `exactLimit`). The first plan is exact up to 16.
+- A re-plan from a state the solver has planned before is answered from `plan-cache.js`, not by the planner. A robust solve of `F1-1026320547` re-plans 1,873 times, from 330 distinct inputs. The key is the planner's whole input (cells, objects, creatures, the keys held, the fountains that count as stops, the nonogram flag, the exactness limit), compared in full on a hit; the cached stops are rebound to the asking fight's own objects.
 
 Walker state holds object and critter references through a ref table. `freeze()` maps each ref to its position in `hw.n` / `hw.o`; the clone.js snapshot keeps both lists in order. So a checkpoint is a clone.js state, the frozen walker, the ledger and the input log. Route arrays are shared between checkpoints (copy on write).
 
@@ -89,7 +91,7 @@ Walker state holds object and critter references through a ref table. `freeze()`
 - The encounter key is `<stop kind>:<target id>@x,y#<ordinal on that leg>`. It is stable across RNG samples as long as the route is.
 - `fightWith(policy)` runs the loop:
   - It cancels a stale selection before a plain input.
-  - It counts rejected or no-change inputs, using a lean `progressKey`.
+  - It counts rejected or no-change inputs, using a lean `progressKey` (a list of numbers, compared with `sameProgress`).
   - In a stand-off (the policy has nothing that changes the state), it lets the walker move on.
   - It caps inputs.
   - It returns `won | dead | stuck | over`.

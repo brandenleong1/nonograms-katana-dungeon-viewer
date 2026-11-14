@@ -16,6 +16,7 @@ import { solveExact, replayScript, InlineExactPool } from '../js/solve/exact.js'
 import { buildPlan, validatePlan } from '../js/solve/plan.js';
 import { shadow, pricesFor, compareAgg, aggregate, scoreOutcome } from '../js/solve/cost.js';
 import { WorkerPool } from '../js/solve/pool.js';
+import { planRoute } from '../js/plan/planner.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const tablesPath = path.join(here, '../data/tables.json');
@@ -119,6 +120,89 @@ const t0 = performance.now();
 	const lost = (r) => r.before.filter((s) => !r.after.includes(s)).join(' ');
 	check('walker: a re-plan with the gold monsters dead keeps the objectives behind locked doors 29 when the keys are in the pack', all.gold === 2 && all.after.length === all.before.length, `lost ${lost(all) || 'none'}`);
 	check('walker: one key opens one locked door 29', one.after.length === one.before.length - 1, `lost ${lost(one) || 'none'}`);
+}
+
+// ---- walker: the plan cache gives what the planner gives, and every input it keys on makes a new entry ----
+{
+	/** what followPlan reads of a plan, with each stop's record as its position in the level's lists */
+	const sigOf = (plan, level) => {
+		const places = new Map(level.objects.map((o, i) => [o, `o${i}`]));
+		level.critters.forEach((c, i) => places.set(c, `c${i}`));
+		return JSON.stringify({ legs: plan.legs.map((l) => ({ ...l, stop: { ...l.stop, rec: l.stop.rec && places.get(l.stop.rec) } })), route: plan.route });
+	};
+	/** the walker's plan now, from the cache or not, against a fresh planner run on the same input */
+	const planNow = (w) => {
+		const level = w.planningLevel(), options = w.planOptions();
+		const hits = S.planCache.hits;
+		const got = w.routePlan(level, options);
+		const hit = S.planCache.hits > hits;
+		const same = sigOf(got, level) === sigOf(planRoute(level, options), level);
+		const live = new Set([...w.h.n, ...w.h.o]);
+		const rebound = got.legs.every((l) => !l.stop.rec || live.has(l.stop.rec.ref));
+		return { hit, same, rebound, sig: sigOf(got, level) };
+	};
+	const where = (type, seed) => ({ type, seed, xseed: 1 });
+	const hero = { level: 21, gear: 4, kit2: true };
+	const start = (type, seed) => { resetStatics(tables); return S.Run.start(hero, where(type, seed)).walker; };
+
+	S.planCache.clear();
+	const first = start(8, 172582050);
+	const again = start(8, 172582050);       // another fight, same dungeon: its first plan is the first walker's
+	const hitsBefore = S.planCache.hits;
+	const p0 = planNow(again);
+	check('plan cache: a second fight of a dungeon is planned from the cache, on its own objects', p0.hit && p0.same && p0.rebound && S.planCache.hits === hitsBefore + 1, `hit ${p0.hit}, same ${p0.same}, rebound ${p0.rebound}`);
+
+	const freshSig = (w) => { const level = w.planningLevel(); return sigOf(planRoute(level, w.planOptions()), level); };
+	/** change the walker's input, expect a new plan (a miss) equal to the planner's; undo it, expect the old one back */
+	const keyed = (name, w, change, undo, { plansDiffer = true } = {}) => {
+		const before = planNow(w);
+		change();
+		const during = planNow(w), cached = planNow(w);
+		undo();
+		const back = planNow(w);
+		const ok = !during.hit && during.same && cached.hit && cached.same && back.hit && back.same && back.sig === before.sig && (!plansDiffer || during.sig !== before.sig);
+		check(`plan cache: ${name} changes the key`, ok, `miss ${!during.hit} same ${during.same}, then hit ${cached.hit} same ${cached.same}, undone: hit ${back.hit} same ${back.same} as before ${back.sig === before.sig}, differs ${during.sig !== before.sig}`);
+	};
+	/** the first stop that, put in `list` (done / failed), changes the plan */
+	const stopThatMatters = (w, list) => w.legs.find((L) => {
+		if (!L.rec || L.rec.ri < 0) return false;
+		const before = freshSig(w);
+		list.push(L.rec.ri);
+		const after = freshSig(w);
+		list.pop();
+		return after !== before;
+	});
+	const routeCell = first.route.find((c, k) => k > 2 && c.i !== undefined);
+	keyed('a wall', first, () => first.blocked.push(routeCell.i), () => first.blocked.pop());
+	const used = stopThatMatters(first, first.done), givenUp = stopThatMatters(first, first.failed);
+	keyed('a stop used up', first, () => first.done.push(used.rec.ri), () => first.done.pop());
+	keyed('a stop given up', first, () => first.failed.push(givenUp.rec.ri), () => first.failed.pop());
+	// a creature or an object that moved (a barrel pushed, a monster walking): where it stands is in the key
+	const movable = (isCreature) => first.refs[first.legs.find((L) => L.rec && L.rec.ri >= 0 && (L.rec.k !== undefined) === isCreature).rec.ri];
+	for (const [what, isCreature] of [['a creature', true], ['an object', false]]) {
+		const thing = movable(isCreature);
+		keyed(`${what} moving one cell`, first, () => { thing.b.a += 1; }, () => { thing.b.a -= 1; }, { plansDiffer: false });
+	}
+	keyed('a re-plan (how exact the visiting order is)', first, () => { first.stats.plans = 2; }, () => { first.stats.plans = 1; }, { plansDiffer: false });
+
+	// keys in the pack (a locked door 29 opens per key once its gold monsters are dead): a walker with two, one, none
+	const withKeys = (type, seed, n) => {
+		const w = start(type, seed), h = w.h;
+		for (const m of h.o.filter((c) => c.g === 167)) h.j_(m, false);
+		if (n) h.f.D.b_(167, n);
+		return w;
+	};
+	const byKeys = [2, 1, 0].map((n) => { const w = withKeys(12, 344057351, n); return { first: planNow(w), second: planNow(w) }; });
+	const [two, one, none] = byKeys;
+	check('plan cache: the keys held make the key', byKeys.every((r) => !r.first.hit && r.first.same && r.second.hit && r.second.same) && two.first.sig !== one.first.sig && one.first.sig !== none.first.sig,
+		byKeys.map((r, i) => `${[2, 1, 0][i]} keys: miss ${!r.first.hit} same ${r.first.same}, then hit ${r.second.hit}`).join('; '));
+
+	const cave = start(19, 3);               // fountains: with the pools empty, they are stops
+	const pools = [cave.h.f.z.v_(), cave.h.f.E_()];
+	keyed('fountains worth a detour', cave, () => { cave.h.f.z.z_(0); cave.h.f.G_(0); }, () => { cave.h.f.z.z_(pools[0]); cave.h.f.G_(pools[1]); });
+
+	const forest = start(14, 523876026);     // a floor nonogram
+	keyed('the nonogram being solved', forest, () => { forest.nonogramDone = true; }, () => { forest.nonogramDone = false; });
 }
 
 // ---- wiki: first strike against a lone 2-AP melee foe (243, type 10) ----
