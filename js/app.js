@@ -7,8 +7,9 @@ import { partners, allLinks, floorNonogram, LINK_COLORS } from './view/links.js'
 import { occupantHtml, occupantName } from './ui/occupant.js';
 import { initTables, zw, vj0 as V } from './gen/statics.js';
 import { planRoute, objectives as gameObjectives } from './plan/planner.js';
-import { HeroPanel } from './hero.js';
+import { HeroPanel, hasKeptSave } from './hero.js';
 import { SolvePanel } from './ui/solve-panel.js';
+import { confirmPopup } from './ui/confirm-popup.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -34,8 +35,23 @@ const EFFORT = {
 };
 
 const MAP_BG = { light: '#ece9e2', sepia: '#e6dbc3', dark: '#0b0b0d', contrast: '#000000' };
-const DEFAULT_LABEL = '3C-172582050';
+// the map with no dungeon on it: a little darker than MAP_BG, and the colour of the words over it (the dark themes
+// have little room to go darker: Dark High Contrast is pure black already)
+const MAP_EMPTY = {
+	light: { bg: '#d9d5cb', text: '#2b2a27' },
+	sepia: { bg: '#d3c5a6', text: '#3a2a12' },
+	dark: { bg: '#050506', text: '#d6d6dc' },
+	contrast: { bg: '#000000', text: '#ffffff' },
+};
 const SELECT_HINT = 'Click a tile, object or monster.';
+const NO_DUNGEON = {
+	status: 'No dungeon is shown. Type a label above, or import a save made inside a dungeon.',
+	notInDungeon: 'This save is not inside a dungeon, so no dungeon is shown. Type a label above to look at one.',
+	select: 'Nothing to select: no dungeon is shown.',
+	list: 'No dungeon is shown.',
+};
+// the View buttons that need a dungeon on the map (the solver and tall-walls buttons work without one)
+const MAP_VIEW_BUTTONS = ['#zoom-in-btn', '#zoom-out-btn', '#fit-btn', '#hero-btn'];
 const HERO_ID = 180;
 const EXIT_LOCK_LOOK = { color: KINDS.lockdoor.color, glyph: '⚿', label: 'Unlock the exit (mini-boss key)' };
 const PUZZLE_STOP_LOOK = { glyph: '▦', color: KINDS.puzzledoor.color };
@@ -43,7 +59,8 @@ const PUZZLE_STOP_LOOK = { glyph: '▦', color: KINDS.puzzledoor.color };
 /**
  * The page's state, shared with the solver panel and exposed as `window.nkd.state`: the dungeon shown (level, type,
  * seed) and its route (plan), the generator (null: only the sample fixtures), the new-game profile (fresh), the
- * Your hero and solver panels, and the item, skill and quest names (data/names.json).
+ * Your hero and solver panels, and the item, skill and quest names (data/names.json). `level` is null while no
+ * dungeon is shown ("No Dungeon Loaded"); `type` then stays the last one shown (the hero panel's pack uses it).
  */
 const state = { level: null, type: 8, seed: 0, generator: null, fresh: null, hero: null, plan: null, solve: null, names: {} };
 
@@ -57,6 +74,7 @@ async function main() {
 	view.setLayers(layersOn);
 	window.nkd = { view, state, show };   // console/debug handle
 	followPageTheme();
+	if (location.hash.length <= 1 && !hasKeptSave()) setNoDungeonView(true);   // nothing to wait for
 
 	await loadGameData();
 	showGameVersion($('#game-version'));
@@ -79,7 +97,15 @@ async function main() {
 	bindEffortSelect();
 	window.addEventListener('hashchange', () => show(labelInHash()));
 
-	show(location.hash.length > 1 ? labelInHash() : DEFAULT_LABEL);
+	showStartView();
+}
+
+/** The first view: the URL's label; else the dungeon in the save kept in this tab; else "No Dungeon Loaded". */
+async function showStartView() {
+	const saved = state.hero.dungeon;
+	if (location.hash.length <= 1 && !saved) return clearDungeon();
+	await show(location.hash.length > 1 ? labelInHash() : formatLabel(saved.type, saved.seed));
+	if (!state.level) showNoDungeon();   // the label did not build: the status line says why
 }
 
 // ---- page setup --------------------------------------------------------------------------
@@ -161,6 +187,8 @@ function followPageTheme() {
 function applyPageTheme() {
 	const theme = pageTheme();
 	$('#map').style.setProperty('--map_bg', MAP_BG[theme]);
+	$('#map-section').style.setProperty('--map_bg_empty', MAP_EMPTY[theme].bg);
+	$('#map-section').style.setProperty('--map_fg_empty', MAP_EMPTY[theme].text);
 	const mapTheme = theme === 'light' || theme === 'sepia' ? 'light' : 'dark';
 	const changed = mapTheme !== view.theme;
 	view.setTheme(mapTheme);
@@ -201,14 +229,18 @@ function loadNames() {
 function createHeroPanel() {
 	return new HeroPanel({
 		getType: () => state.type,
-		getLabel: () => formatLabel(state.type, state.seed),
+		getLabel: () => (state.level ? formatLabel(state.type, state.seed) : ''),
+		hasDungeon: () => !!state.level,
 		onChange: rebuildMap,
+		confirmImport,
+		onImported: showImportedSave,
+		onForgotten: saveForgotten,
 	});
 }
 
 /** The progress the map is built with changed: build the dungeon shown again. */
 function rebuildMap() {
-	if (state.level || state.seed) show(formatLabel(state.type, state.seed));
+	if (state.level) show(formatLabel(state.type, state.seed));
 }
 
 /** The button that shows and hides the solver column (remembered in localStorage). */
@@ -248,10 +280,11 @@ async function showRandomLabel() {
 }
 
 function bindMapButtons() {
-	$('#zoom-in-btn').onclick = () => view.zoomAt(1.4, view.cssW / 2, view.cssH / 2);
-	$('#zoom-out-btn').onclick = () => view.zoomAt(1 / 1.4, view.cssW / 2, view.cssH / 2);
-	$('#fit-btn').onclick = () => view.fit();
-	$('#hero-btn').onclick = centerOnHero;
+	const withDungeon = (action) => () => { if (state.level) action(); };
+	$('#zoom-in-btn').onclick = withDungeon(() => view.zoomAt(1.4, view.cssW / 2, view.cssH / 2));
+	$('#zoom-out-btn').onclick = withDungeon(() => view.zoomAt(1 / 1.4, view.cssW / 2, view.cssH / 2));
+	$('#fit-btn').onclick = withDungeon(() => view.fit());
+	$('#hero-btn').onclick = withDungeon(centerOnHero);
 	$('#walls-btn').onclick = toggleWallHeight;
 }
 
@@ -355,6 +388,42 @@ function setCurrentLevel(level, label) {
 	const labelText = formatLabel(label.type, label.seed);
 	$('#label-input').value = labelText;
 	history.replaceState(null, '', `#${labelText}`);
+	setNoDungeonView(false);
+}
+
+/**
+ * Show no dungeon: the dark "No Dungeon Loaded" map, and the panels that list the dungeon say there is nothing. The
+ * label box and the URL's hash are emptied, so a reload does not bring the old dungeon back.
+ */
+function clearDungeon(statusText = NO_DUNGEON.status) {
+	showNoDungeon();
+	const status = $('#label-status');
+	status.classList.remove('error');
+	status.textContent = statusText;
+}
+
+function showNoDungeon() {
+	state.level = null;
+	state.seed = 0;
+	state.plan = null;
+	view.clearLevel();
+	setNoDungeonView(true);
+	$('#label-input').value = '';
+	history.replaceState(null, '', location.pathname + location.search);
+	$('#selected-info').textContent = NO_DUNGEON.select;
+	$('#objective-count').textContent = '';
+	$('#objective-list').textContent = NO_DUNGEON.list;
+	$('#route-info').textContent = NO_DUNGEON.list;
+	refreshPanelsForLevel();
+}
+
+/** The map's "No Dungeon Loaded" look, and the View buttons that need a dungeon switched off with it. */
+function setNoDungeonView(on) {
+	$('#map-section').classList.toggle('no-dungeon', on);
+	for (const id of MAP_VIEW_BUTTONS) {
+		$(id).classList.toggle('disabled', on);
+		$(id).setAttribute('aria-disabled', String(on));
+	}
 }
 
 function drawLevel(level, type) {
@@ -372,7 +441,14 @@ function levelStatusHtml(level, type) {
 	const basis = mapProfile ? mapProfile.basis : 'new';
 	const text = mapProfile ? mapProfile.text : 'New game';
 	return `${typeLabel(type)} · ${level.w}×${level.h} · ${level.objects.length} objects · ${level.critters.length} creatures` +
-		`<div class="map-basis basis-${basis}" title="The progress this map is built with (Your hero, Progress)">Built with: <b>${text}</b></div>`;
+		`<div class="map-basis basis-${basis}" title="The progress this map is built with (Your hero, Progress)">Built with: <b>${text}</b></div>` +
+		(showsSavedDungeon() ? '<div class="map-basis basis-save">Your dungeon in progress, <b>from your save</b></div>' : '');
+}
+
+/** Whether the dungeon on the map is the one the imported save is inside. */
+function showsSavedDungeon() {
+	const saved = state.hero && state.hero.profile && state.hero.dungeon;
+	return !!saved && !!state.level && saved.type === state.type && saved.seed === state.seed;
 }
 
 /** The Your hero popups and the solver follow the dungeon shown. */
@@ -382,13 +458,60 @@ function refreshPanelsForLevel() {
 	if (state.solve) state.solve.onLevel();
 }
 
+// ---- importing and forgetting a save -----------------------------------------------------
+
+/** What an import would wipe: the dungeon on the map, the solver's plan, a solve under way. */
+function whatIsOnScreen() {
+	return { dungeon: !!state.level, plan: !!(state.solve && state.solve.result), solving: !!(state.solve && state.solve.running) };
+}
+
+/** Ask before an import wipes something on screen (js/hero.js importFile). Nothing on screen: no question. */
+async function confirmImport({ replacesSave }) {
+	const onScreen = whatIsOnScreen();
+	if (!onScreen.dungeon && !onScreen.plan && !onScreen.solving) return true;
+	return confirmPopup({ title: 'Import a save?', text: wipeWarning(replacesSave), confirmLabel: 'Import' });
+}
+
+/** The question: the dungeon (with its plan and any solve) goes, and so does the save imported before, if there is one. */
+function wipeWarning(replacesSave) {
+	return `Importing a save clears the existing dungeon${replacesSave ? ' and save' : ''}. Import and continue?`;
+}
+
+/**
+ * A new save was read (js/hero.js): nothing from before stays on screen. Show the dungeon the save is inside, or the
+ * "No Dungeon Loaded" view (whose text says why). The scene change is the message: no toast.
+ * @param {{ type: number, seed: number, kind: string } | null} dungeon the save's dungeon in progress
+ */
+async function showImportedSave(dungeon) {
+	if (state.solve) state.solve.reset();
+	if (!dungeon) {
+		clearDungeon(NO_DUNGEON.notInDungeon);
+		return;
+	}
+	showNoDungeon();   // should the dungeon not build, the old one must not stay on the map
+	const label = formatLabel(dungeon.type, dungeon.seed);
+	await show(label);
+}
+
+/** The save was forgotten (js/hero.js): the map stays; the plan made from the save goes. Say what happened. */
+function saveForgotten() {
+	if (state.solve) state.solve.dropWhatCameFromSave();
+	if (!state.level) $('#label-status').textContent = NO_DUNGEON.status;   // not "this save is not inside a dungeon"
+	toast('Save removed. Dungeons are generated as new games.');
+}
+
+/** A short message at the bottom of the page (lib/utils Popup), in the middle: the View buttons stay clear. */
+function toast(text) {
+	if (typeof Popup !== 'undefined') Popup.toastPopup(text, DOWN, 4500);
+}
+
 // ---- selection ---------------------------------------------------------------------------
 
 /** The Selected panel and the link highlights for a clicked cell (null: nothing selected). */
 function showSelection(cell) {
 	const box = $('#selected-info');
 	if (!cell) {
-		box.textContent = SELECT_HINT;
+		box.textContent = state.level ? SELECT_HINT : NO_DUNGEON.select;
 		view.setLinks(baseLinks(), []);
 		return;
 	}

@@ -27,7 +27,7 @@ player progress (what changes the map):
 | `init.js` | Page chrome shared with the maintainer's other sites: theme, popups, fonts. |
 | `js/` | All site code, as ES modules (below). |
 | `data/tables.json` | Numeric game tables the generator and engine read: room shapes, object and creature definitions, items, decoration weights, a new player's profile. Generated; don't edit by hand ([infra.md](infra.md#data-files)). |
-| `data/names.json` | English display names for items, skills and quests. Generated. |
+| `data/names.json` | English display names for items, skills, and quests. Generated. |
 | `data/catalog.json` | What each creature and object is called (names from the Nonograms Katana Wiki, CC BY-SA 3.0) and the kind the map draws it as. Includes [item distinctions and contents evidence](display_catalog.md). Kept by hand ([infra.md](infra.md#data-files)). |
 | `data/game-version.json` | The game version everything follows; shown in Help, and kept equal to the README's table by `test/version.mjs`. |
 | `lib/utils/` | Git submodule [brandenleong1/utils](https://github.com/brandenleong1/utils): layout CSS, themes, popups, cookies. |
@@ -41,10 +41,10 @@ player progress (what changes the map):
 
 | Path | What |
 |---|---|
-| `app.js` | UI glue: label → level → map, layers, selection, objectives, route panel. Exposes `window.nkd` for debugging. |
+| `app.js` | UI glue: label → level → map, layers, selection, objectives, route panel; the "No Dungeon Loaded" view; what an import wipes and shows. Exposes `window.nkd` for debugging. |
 | `labels.js` | Dungeon labels (`3C-172582050`) ↔ dungeon type and seed. |
 | `game-version.js` | The game version line in the Help popup. |
-| `hero.js` | The "Your hero" panel: imports a save, shows heroes, gear, pack and progress. `effectiveProfile()` is what maps and the solver use. |
+| `hero.js` | The "Your hero" panel: imports a save (after the page's confirmation when a dungeon or plan is on screen), shows heroes, gear, pack and progress. `effectiveProfile()` is what maps and the solver use. |
 
 ### `js/gen/`: dungeon generator (bit-exact port)
 
@@ -91,7 +91,7 @@ Rules and file ownership are in [js/combat/PORTING.md](../js/combat/PORTING.md);
 | `js/plan/planner.js` | Route planner: weighted shortest paths over the game's movement rules, gates, levers and keys, teleports, then the visiting order (exact up to 16 stops). |
 | `js/solve/` | Solver ([README](../js/solve/README.md)): `robust.js` (Monte Carlo over unknown dice), `exact.js` (search with known dice), `lookcache.js` (shares the look-ahead walks of equal play-outs), `sim.js` (dungeon walk on the engine), `policies.js` and `kite.js` (tactics), `cost.js` (objective), `plan.js` (output for the UI), `worker.js` / `pool.js` (workers). |
 | `js/view/` | Map: `iso.js` (renderer, palettes, solver overlay), `walls.js` (the shape of each wall cell: a centre bar with arms to the walls it joins, the game's rule), `sprites.js` (procedural sprites), `catalog.js` (what each id is: kinds and names, read from `data/catalog.json`), `links.js` (ladder ↔ hatch and similar pairs). |
-| `js/ui/` | Solver column and progress editor: `solve-panel.js`, `solve-client.js` → `solve-host.js` (worker) → `solve-host-main.js`, pool worker adapters, `budgets.js` (presets), `words.js` (plain-language text), `occupant.js` (what the Selected panel and the map tooltip say about a creature or object), `progress-panel.js` (the Your progress editor) and `questlines.js` (its questline sliders: quests grouped by name, and what each part changes). |
+| `js/ui/` | Solver column and progress editor: `solve-panel.js`, `solve-client.js` → `solve-host.js` (worker) → `solve-host-main.js`, pool worker adapters, `budgets.js` (presets), `confirm-popup.js` (the yes/no popup an import asks first), `words.js` (plain-language text), `occupant.js` (what the Selected panel and the map tooltip say about a creature or object), `progress-panel.js` (the Your progress editor) and `questlines.js` (its questline sliders: quests grouped by name, and what each part changes). |
 
 ## `test/` and `tools/`
 
@@ -106,7 +106,7 @@ Rules and file ownership are in [js/combat/PORTING.md](../js/combat/PORTING.md);
 | `tools/bench.mjs`, `tools/coverage.mjs` | Engine and clone benchmarks; V8 coverage summary for the ports. |
 | `tools/check-pr.mjs`, `tools/pr-bot.mjs` | PR policy check (title, description, branch, commit message); the PR bot (ready-to-merge status, branch cleanup). |
 | `tools/screenshots.mjs`, `tools/screenshot-comment.mjs` | The screenshot bot: shoot the main views of two checkouts and keep what changed; post them on the PR (trusted, from `main`). |
-| `tools/run-tests.mjs` | Runs every standalone suite in `test/` (the files with a `// Standalone suite:` line): `npm test`, precommit and postcommit. |
+| `tools/run-tests.mjs` | Runs every standalone suite in `test/` (the files with a `// Standalone suite:` line): `npm test`, precommit, and postcommit. |
 | `tools/static-server.mjs`, `tools/chromium.mjs` | A loopback static server and headless Chromium, for the smoke test and the screenshots. |
 | `tools/merge-pr.sh`, `tools/github-setup.sh` | Squash-merge a PR with the right commit message; apply the repository's GitHub settings and rulesets. |
 | `tools/sprite-gallery.html` | Every sprite on a tile, per theme: `/tools/sprite-gallery.html?theme=dark`. |

@@ -7,6 +7,9 @@
 // Privacy: the file is parsed here (js/save, js/combat/entry.js); nothing is uploaded. guild.dat (a few KB) is kept
 // in sessionStorage so a reload keeps it, until the tab is closed or "Forget" is pressed.
 //
+// An import never leaves anything of the previous save or solve on screen: the page (js/app.js) is asked to confirm
+// when it shows a dungeon or a plan, and once the new save has read it shows that save's dungeon in progress, or none.
+//
 // Your progress (js/ui/progress-panel.js): edits on top of the base (the imported save while "use my progress" is on,
 // else a new game), kept in localStorage. effectiveProfile() is what maps and the solver are built with.
 import { typeLabel } from './labels.js';
@@ -24,9 +27,19 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 const STAT_ROWS = [['hp', 'Health'], ['ep', 'Energy'], ['mp', 'Mental power'], ['atk', 'Attack'], ['def', 'Defence'], ['ap', 'Action points']];
 const SLOTS = ['Weapon', 'Armour', 'Shield', 'Ring'];
 
+/** Whether this tab holds an imported save (it is read again on load). */
+export function hasKeptSave() {
+	return sessionStorage.getItem(KEY_SAVE) != null;
+}
+
 export class HeroPanel {
 	/**
-	 * opts: { getType() -> current dungeon type, onChange() -> called when the profile in use changes }
+	 * opts: { getType() -> type of the dungeon shown, getLabel() -> its label ('' when none), hasDungeon(),
+	 *         onChange() -> the profile in use changed (rebuild the map),
+	 *         confirmImport({ replacesSave }) -> Promise<boolean>: asks first when an import would wipe the screen,
+	 *         onImported(dungeon) -> Promise: the save was read; wipe the screen and show the save's dungeon in progress
+	 *           ({ type, seed, kind }), or none (null),
+	 *         onForgotten() -> the save was forgotten: drop what was made from it }
 	 */
 	constructor(opts) {
 		this.opts = opts;
@@ -50,12 +63,12 @@ export class HeroPanel {
 
 	async modules() {
 		if (this.mods) return this.mods;
-		const [save, zip, entry, names, statics] = await Promise.all([
-			import('./save/index.js'), import('./save/zip.js'), import('./combat/entry.js'),
+		const [save, zip, envelope, entry, names, statics] = await Promise.all([
+			import('./save/index.js'), import('./save/zip.js'), import('./save/envelope.js'), import('./combat/entry.js'),
 			fetch('data/names.json').then((r) => r.json()).catch(() => ({})),
 			import('./gen/statics.js'),
 		]);
-		this.mods = { save, zip, entry, statics };
+		this.mods = { save, zip, envelope, entry, statics };
 		this.names = names;
 		return this.mods;
 	}
@@ -166,7 +179,7 @@ export class HeroPanel {
 			if (file) this.importFile(file);
 		};
 		$('#hero-use').onclick = () => this.setUse(!this.use);
-		$('#hero-forget').onclick = () => this.forget();
+		$('#hero-forget').onclick = () => this.forgetWithFade();
 		this.bindFileDrop();
 	}
 
@@ -190,10 +203,14 @@ export class HeroPanel {
 
 	open() {
 		this.render();
+		this.showPopup();
+	}
+
+	showPopup() {
 		if (typeof Popup !== 'undefined') Popup.popup($('#popup-hero'));
 	}
 
-	/** A reload in the same tab: the guild.dat kept in sessionStorage. */
+	/** A reload in the same tab: the guild.dat kept in sessionStorage. The page decides what to show (js/app.js). */
 	async restore() {
 		const stored = sessionStorage.getItem(KEY_SAVE);
 		if (!stored) {
@@ -201,7 +218,7 @@ export class HeroPanel {
 			return false;
 		}
 		try {
-			await this.load(fromB64(stored), { file: sessionStorage.getItem(KEY_SAVE_NAME) || 'guild.dat', persist: false });
+			this.adopt(await this.readSave(fromB64(stored)), { file: sessionStorage.getItem(KEY_SAVE_NAME) || 'guild.dat', persist: false });
 			return true;
 		} catch (e) {
 			console.warn('stored save could not be read again:', e);
@@ -211,29 +228,54 @@ export class HeroPanel {
 		}
 	}
 
+	/**
+	 * Import a file the player chose or dropped. A file that cannot be read is refused before anything is asked or
+	 * changed; if the page shows something the import would wipe, the player confirms first (Cancel changes nothing).
+	 */
 	async importFile(file, { openPanel = false } = {}) {
 		this.error = null;
+		const popupWasOpen = isPopupShown($('#popup-hero'));
+		let imported = false;
 		try {
-			const bytes = new Uint8Array(await file.arrayBuffer());
-			await this.load(bytes, { file: file.name, persist: true });
-			this.opts.onChange();
+			const guild = await this.readableGuild(new Uint8Array(await file.arrayBuffer()));
+			if (await this.opts.confirmImport({ replacesSave: !!this.profile })) {
+				await this.replaceSave(guild, file.name);
+				imported = true;
+			}
 		} catch (e) {
 			console.error(e);
 			this.error = e && e.message ? e.message : String(e);
 		}
 		this.render();
-		const popupHidden = Number($('#popup-hero').parentNode.style.opacity) === 0;
-		if (openPanel && typeof Popup !== 'undefined' && popupHidden) Popup.popup($('#popup-hero'));
+		// the confirm popup closed the Your hero one: bring it back, and open it for a dropped file that was used
+		if (popupWasOpen || (openPanel && (imported || this.error))) this.showPopup();
+	}
+
+	/** The guild.dat in a file (zip or bare), checked to decode. Throws a message for the player when it does not. */
+	async readableGuild(bytes) {
+		const { zip, envelope } = await this.modules();
+		const guild = await guildBytes(bytes, zip);
+		await envelope.decodeGuild(guild);
+		return guild;
+	}
+
+	/** Make a new save the one in use, then have the page show its dungeon in progress, or none. */
+	async replaceSave(guild, file) {
+		this.adopt(await this.readSave(guild), { file, persist: true });
+		await this.opts.onImported(this.dungeon);
+	}
+
+	/** Parse a guild.dat. Changes nothing of the one in use: if it throws, the screen and the old save stay. */
+	async readSave(guild) {
+		const { save } = await this.modules();
+		return { guild, imported: await save.importSave(guild) };
 	}
 
 	/**
-	 * Read a save (the export zip or a bare guild.dat) and show its heroes. `persist`: a new import, kept for this tab
-	 * and used for maps; else a reload of the kept one, which keeps the hero picked earlier.
+	 * Take a parsed save into use and show its heroes. `persist`: a new import, kept for this tab and used for maps;
+	 * else a reload of the kept one, which keeps the hero picked earlier.
 	 */
-	async load(bytes, { file, persist }) {
-		const { save, zip } = await this.modules();
-		const guild = await guildBytes(bytes, zip);
-		const imported = await save.importSave(guild);
+	adopt({ guild, imported }, { file, persist }) {
 		this.profile = imported.vj0;
 		this.info = { savedAt: imported.header.savedAt, notes: imported.notes, inDungeon: imported.dungeon != null, file };
 		this.guild = guild;
@@ -241,6 +283,7 @@ export class HeroPanel {
 		const pickedBefore = parseInt(sessionStorage.getItem(KEY_HERO), 10);
 		this.hero = heroToShow(imported.vj0, persist ? -1 : pickedBefore);
 		if (persist) this.keepForTab(guild, file);
+		this._eff = null;
 		this.renderStatus();
 	}
 
@@ -257,6 +300,21 @@ export class HeroPanel {
 		}
 	}
 
+	/**
+	 * Forget with the same fade an import has (it closes and reopens this popup around its question): the popup fades
+	 * out, the save goes, and it fades back in showing the import box, not a sudden swap of its contents.
+	 */
+	async forgetWithFade() {
+		const popup = $('#popup-hero');
+		const open = isPopupShown(popup);
+		if (open && typeof Animate !== 'undefined' && typeof UP !== 'undefined') {
+			await Animate.animateGroup([[popup.parentNode, Animate.fadeOut, {}], [popup, Animate.fadeOut, { shiftTo: UP }]]);
+		}
+		this.forget();
+		if (open) this.showPopup();
+	}
+
+	/** Not an import: the map stays (rebuilt as a new game), but what was made from the save goes (the page says so). */
 	forget() {
 		for (const key of [KEY_SAVE, KEY_SAVE_NAME, KEY_HERO, KEY_USE]) sessionStorage.removeItem(key);
 		this.profile = null;
@@ -265,6 +323,7 @@ export class HeroPanel {
 		this.dungeon = null;
 		this.error = null;
 		this.use = true;
+		this.opts.onForgotten();
 		this.profileInUseChanged();
 	}
 
@@ -364,6 +423,7 @@ export class HeroPanel {
 			</div>
 			<div class="hero-col">
 				<div class="content-header-2">Pack for ${typeLabel(type)}</div>
+				${this.opts.hasDungeon() ? '' : `<div class="muted small">No dungeon is shown, so this is the pack for ${typeLabel(type)}.</div>`}
 				<div class="mp-line"><span>Mental power taken in</span><b>${pack.mp} <span class="muted">of ${sheet.mp}</span></b></div>
 				<div class="muted small">From your stock of ${progress.mpStock}.</div>
 				${feeHtml(pack, names)}${gateNoteHtml(pack)}
@@ -522,6 +582,11 @@ function heroToShow(profile, pickedBefore) {
 	const n = profile.l.length;
 	if (pickedBefore >= 0 && pickedBefore < n) return pickedBefore;
 	return profile.H0 >= 0 && profile.H0 < n ? profile.H0 : 0;
+}
+
+/** A lib/utils popup that is on screen (its backdrop is not faded out). */
+function isPopupShown(popup) {
+	return !!popup.parentNode && Number(popup.parentNode.style.opacity) > 0;
 }
 
 function carriesFiles(e) {
