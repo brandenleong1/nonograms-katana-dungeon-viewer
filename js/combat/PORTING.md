@@ -106,6 +106,11 @@ node test/combat.mjs --all --max=5               # keep going after a file's fir
   to `tablePinList` / `profilePinList` in clone.js; `node test/clone.mjs` (fingerprints of every static object at
   snapshot vs restore, and after `resetStatics`) reports what it missed. `NK_FULL_RESET=1` forces the old re-revive.
   Table objects are rebuilt in V8 fast mode after the revive (`fastTables`; `NK_SLOW_TABLES=1` skips it).
+- **Rewritten for speed:** `hw.t_` (A*) is not a statement-by-statement port any more: it pools its
+  nodes, runs the heap inline and skips the scan of an empty queue (`nav.js`, "hw.t_ without allocation"). It is
+  held to the previous implementation by `test/astar.mjs` (a copy of it, run on real states: cost, path, scratch
+  point and open list must be identical, so any change to the heap order fails) and by the corpus
+  (`test/combat.mjs`). Don't change its order of operations without the copy in that test.
 - Headless stand-ins the rules code may call (`js/combat/input.js`): `c30.d` is a `Context` (`getString(id)` returns
   `"#<id>"`, as the oracle's stub); `c30.e` is the `DungameView` (every view method is a no-op `name_()` with the Java
   default return, except `d0_`, `onTouchEvent_`, `x_`, `S_(icon, text)` (toast) and `T_(rw, text, …, dismiss)`

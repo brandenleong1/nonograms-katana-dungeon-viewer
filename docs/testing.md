@@ -20,6 +20,7 @@ npm test        # = node tools/run-tests.mjs: every standalone suite in test/
 | `test/details.mjs` | Object contents, collected/unsealed states, hidden-creature warnings, distinct item labels and retained catalog behavior. | ~1 s |
 | `test/catalog.mjs` | `data/catalog.json`: every creature and object in about 770 generated dungeons (new game and progress states) has an entry with a name and a kind the map draws, and every id is drawn as before the table existed, except object 84 (the caves' mine cart, drawn as reeds before). Also the level's wild familiars and mine-cart riders. | ~9 s |
 | `test/questlines.mjs` | The Your progress questlines: every quest the generator reads is on a slider, every position round-trips through a profile, and part 3 of Once Upon a Forest brings 3C's mini-boss. | ~1 s |
+| `test/astar.mjs` | `hw.t_` (A*) against a copy of the version before it stopped allocating, on about 10,000 calls over real mid-dungeon states (free, blocked, occupied, revealed or not, doors, teams, regions): same cost, same path (so the same tie-break among equal costs), same scratch point, open list emptied. It fails if the heap order changes. | ~10 s |
 | `test/solve.mjs` | Solver: resource ledger, route walker, the wiki's first-strike rule, robust and exact solves on small budgets, MP top-ups (including mid-fight), the plan schema, the worker pool. Use `--quick` to skip the slow cases and `--no-workers` to skip the pool. | ~1 min |
 
 `npm test` must pass before a pull request is merged.
@@ -52,6 +53,18 @@ tomb) in each of the four themes, in headless Chromium. On every page:
 - the Help popup credits the Nonograms Katana Wiki for the names;
 - the Your hero and Your progress popups open;
 - nothing raises a page error or logs a console error.
+
+It also checks the page with no dungeon and the importing of saves:
+
+- a bare page load, in each theme, says "No Dungeon Loaded" over a map darker than one with a dungeon, with Selected,
+  Objectives, Route, the status line and the solver saying there is nothing to show, the View buttons that need a
+  dungeon disabled, and hovering, dragging, keys, buttons and layers all harmless;
+- the popup an import asks first: an alert dialog with Cancel focused, Tab kept inside, Escape and Cancel answering no
+  and Import answering yes;
+- with the maintainer's synthetic saves (`~/.cache/nk-oracle/save/synth/`, or `NK_SAVE_DIR`; skipped cleanly without
+  them): importing a save made inside a dungeon onto an empty page asks nothing and shows that dungeon; importing over a
+  dungeon and a plan asks first, Cancel changes nothing, Import on a save made in town clears to "No Dungeon Loaded", and
+  a reload keeps the save and shows its dungeon, or none.
 
 It needs the `lib/utils` submodule. With a Playwright install elsewhere, point `NK_PLAYWRIGHT` at the module and
 `NK_CHROMIUM` at a Chromium binary.
@@ -100,7 +113,7 @@ solver.
 
 There's no browser test suite. For UI changes:
 
-1. `npm run serve`, then open e.g. `http://127.0.0.1:8000/#3C-172582050`.
+1. `npm run serve`, then open e.g. `http://127.0.0.1:8000/#3C-172582050` (without the `#…` the page shows "No Dungeon Loaded").
 2. Check all four themes (Settings → Change Theme; Light is the default) and a narrow window (about 400 px).
 3. The browser console should show no errors. `window.nkd` exposes the view and state for poking at things.
 4. For sprites, `tools/sprite-gallery.html?theme=dark` shows every sprite.
@@ -141,6 +154,7 @@ never from a save. The comment lists them in this order:
 | `lists` | `lists-scrolled`, `lists-scrolled-dark` | the Objectives and Route lists scrolled half way, so both edges fade |
 | `solver` | `solver-robust-whatif`, `solver-exact-whatif`, `solver-robust-plan`, `solver-exact-script` | the settings with a What-if hero; then a Normal plan of `1A-1429008869` in each mode: robust with its first fight selected, exact with the script player half way through fight 2 |
 | `popup` | `popup-help-`, `popup-hero-`, `popup-progress-`, `popup-settings-` in `light` and `dark`; help and progress in `sepia`; hero and progress in `dark-high-contrast`; `popup-progress-narrow`, `popup-progress-phone`; `popup-progress-edited` and `popup-progress-edited-map` | each popup (Your hero as a new game; Progress with a questline unfolded), and Progress with part 3 of Once Upon a Forest set in progress, then the map built with it |
+| `empty` | `empty-light`, `empty-dark` | the page with no label and no save: the darker map with "No Dungeon Loaded" and the empty panels |
 
 ### Adding a view
 

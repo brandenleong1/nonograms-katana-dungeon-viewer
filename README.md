@@ -1,7 +1,9 @@
 # Nonograms Katana Dungeon Viewer
 
 Type a dungeon label exactly as the game shows it at the top of a dungeon, e.g. **`3C-172582050`**. The site
-rebuilds that dungeon with the same rules the game uses and draws it isometrically, like in the game. You get:
+rebuilds that dungeon with the same rules the game uses and draws it isometrically, like in the game. (A link like
+`…/#3C-172582050` opens it directly. With no label and no save made inside a dungeon, the map says "No Dungeon Loaded".)
+You get:
 
 - **Every object and creature**, with layers you can toggle: monsters and people, chests and pages, doors and
   levers, ladders/hatches/portals, puzzle rooms, plus spoilers (puzzle solutions, hidden traps).
@@ -12,8 +14,9 @@ rebuilds that dungeon with the same rules the game uses and draws it isometrical
   dropping it on the page or picking it. You see your heroes and their levels, the chosen hero's health, energy, mental
   power, attack, defence, action points, skills, and equipment, the pack it would take into the dungeon on screen
   (items, mental power, familiars, entry fee: the game's own entry rules) and your progress. While "Use my progress"
-  is on, maps are built with your quests and bosses beaten, so quest people and mini-bosses match your game. The file is
-  read in your browser only; nothing is uploaded. It stays in the tab (sessionStorage) until you close it or press Forget.
+  is on, maps are built with your quests and bosses beaten, so quest people and mini-bosses match your game. A save
+  made inside a dungeon shows that dungeon in progress. The file is read in your browser only; nothing is uploaded. It
+  stays in the tab (sessionStorage) until you close it or press Forget.
 - **Your progress** (Progress, next to Your hero): the quests, bosses beaten and finds the map is built with, for
   players without a save or for what-ifs on top of an imported one. Only what dungeon generation reads is shown, in
   plain words: the quests that pick a dungeon's quest person (and who each dungeon gets now), bosses and mini-bosses

@@ -68,7 +68,7 @@ Notes:
 ## Screenshots
 
 Every PR gets a **Screenshots** comment, so UI changes can be reviewed from the PR page. On each push,
-`screenshots.yml` takes the same 56 views of `main` and of the PR: the map in every theme and dungeon family, windows
+`screenshots.yml` takes the same 58 views of `main` and of the PR: the map in every theme and dungeon family, windows
 from a phone to a 2560 px screen, rooms zoomed in, clicks on the map and the lists, the hover tooltip, every map layer,
 the solver's settings and a finished plan in each mode, and every popup. They all use a new game and fixed labels, so
 no save data is ever in them ([the list](testing.md#screenshots)). The run keeps the views that look different,
