@@ -99,9 +99,12 @@ export function familiarRank(level, cr) {
 	return companion ? companion.rank : null;
 }
 
-/** A creature sprite's variant: a monster's species (its colour), a wild familiar's rank (its colour). */
+/** creature kinds drawn by species (js/view/creatures.js), or as a blob in a colour from the species */
+const CREATURE_KINDS = new Set(['monster', 'goldmonster', 'miniboss', 'boss', 'unique']);
+
+/** A creature sprite's variant: a monster's species (its drawing or colour), a wild familiar's rank (its colour). */
 export function critterVariant(kind, cr, level) {
-	if (kind === 'monster') return String(cr.id);
+	if (CREATURE_KINDS.has(kind)) return String(cr.id);
 	if (kind === 'familiar') return String(familiarRank(level, cr) ?? '');
 	return '';
 }
