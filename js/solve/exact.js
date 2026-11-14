@@ -258,7 +258,8 @@ export class InlineExactPool {
  * problem: { hero, type, seed, xseed, at? } or { save, hero? }
  * opts: { pool (InlineExactPool / WorkerPool), cands, rollouts: rollout policies per decision (5), maxDecisions per
  *         encounter (100), budgetMs: expected wall time (progress only, unless strictBudget: then the search stops when
- *         behind), look: encounters played after each play-out by the continuation policy (1: survival), ext,
+ *         behind), look: encounters played after each play-out by the continuation policy (0: none; a death in them ranks
+ *         after living and before dying in the fight, cost.js compareExact), ext,
  *         useItemsForMp, runOpts, onProgress }
  */
 export async function solveExact(problem, opts = {}) {
@@ -421,7 +422,7 @@ async function solveEncounter(search, { e, key, stop }) {
 	// skill / item tactics only where the hero has what they need
 	const av = availOf(h);
 	const ec = search.cands.filter((c) => usable(c, av));
-	const ctx = { cands: ec, need, restNeed: later, ext: opts.ext ?? 1, look: opts.look ?? 1, maxInputs: opts.maxInputs };
+	const ctx = { cands: ec, need, restNeed: later, ext: opts.ext ?? 1, look: opts.look ?? 0, maxInputs: opts.maxInputs };
 	const led0 = run.led.clone();
 	// 1. every tactic from the encounter start
 	const base = await workers.play(ec.map((_, c) => ({ inp: null, c })), ctx);

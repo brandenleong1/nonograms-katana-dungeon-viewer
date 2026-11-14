@@ -21,9 +21,10 @@ You get:
   players without a save or for what-ifs on top of an imported one. Only what dungeon generation reads is shown, in
   plain words: the quests that pick a dungeon's quest person (and who each dungeon gets now), bosses and mini-bosses
   beaten, the quests that add bosses, merchants and forest finds, and separately what only changes loot. A preview
-  says why the current dungeon has its quest person or extra bosses. Changes rebuild the map at once (status badge:
-  new game / your progress / custom progress) and the solver plans with the same progress. They are kept in this
-  browser (localStorage); "Reset to new game" / "Reset to my save" drop them.
+  says why the current dungeon has its quest person or extra bosses. "Mark all quests done", "Mark all bosses beaten",
+  and "Mark everything done" put every questline, every boss, or both at their end in one click. Changes rebuild the
+  map at once (status badge: new game / your progress / custom progress) and the solver plans with the same progress.
+  They are kept in this browser (localStorage); "Clear changes" drops them (the "Using" choice stays).
 - **Solver** (the fourth column; the last View button hides it): plays the dungeon in the ported combat engine and
   picks a tactic per fight that, without dying, leaves no objective behind, then uses the fewest items, then the
   least mental power. **Robust** mode works from the label (Monte Carlo over the unknown dice); **Exact** mode needs

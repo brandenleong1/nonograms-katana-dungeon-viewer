@@ -76,13 +76,15 @@ export function shadow(pools, need, prices) {
 }
 
 /**
- * Score of one outcome { dead, end, abandoned, items, mpSpent, hp, hpM, ep, mpLeft, inputs } (robust.js outcomeOf):
- * the objectives it gave up, immediate (items, MP) + the shadow of the end pools. Returns { dead, abandoned, items,
- * mp, s: [items + shadow, mp + shadow], hp, inputs }. A stuck encounter (input cap, no progress) counts as a death.
+ * Score of one outcome { dead, end, abandoned, items, mpSpent, hp, hpM, ep, mpLeft, inputs, looked } (robust.js outcomeOf):
+ * the objectives it gave up, immediate (items, MP) + the shadow of the end pools. Returns { dead, late, abandoned,
+ * items, mp, s: [items + shadow, mp + shadow], hp, inputs }. A stuck encounter (input cap, no progress) counts as a
+ * death. `late` is the number of
+ * look-ahead fights the hero got through before dying (0: it died in the fight itself); compareExact orders deaths by it.
  */
 export function scoreOutcome(o, need, prices) {
 	const abandoned = o.abandoned || 0;
-	if (o.dead || o.end === 'stuck' || o.end === 'error') return { dead: true, abandoned, items: o.items, mp: o.mpSpent, s: [Infinity, Infinity], hp: o.hp, inputs: o.inputs };
+	if (o.dead || o.end === 'stuck' || o.end === 'error') return { dead: true, abandoned, late: o.looked || 0, items: o.items, mp: o.mpSpent, s: [Infinity, Infinity], hp: o.hp, inputs: o.inputs };
 	const sh = shadow({ hp: o.hp, hpM: o.hpM, ep: o.ep, mp: o.mpLeft }, need, prices);
 	return { dead: false, abandoned, items: o.items, mp: o.mpSpent, s: [o.items + sh.items, o.mpSpent + sh.mp], hp: o.hp, inputs: o.inputs };
 }
@@ -149,9 +151,14 @@ export function dominated(a, best, maxDeath = 0.01) {
 	return false;
 }
 
-/** compare two (dead, abandoned, items, mp) totals lexicographically: < 0 when a is better (exact mode) */
+/**
+ * compare two (dead, abandoned, items, mp) totals lexicographically: < 0 when a is better (exact mode). Alive beats
+ * any death. Of two deaths the later one is better (more look-ahead fights survived, then more HP at death): a line that dies in the
+ * look-ahead still got through the fight being decided, which one that dies in it did not.
+ */
 export function compareExact(a, b) {
 	if (!!a.dead !== !!b.dead) return a.dead ? 1 : -1;
+	if (a.dead) return ((b.late || 0) - (a.late || 0)) || ((b.hp || 0) - (a.hp || 0));
 	const dA = (a.abandoned || 0) - (b.abandoned || 0);
 	if (dA !== 0) return dA;
 	const d0 = a.s[0] - b.s[0];

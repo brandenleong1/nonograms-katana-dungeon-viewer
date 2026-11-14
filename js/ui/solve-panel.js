@@ -1056,7 +1056,7 @@ export class SolvePanel {
 		if (this.playing) clearInterval(this.playing);
 		this.playing = null;
 		const b = $('#pl-play', this.root);
-		if (b) { b.innerHTML = svgIcon('play'); b.title = 'Play (Space)'; }
+		if (b) setPlayIcon(b, false);
 	}
 
 	renderPlayer() {
@@ -1076,9 +1076,7 @@ export class SolvePanel {
 		this.renderLastInput(box);
 		$('#pl-pools', box).innerHTML = poolsHtml(f);
 		this.renderPlayerFoes(box, f);
-		const play = $('#pl-play', box);
-		play.innerHTML = svgIcon(this.playing ? 'pause' : 'play');
-		play.title = this.playing ? 'Pause (Space)' : 'Play (Space)';
+		setPlayIcon($('#pl-play', box), !!this.playing);
 	}
 
 	/** the player's fixed part: buttons, slider and the empty rows renderPlayer fills */
@@ -1257,6 +1255,19 @@ function buttonDiv(className) {
 }
 
 /** click, Enter and Space all run fn (for elements with role="button" and the like) */
+/**
+ * The play button shows pause while the script plays. Its icon is swapped only when that changes: the player redraws on
+ * every step (450 ms), and replacing the icon under a press that is still down loses the click (the press started on
+ * an element that is gone by the release), so Pause needed several clicks.
+ */
+function setPlayIcon(button, playing) {
+	const want = playing ? 'pause' : 'play';
+	if (button.dataset.icon === want) return;
+	button.dataset.icon = want;
+	button.innerHTML = svgIcon(want);
+	button.title = playing ? 'Pause (Space)' : 'Play (Space)';
+}
+
 function onActivate(el, fn) {
 	if (!el) return;
 	el.onclick = fn;

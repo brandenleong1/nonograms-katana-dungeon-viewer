@@ -12,7 +12,7 @@
 //
 // Your progress (js/ui/progress-panel.js): edits on top of the base (the imported save while "use my progress" is on,
 // else a new game), kept in localStorage. effectiveProfile() is what maps and the solver are built with.
-import { typeLabel } from './labels.js';
+import { typeLabel, titleCase } from './labels.js';
 import { withProgress, freshProfile, readProgress, diffProgress } from './gen/progress-spec.js';
 import { ProgressEdits, ProgressPanel, BASIS_TEXT } from './ui/progress-panel.js';
 
@@ -474,7 +474,7 @@ class DisplayNames {
 	}
 
 	quest(id) {
-		return (this.names.quests && this.names.quests[id]) || `Quest ${id}`;
+		return titleCase((this.names.quests && this.names.quests[id]) || `Quest ${id}`);
 	}
 }
 
