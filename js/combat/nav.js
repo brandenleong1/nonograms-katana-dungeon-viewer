@@ -22,8 +22,6 @@ hw.R = [];
 hw.S = new Util$Point();
 
 /** al1 case 10 (te1): "sw at the same cell as b" (d2.p removes the first match) */
-const ASTAR = { n: -1, st: null, nd: null, gen: 0 };   // hw.t_ scratch, reused across calls
-
 export class al1 {
 	constructor(a, b) {
 		this.a = a;
@@ -36,6 +34,112 @@ export class al1 {
 	}
 }
 register(al1);
+
+// ---------------------------------------------------------------------------------------------
+// hw.t_ without allocation. Not the game's code: the Java allocates a node and a predicate object per push; this
+// does the same search without them. Changed only for speed, and equal to the Java's result for every input:
+// same nodes polled in the same order, same heap layout after every operation (so the same tie-break among equal
+// costs), same cost, same path, same hw.S and empty hw.P on return. test/astar.mjs keeps a copy of the version
+// before this change and checks all of that.
+//   - Nodes come from a pool. They never leave one call (the path is copied out as direction codes, the heap is
+//     cleared on the way out), so each call reuses the last call's objects.
+//   - The heap is still hw.P, but its add / poll / sift run inline here with the ol(2) comparator (`.d`, ascending)
+//     written out, and the per-push al1 predicate is gone.
+//   - hw.P.p_ (remove the queued node on this cell) is scanned only when there is one. A cell holds at most one
+//     queued node (pushing a better node for a cell removes the old one first), and that node is the cell's
+//     current node, so "queued" is a per-cell flag: the stamp says open (queued) or closed (polled). Without a
+//     queued node the scan finds nothing after walking the whole heap, which is what it did on 93% to 95% of the pushes.
+
+/** per-call scratch, reused across calls: cell stamps and nodes (sized for the level), and the node pool */
+const ASTAR = { cells: -1, stamp: null, node: null, clock: 0, pool: [], used: 0 };
+
+/** the call's closed stamp; its open stamp is one less. Each call takes two new values, so stamps of older calls never match */
+function nextStamps(cells) {
+	const A = ASTAR;
+	if (A.cells !== cells || A.clock >= 0x3ffffff0) {
+		A.cells = cells;
+		A.stamp = new Int32Array(cells);
+		A.node = new Array(cells).fill(null);
+		A.clock = 0;
+	}
+	A.clock += 2;
+	A.used = 0;
+	return A.clock;
+}
+
+/** a pooled sw; the caller sets every field */
+function poolNode() {
+	const A = ASTAR;
+	if (A.used === A.pool.length) A.pool.push(new sw(0, 0));
+	return A.pool[A.used++];
+}
+
+/** d2.b_ (add): append x to the heap and sift it up */
+function heapAdd(heap, x) {
+	const n = heap.b;
+	let arr = heap.c;
+	if (n >= arr.length) {
+		const grown = new Array(arr.length * 2).fill(null);
+		for (let i = 0; i < n; i++) grown[i] = arr[i];
+		heap.c = grown;
+		arr = grown;
+	}
+	heap.b = n + 1;
+	if (n === 0) arr[0] = x;
+	else siftUp(arr, n, x);
+}
+
+/** d2.p_ with al1 case 10: remove the first node standing on cell (x, y), re-sifting the node moved into its place */
+function heapRemoveCell(heap, x, y) {
+	const arr = heap.c;
+	for (let i = 0; i < heap.b; i++) {
+		const o = arr[i];
+		if (o.a !== x || o.b !== y) continue;
+		const last = heap.b - 1;
+		heap.b = last;
+		if (last === i) {
+			arr[i] = null;
+			return;
+		}
+		const moved = arr[last];
+		arr[last] = null;
+		siftDown(arr, last, i, moved);
+		if (arr[i] === moved) siftUp(arr, i, moved);
+		return;
+	}
+}
+
+/** d2.q_: sift x down from k in the first `size` slots (ol(2): `.d` ascending) */
+function siftDown(arr, size, k, x) {
+	const half = size >>> 1;
+	const xd = x.d;
+	while (k < half) {
+		let child = (k << 1) + 1;
+		let c = arr[child];
+		const right = child + 1;
+		if (right < size && c.d > arr[right].d) {
+			c = arr[right];
+			child = right;
+		}
+		if (xd <= c.d) break;
+		arr[k] = c;
+		k = child;
+	}
+	arr[k] = x;
+}
+
+/** d2.r_: sift x up from k (ol(2): `.d` ascending) */
+function siftUp(arr, k, x) {
+	const xd = x.d;
+	while (k > 0) {
+		const parent = (k - 1) >>> 1;
+		const e = arr[parent];
+		if (xd >= e.d) break;
+		arr[k] = e;
+		k = parent;
+	}
+	arr[k] = x;
+}
 
 // ---------------------------------------------------------------------------------------------
 // zw static helpers (combat)
@@ -303,6 +407,7 @@ extend(hw, {
 	 * 1500 (team != -1), doors (z) 500/300, blockers 800; +3 per turn; heuristic Manhattan (+3 off-axis).
 	 * team -2: critters and object 30 block (800); -3: faction 1/2 critters block. region != 0: door cells
 	 * next to that region block.
+	 * Allocation-free (pooled nodes, inline heap, no scan of an empty queue): see "hw.t_ without allocation".
 	 */
 	t_(from, to, path, maxSteps, searchSteps, team, doors, region) {
 		const out = path;
@@ -323,10 +428,12 @@ extend(hw, {
 					else if (dx === 0) dir = dy === -1 ? 2 : dy === 1 ? 3 : -1;
 					else dir = -1;
 					if (dir === -1 || (isDoor && (tgt.c ? dx !== 1 || dy !== 0 : dx !== 0 || dy !== -1))) {
+						// the target as the search sees it: a door is approached from the side it opens to (the Java
+						// copies the Point; two ints do the same without allocating)
+						let tx = to.a, ty = to.b;
 						if (isDoor) {
-							to = new Util$Point(to);
-							if (tgt.c) to.a = (to.a - 1) | 0;
-							else to.b = (to.b + 1) | 0;
+							if (tgt.c) tx = (tx - 1) | 0;
+							else ty = (ty + 1) | 0;
 						}
 						let p4 = maxSteps;
 						if (p4 <= 0) p4 = 1000;
@@ -335,12 +442,27 @@ extend(hw, {
 						lim = (lim + 7) | 0;
 						const heap = hw.P;
 						heap.k_();
-						// closed set: per-cell stamp + node arrays (was the hw.Q Map; same semantics, no hashing)
-						const g0 = this.g; const nc0 = (g0 * this.h) | 0; if (ASTAR.n !== nc0) { ASTAR.n = nc0; ASTAR.st = new Int32Array(nc0); ASTAR.nd = new Array(nc0).fill(null); ASTAR.gen = 0; } const gen = ++ASTAR.gen; const ST = ASTAR.st, ND = ASTAR.nd;
-						const start = new sw(from.a, from.b);
-						heap.b_(start);
-						ST[from.b * g0 + from.a] = gen; ND[from.b * g0 + from.a] = start;
+						// per-cell stamp (open = queued, closed = polled) and node, instead of the hw.Q TreeMap; nodes are pooled
+						const g0 = this.g;
+						const H = this.h;
+						const closedStamp = nextStamps((g0 * H) | 0);
+						const openStamp = closedStamp - 1;
+						const ST = ASTAR.stamp, ND = ASTAR.node;
+						const J = this.j, K = this.k, M = this.m, REG = this.l, XT = zw.u;
+						const start = poolNode();
+						start.a = from.a;
+						start.b = from.b;
+						start.c = 0;
+						start.d = 0;
+						start.e = null;
+						start.f = 0;
+						start.g = 0;
+						heapAdd(heap, start);
+						const si = from.b * g0 + from.a;
+						ST[si] = openStamp;
+						ND[si] = start;
 						let cur;
+						let expanded = false, lastX = 0, lastY = 0;
 						for (;;) {
 							let n = heap.b;
 							let top;
@@ -351,28 +473,28 @@ extend(hw, {
 								heap.b = --n;
 								const last = arr[n];
 								arr[n] = null;
-								if (n !== 0) heap.q_(0, last);
+								if (n !== 0) siftDown(arr, n, 0, last);
 							}
 							cur = top;
 							if (cur == null) break;
 							const cy = cur.b;
 							const cx = cur.a;
-							if (cx === to.a && cy === to.b) break;
+							ST[cy * g0 + cx] = closedStamp;
+							if (cx === tx && cy === ty) break;
 							if (cur.g < lim) {
+								expanded = true;
+								lastX = cx;
+								lastY = cy;
 								for (let d = 0; d < 4; d++) {
-									const S = hw.S;
-									S.a = cx;
-									S.b = cy;
-									S.b_(d);
-									const nx = S.a;
+									// Point.b_(d): 0 left, 1 right, 2 up, 3 down
+									const nx = d === 0 ? (cx - 1) | 0 : d === 1 ? (cx + 1) | 0 : cx;
 									if (nx < 0) continue;
-									const g = this.g;
-									if (nx >= g) continue;
-									const ny = S.b;
-									if (ny < 0 || ny >= this.h) continue;
-									const idx = (ny * g + nx) | 0;
-									const cell = this.j[idx];
-									const occ = this.k[idx];
+									if (nx >= g0) continue;
+									const ny = d === 2 ? (cy - 1) | 0 : d === 3 ? (cy + 1) | 0 : cy;
+									if (ny < 0 || ny >= H) continue;
+									const idx = (ny * g0 + nx) | 0;
+									const cell = J[idx];
+									const occ = K[idx];
 									let cost;
 									L266: {
 										L330: {
@@ -396,12 +518,9 @@ extend(hw, {
 													break L266;
 												}
 												if (region !== 0 && fg2.W_(cell.a, 3, 8)) {
-													const sx = S.a;
-													if (sx > 0 && this.l[idx - 1] === region) break L330;
-													const g2 = this.g;
-													if (sx < g2 - 1 && this.l[idx + 1] === region) break L330;
-													const sy = S.b;
-													if ((sy > 0 && this.l[idx - g2] === region) || (sy < this.h - 1 && this.l[idx + g2] === region)) break L330;
+													if (nx > 0 && REG[idx - 1] === region) break L330;
+													if (nx < g0 - 1 && REG[idx + 1] === region) break L330;
+													if ((ny > 0 && REG[idx - g0] === region) || (ny < H - 1 && REG[idx + g0] === region)) break L330;
 												}
 											} else {
 												if (doors && cell.a === 10 && (cell.b & 32) === 0) break L266;
@@ -415,36 +534,44 @@ extend(hw, {
 										}
 										cost = 800;
 									}
-									if (S.a !== to.a || S.b !== to.b) {
+									if (nx !== tx || ny !== ty) {
 										L212: {
 											if (occ == null) {
-												const xt = zw.u[cell.a];
+												const xt = XT[cell.a];
 												if (xt.m || (xt.o && (cell.b & 32) !== 0)) break L212;
 											}
 											if (cost === 0) continue;
 										}
-										if (this.m[idx] <= 0) continue;
+										if (M[idx] <= 0) continue;
 									}
 									if (cost === 0) cost = 100;
 									const c13 = (cur.c + cost) | 0;
 									let nc = c13;
 									if (d !== cur.f && cur !== start) nc = (c13 + 3) | 0;
-									const ki = S.b * g0 + S.a; const old = ST[ki] === gen ? ND[ki] : null;
+									const stamp = ST[idx];
+									const old = stamp >= openStamp ? ND[idx] : null;
 									if (old == null || nc < old.c) {
-										const node = new sw(S.a, S.b);
+										const node = poolNode();
+										node.a = nx;
+										node.b = ny;
 										node.c = nc;
 										node.e = cur;
 										node.f = d;
-										const h = (S.d_(to) + nc) | 0;
-										node.d = h;
-										if (S.a !== to.a && S.b !== to.b) node.d = (h + 3) | 0;
+										const h = ((iabs((tx - nx) | 0) + iabs((ty - ny) | 0)) + nc) | 0;
+										node.d = nx !== tx && ny !== ty ? (h + 3) | 0 : h;
 										node.g = (cur.g + 1) | 0;
-										ST[ki] = gen; ND[ki] = node;
-										heap.p_(new al1(10, node));
-										heap.b_(node);
+										ND[idx] = node;
+										if (stamp === openStamp) heapRemoveCell(heap, nx, ny);
+										ST[idx] = openStamp;
+										heapAdd(heap, node);
 									}
 								}
 							}
+						}
+						// the Java leaves its scratch Point on the last cell it stepped from, one step down
+						if (expanded) {
+							hw.S.a = lastX;
+							hw.S.b = (lastY + 1) | 0;
 						}
 						const res = cur != null && cur.e != null && cur.g <= p4 ? cur.c : 0;
 						let ret = res;
