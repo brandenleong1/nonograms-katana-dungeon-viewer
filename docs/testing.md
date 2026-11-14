@@ -181,9 +181,10 @@ view('select-chest', { theme: 'dark', steps: [clickOnMap({ object: 21 })] }),
   element, a state in `window.nkd`), never for a fixed time. Anything else that depends on the clock must be masked:
   wrap it in an element with the class `nk-shot-mask`. Check with `--before .`, a few times and once with `--jobs 6`
   to load the machine: every view must come out `same`.
-- **Limits:** the comment workflow takes at most 60 views, 3 MB per image and 40 MB in all. When every view changed
-  it gets both sides of each, so one side must stay under 20 MB (now about 16 MB). The tool stops past the first two
-  and warns about the third.
+- **Limits:** the comment workflow takes at most 100 views, 3 MB per image and 80 MB in all. When every view changed
+  it gets both sides of each, so one side must stay under 40 MB (now about 16 MB). The tool stops past the first two
+  and warns about the third. The limits are read from `main` (the trusted half runs from there), so a PR can't raise
+  them for itself: raise them on `main` first, in both `tools/screenshot-comment.mjs` and `tools/screenshots.mjs`.
 - **Time:** the bot shoots every view twice on a 4-core runner. A quick view costs about 5 CPU-seconds, a solve about
   35. Keep solves to the small label (`LABELS.small`) and the Normal search.
 - **New controls:** a view of something `main` doesn't have yet can't be taken there; it is posted as a new view.
