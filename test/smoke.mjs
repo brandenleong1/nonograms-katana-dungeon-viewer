@@ -1,7 +1,8 @@
 // Browser smoke test: serve the site on loopback, load a dungeon of every family in every theme in headless
 // Chromium, check the Help popup shows the game version and credits the wiki for the names, the Selected panel names a
 // monster, a boss, a chest with its contents and a stuck door (with its energy cost), plus detailed tooltips; open the Your hero
-// and Your progress popups, and fail on any page error or console error.
+// and Your progress popups, and fail on any page error or console error. On 3C-172582050 the Progress popup's mark
+// buttons are used too: they move every slider to its end, the map says "Custom progress", and Reset undoes them.
 //
 // Also: a bare page load shows "No Dungeon Loaded" (a darker map, the panels saying there is nothing) in every theme;
 // the confirm popup an import asks first (Cancel, Escape and focus); and, when the maintainer's synthetic saves are
@@ -63,6 +64,8 @@ try {
 	}
 	failures += await checkConfirmPopup(browser, base);
 	checked++;
+	failures += await checkScriptPlayer(browser, base);
+	checked++;
 	if (haveSavedDungeonFiles()) {
 		failures += await checkImportingSaves(browser, base);
 		checked++;
@@ -103,6 +106,7 @@ async function checkPage(browser, base, label, themeId, theme) {
 		if (!shown.version.includes(GAME.versionName)) errors.push(`Help popup doesn't show game version ${GAME.versionName}: "${shown.version}"`);
 		if (!shown.credit) errors.push('Help popup doesn\'t credit the Nonograms Katana Wiki for the names');
 		if (label === NAMED.label) errors.push(...await namedCellErrors(page));
+		if (label === NAMED.label) errors.push(...await markAllErrors(page));
 		await page.evaluate(() => window.nkd.state.hero.open());
 		await page.waitForTimeout(400);
 		await page.evaluate(() => window.nkd.state.hero.openProgress());
@@ -404,11 +408,141 @@ async function importedFacts(page) {
 	});
 }
 
+/**
+ * The exact-mode script player's Play / Pause button takes a press that lasts across a step: the player redraws every
+ * 450 ms while playing, and a press must not be lost when that happens (it used to swap the button's icon each step).
+ */
+async function checkScriptPlayer(browser, base) {
+	const { context, page, errors } = await openPage(browser, base, 0);
+	const playing = () => page.evaluate(() => !!window.nkd.solve.playing);
+	try {
+		await page.goto(`${base}/index.html#1A-1429008869`);   // 12 fights: quick to solve
+		await waitForPage(page);
+		await page.waitForFunction(() => window.nkd.state.level, null, { timeout: 60000 });
+		await page.click('#solve-controls .seg-btn[data-k="mode"][data-v="exact"]');
+		await page.click('#solve-controls .seg-btn[data-k="heroSrc"][data-v="manual"]');
+		await page.click('#solve-run');
+		await page.waitForFunction(() => window.nkd.solve.result && !window.nkd.solve.running && document.querySelector('#pl-play'), null, { timeout: 300000 });
+		const button = await page.locator('#pl-play').boundingBox();
+		const press = async (ms) => {
+			await page.mouse.move(button.x + button.width / 2, button.y + button.height / 2);
+			await page.mouse.down();
+			await page.waitForTimeout(ms);
+			await page.mouse.up();
+			await page.waitForTimeout(100);
+		};
+		for (let round = 0; round < 3; round++) {
+			await press(60);
+			if (!await playing()) { errors.push(`round ${round + 1}: Play did not start the script`); break; }
+			await press(600);   // longer than a step
+			if (await playing()) { errors.push(`round ${round + 1}: a press held across a step did not pause`); break; }
+		}
+	} catch (e) {
+		errors.push(e.message.split('\n')[0]);
+	} finally {
+		await context.close();
+	}
+	return report('script player', errors);
+}
+
 /** Print a failure and return 1, or return 0. */
 function report(what, errors) {
 	if (!errors.length) return 0;
 	console.log(`FAIL ${what}:\n  ${[...new Set(errors)].join('\n  ')}`);
 	return 1;
+}
+
+/**
+ * The Your progress popup's "mark done" buttons, used the way a player does: open it with its button, click, close it by
+ * clicking beside it. Quests: every questline slider ends at its end, the map's badge changes to custom progress and the
+ * button keeps the keyboard focus. Bosses, by the keyboard: every box ticked. Reset puts the new game back.
+ */
+async function markAllErrors(page) {
+	const errors = [];
+	const state = () => page.evaluate(() => {
+		const lines = [...document.querySelectorAll('#progress-body .pg-line')];
+		const atEnd = (line) => {
+			const bar = line.querySelector('.pg-bar');
+			if (bar) return bar.getAttribute('aria-valuenow') === bar.getAttribute('aria-valuemax');
+			return !!line.querySelector('.pg-seg .seg-btn.selected[data-st="done"]');
+		};
+		const boxes = [...document.querySelectorAll('#progress-body .pg-grid .pg-check')];
+		return {
+			lines: lines.length,
+			atEnd: lines.filter(atEnd).length,
+			beaten: boxes.filter((b) => b.getAttribute('aria-checked') === 'true').length,
+			boxes: boxes.length,
+			badge: document.querySelector('.map-basis b')?.textContent,
+			changes: document.querySelector('#progress-body .pg-count')?.textContent.trim(),
+			result: document.querySelector('#progress-body .pg-mark-result')?.textContent,
+			focus: document.activeElement?.dataset?.mark,
+		};
+	});
+	const waitForBadge = (text) => page.waitForFunction((t) => document.querySelector('.map-basis b')?.textContent === t, text, { timeout: 15000 });
+	try {
+		await page.click('#progress-open-btn');
+		await page.waitForFunction(() => {
+			const popup = document.querySelector('#popup-progress');
+			return popup.style.opacity === '1' && popup.parentNode.style.opacity === '1' && popup.querySelector('.pg-mark-btn');
+		}, null, { timeout: 15000 });
+		errors.push(...await progressTextErrors(page));
+		const start = await state();
+		if (start.badge !== 'New game' || start.atEnd !== 0 || start.beaten !== 0) errors.push(`progress popup should start as a new game: ${JSON.stringify(start)}`);
+		await page.click('#progress-body .pg-mark-btn[data-mark="quests"]');
+		await waitForBadge('Custom progress');
+		const quests = await state();
+		if (quests.atEnd !== quests.lines || quests.lines < 10) errors.push(`mark all quests done: ${quests.atEnd} of ${quests.lines} sliders at their end`);
+		if (quests.beaten !== 0) errors.push('mark all quests done also marked bosses beaten');
+		if (!/questlines moved to done/.test(quests.result || '')) errors.push(`mark all quests done: no result line (${quests.result})`);
+		if (quests.focus !== 'quests') errors.push('the mark button lost the keyboard focus when the popup redrew');
+		await page.focus('#progress-body .pg-mark-btn[data-mark="bosses"]');
+		await page.keyboard.press('Enter');
+		await page.waitForFunction(() => document.querySelector('#progress-body .pg-grid .pg-check[aria-checked="true"]'));
+		const bosses = await state();
+		if (bosses.beaten !== bosses.boxes || bosses.boxes < 20) errors.push(`mark all bosses beaten, by keyboard: ${bosses.beaten} of ${bosses.boxes} boxes ticked`);
+		if (bosses.atEnd !== bosses.lines) errors.push('mark all bosses beaten moved a slider');
+		await page.click('#progress-body .pg-reset[data-clear]');
+		await waitForBadge('New game');
+		const reset = await state();
+		if (reset.atEnd !== 0 || reset.beaten !== 0 || /change/.test(reset.changes) && !/No changes/.test(reset.changes)) errors.push(`Clear changes did not undo the marks: ${JSON.stringify(reset)}`);
+		if (!(await page.$('#progress-body .pg-reset[data-clear].disabled'))) errors.push('Clear changes is not disabled with no changes');
+		await page.mouse.click(5, 5);
+		await page.waitForFunction(() => document.querySelector('#popup-progress').parentNode.style.opacity === '0', null, { timeout: 15000 });
+	} catch (e) {
+		errors.push(`mark buttons: ${e.message.split('\n')[0]}`);
+	}
+	return errors;
+}
+
+/**
+ * What the Your progress popup says, on 3C: no quest name with the game's teaser ellipsis ("Once Upon a ..." is part 1 of
+ * Once Upon a Forest), unlocks as "Unlocks <b>quest</b> (dungeon)", the NPC grid with every dungeon in the game's rows
+ * and "← here" on 3C, and where the game shows the items, buildings, and counts.
+ */
+async function progressTextErrors(page) {
+	const shown = await page.evaluate(() => {
+		const body = document.querySelector('#progress-body');
+		const unlock = [...body.querySelectorAll('.pg-effects li')].find((li) => li.textContent.includes('Unlocks Magic Beans (4A)'));
+		const rows = [...body.querySelectorAll('.pg-picks .pg-pick-row')];
+		const here = body.querySelectorAll('.pg-pick.pg-cur');
+		const marker = here[0]?.querySelector('.pg-here');
+		return {
+			ellipsis: (body.textContent.match(/[^.\s]*\s?(\.\.\.|…)/g) || []).slice(0, 3),
+			unlockBold: unlock ? [...unlock.querySelectorAll('b')].map((b) => b.textContent) : null,
+			rows: rows.map((r) => [...r.querySelectorAll('.pg-pick-head b')].map((b) => b.textContent).join(' ')),
+			here: [here.length, here[0]?.querySelector('.pg-pick-head b')?.textContent, marker?.textContent, marker?.getAttribute('aria-label'), here[0]?.getAttribute('aria-current')],
+			inGame: [...body.querySelectorAll('.pg-help')].filter((h) => h.textContent.startsWith('In the game:')).length,
+			heading: [...body.querySelectorAll('.content-header-2')].some((h) => h.textContent === 'Items, buildings, and counts'),
+		};
+	});
+	const errors = [];
+	const ROWS = ['EA EB EC ED', 'F1 F2 F3 F4', '1A 1B 1C', '2A 2B 2C', '3A 3B 3C', '4A 4B 4C', '5A 5B 5C', '6A 6B 6C 6D'];
+	if (shown.ellipsis.length) errors.push(`progress popup shows an ellipsis: ${shown.ellipsis.join(' | ')}`);
+	if (JSON.stringify(shown.unlockBold) !== '["Magic Beans"]') errors.push(`"Unlocks Magic Beans (4A)" without the name in bold: ${JSON.stringify(shown.unlockBold)}`);
+	if (shown.rows.join(' / ') !== ROWS.join(' / ')) errors.push(`quest NPC grid rows: ${shown.rows.join(' / ')}`);
+	if (shown.here.join() !== '1,3C,← here,this dungeon, the one on the map,location') errors.push(`quest NPC grid "here" mark: ${shown.here.join()}`);
+	if (shown.inGame !== 3 || !shown.heading) errors.push(`items, buildings, and counts: ${shown.inGame} "In the game:" notes, heading ${shown.heading}`);
+	return errors;
 }
 
 function fail(message) {
