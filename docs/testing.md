@@ -58,6 +58,14 @@ tomb) in each of the four themes, in headless Chromium. On every page:
 - on 3C-172582050, the Progress popup shows no quest name with an ellipsis, unlocks as "Unlocks **Magic Beans** (4A)", the quest NPC grid in the game's rows with "← here" on 3C, and where the game shows items, buildings, and counts; its mark buttons move every questline slider to its end, tick every boss (by keyboard), and turn the map's badge to Custom progress; Clear changes puts the new game back;
 - nothing raises a page error or logs a console error.
 
+Then it loads one dungeon on an emulated phone (390 × 844, touch) and checks that each tab shows its panel only (also
+by arrow keys, and after a reload), that the page itself doesn't scroll, that a tap on a creature selects it and shows
+the Info tab, and that a pan, a pinch and the finger left down after a pinch move and zoom the map, by real touch
+events. It also taps a creature, a chest, a door and a floor tile with a finger (and a pen): the mouse's tooltip must
+come up at once above the touch inside the map and stay after the finger lifts. It must stay with its cell when the map
+is dragged or pinched (to within 2 px), wait while the cell is off the map, keep its side in a slow drag, and be taken
+away only by the next touch, a cancelled touch, a turned phone, a tab or key press and a hidden tab.
+
 It also checks the page with no dungeon and the importing of saves:
 
 - a bare page load, in each theme, says "No Dungeon Loaded" over a map darker than one with a dungeon, with Selected,
@@ -118,7 +126,8 @@ solver.
 There's no browser test suite. For UI changes:
 
 1. `npm run serve`, then open e.g. `http://127.0.0.1:8000/#3C-172582050` (without the `#…` the page shows "No Dungeon Loaded").
-2. Check all four themes (Settings → Change Theme; Light is the default) and a narrow window (about 400 px).
+2. Check all four themes (Settings → Change Theme; Light is the default) and a phone: the browser's device toolbar
+   (DevTools), standing up and on its side, which also emulates touch.
 3. The browser console should show no errors. `window.nkd` exposes the view and state for poking at things.
 4. For sprites, `tools/sprite-gallery.html?theme=dark` shows every sprite.
 5. The Screenshots comment on the PR shows the fixed views before and after ([below](#screenshots)). Add images of

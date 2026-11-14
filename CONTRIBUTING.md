@@ -47,7 +47,7 @@ Use the "Dungeon mismatch" issue template. Include:
 - Add or update a test with most changes. A new standalone suite in `test/` runs in CI by itself once its header has
   the `// Standalone suite:` line ([docs/testing.md](docs/testing.md#standalone)).
 - PRs with no activity for 30 days are closed, and their branches deleted.
-- For UI changes, check all four themes and a narrow window. The Screenshots bot comments on every PR with before
+- For UI changes, check all four themes and a phone (the browser's device toolbar). The Screenshots bot comments on every PR with before
   and after of the main views; add images of anything else to the description.
 - For solver changes, include `node tools/solve-eval.mjs --set=tiers` totals before and after, if you can run it.
 - Title and description follow [docs/pr_guidelines.md](docs/pr_guidelines.md): `[Area] Qualifier: Title Case

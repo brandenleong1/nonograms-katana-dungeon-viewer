@@ -1097,7 +1097,7 @@ export class SolvePanel {
 			<div class="small muted" id="pl-prev"></div>
 			<div class="pools" id="pl-pools"></div>
 			<div class="pl-foes" id="pl-foes"></div>
-			<div class="small muted">Keys: ← → step · Page Up / Page Down fight · Home / End · Space play</div>
+			<div class="small muted pl-keys">Keys: ← → step · Page Up / Page Down fight · Home / End · Space play</div>
 			${this.result.framesMatch === false ? '<div class="solve-note warn">This replay ends elsewhere than the solver\'s run (for example a top-up it did not record in the script): positions late in the script may be off.</div>' : ''}`;
 		// stopPropagation: onKey, on the document, must not act on the same key again
 		const bindBtn = (id, fn) => { const b = $(id, box); b.onclick = fn; b.onkeydown = (e) => { if (isActivateKey(e)) { e.preventDefault(); e.stopPropagation(); fn(); } }; };

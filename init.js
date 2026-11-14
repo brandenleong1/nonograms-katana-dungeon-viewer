@@ -17,6 +17,10 @@ async function init() {
 
 	document.querySelector('#help').onclick = () => {Popup.popup(document.querySelector('#popup-help'));};
 	document.querySelector('#settings').onclick = () => {Popup.popup(document.querySelector('#popup-settings'));};
+	// phones show popups full screen, with no backdrop around them to tap: a click on the backdrop is what closes one
+	for (const button of document.querySelectorAll('.popup-close')) {
+		button.onclick = () => button.closest('.popup-bounding').click();
+	}
 
 	window.scrollTo({left: 0});
 }
