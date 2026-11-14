@@ -70,6 +70,25 @@ export class IsoView {
 		this.fit();
 	}
 
+	/** Show no dungeon: a blank canvas and no selection, route or solver overlay (the page says "No Dungeon Loaded"). */
+	clearLevel() {
+		this.level = null;
+		this.info = null;
+		this.walls = null;
+		this.objAt = new Map();
+		this.critAt = new Map();
+		this.selected = null;
+		this.highlights = [];
+		this.links = [];
+		this.route = null;
+		this.routeLeg = null;
+		this.puzzle = null;
+		this.solve = emptySolve();
+		if (this.hover) this.onHover(null);
+		this.hover = null;
+		this.redraw();
+	}
+
 	setLayers(layers) { this.layers = new Set([...layers, 'always']); this.redraw(); }
 	setTheme(theme) {
 		this.theme = theme === 'light' ? 'light' : 'dark';
