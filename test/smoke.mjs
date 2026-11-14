@@ -63,6 +63,8 @@ try {
 	}
 	failures += await checkConfirmPopup(browser, base);
 	checked++;
+	failures += await checkScriptPlayer(browser, base);
+	checked++;
 	if (haveSavedDungeonFiles()) {
 		failures += await checkImportingSaves(browser, base);
 		checked++;
@@ -403,6 +405,43 @@ async function importedFacts(page) {
 			targetsSave: /from your save/.test(target),
 		};
 	});
+}
+
+/**
+ * The exact-mode script player's Play / Pause button takes a press that lasts across a step: the player redraws every
+ * 450 ms while playing, and a press must not be lost when that happens (it used to swap the button's icon each step).
+ */
+async function checkScriptPlayer(browser, base) {
+	const { context, page, errors } = await openPage(browser, base, 0);
+	const playing = () => page.evaluate(() => !!window.nkd.solve.playing);
+	try {
+		await page.goto(`${base}/index.html#1A-1429008869`);   // 12 fights: quick to solve
+		await waitForPage(page);
+		await page.waitForFunction(() => window.nkd.state.level, null, { timeout: 60000 });
+		await page.click('#solve-controls .seg-btn[data-k="mode"][data-v="exact"]');
+		await page.click('#solve-controls .seg-btn[data-k="heroSrc"][data-v="manual"]');
+		await page.click('#solve-run');
+		await page.waitForFunction(() => window.nkd.solve.result && !window.nkd.solve.running && document.querySelector('#pl-play'), null, { timeout: 300000 });
+		const button = await page.locator('#pl-play').boundingBox();
+		const press = async (ms) => {
+			await page.mouse.move(button.x + button.width / 2, button.y + button.height / 2);
+			await page.mouse.down();
+			await page.waitForTimeout(ms);
+			await page.mouse.up();
+			await page.waitForTimeout(100);
+		};
+		for (let round = 0; round < 3; round++) {
+			await press(60);
+			if (!await playing()) { errors.push(`round ${round + 1}: Play did not start the script`); break; }
+			await press(600);   // longer than a step
+			if (await playing()) { errors.push(`round ${round + 1}: a press held across a step did not pause`); break; }
+		}
+	} catch (e) {
+		errors.push(e.message.split('\n')[0]);
+	} finally {
+		await context.close();
+	}
+	return report('script player', errors);
 }
 
 /** Print a failure and return 1, or return 0. */

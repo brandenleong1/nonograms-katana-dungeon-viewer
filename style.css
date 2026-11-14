@@ -301,6 +301,7 @@ body::after {
 
 .view-btn svg {
 	display: block;
+	pointer-events: none;   /* a press always lands on the button, even while the icon is swapped */
 }
 
 /* ---- Your hero ---------------------------------------------------------------------------- */
