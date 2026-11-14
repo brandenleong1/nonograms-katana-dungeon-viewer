@@ -404,10 +404,14 @@ export class IsoView {
 		sprite.variant = facing;
 	}
 
-	/** door leaves follow their wall (walls left/right in x: the leaf spans the x axis); fountain 58 restores MP */
+	/**
+	 * door leaves follow their wall (walls left/right in x: the leaf spans the x axis); fountain 58 restores MP;
+	 * breakables are drawn by id (a barrel, a crate, a vase...)
+	 */
 	_objectVariant(o, kind) {
 		if (isDoorKind(kind)) return isWallTile(this._cellA(o.x - 1, o.y)) || isWallTile(this._cellA(o.x + 1, o.y)) ? 'x' : 'y';
 		if (kind === 'fountain' && o.id === 58) return 'mp';
+		if (kind === 'breakable') return String(o.id);
 		return '';
 	}
 

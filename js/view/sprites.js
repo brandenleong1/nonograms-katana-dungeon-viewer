@@ -9,6 +9,7 @@
 
 import { RANK_COLORS } from './catalog.js';
 import { hasCreature, paintCreature } from './creatures.js';
+import { hasObject, paintObject } from './objects.js';
 
 const cache = new Map();
 const CACHE_MAX = 600;
@@ -332,7 +333,9 @@ const PAINTERS = {
 			g.beginPath(); g.moveTo(...f(-0.2, 1)); g.lineTo(...f(0.2, 12)); g.moveTo(...f(0.2, 1)); g.lineTo(...f(-0.2, 12)); g.stroke();
 		}
 	},
+	// breakables with a drawing (js/view/objects.js, variant = object id) are drawn as themselves, the rest as a pot
 	breakable(g, e) {
+		if (hasObject(e.variant)) return paintObject(g, e, e.variant);
 		const { u, lw } = e;
 		shadow(g, e, 9, 4.5);
 		const c = '#b8754a';

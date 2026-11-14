@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- Dev tool: every creature with a drawing (js/view/creatures.js) on a floor tile, at map size and small, by role;
-     the people (NPCs) on their own rows.
+     the people (NPCs) and the breakable objects (js/view/objects.js) on their own rows.
      http://127.0.0.1:8765/tools/creature-gallery.html?theme=dark -->
 <html><head><meta charset="utf-8"><title>Creature gallery</title>
 <style>body{margin:0;background:#16161a;color:#ddd;font:12px system-ui}body.light{background:#ece9e2;color:#222}canvas{display:block}</style></head>
@@ -89,6 +89,14 @@ const npcs = [
 	[434, 'shapeshifter', 'Shapeshifter'], [401, 'shapeshifter', 'fake merchant'],
 	[999, 'npc', 'no drawing'], [999, 'shapeshifter', 'no drawing'],
 ];
+// the breakable objects (by object id; names: data/catalog.json), then the pot for one without a drawing
+const breakables = [
+	[3, 'breakable', 'Big barrel'], [4, 'breakable', 'Big crate'], [12, 'breakable', 'Three barrels'],
+	[13, 'breakable', 'Stacked wooden crates'], [20, 'breakable', 'Pottery jars'], [26, 'breakable', 'Big vase'],
+	[104, 'breakable', 'Egyptian basket'], [105, 'breakable', 'Egyptian crate'], [106, 'breakable', 'Egyptian vase'],
+	[107, 'breakable', 'Woven baskets'], [108, 'breakable', 'Stacked crates'], [109, 'breakable', 'Pottery jars'],
+	[121, 'breakable', 'Canopic jars'], [999, 'breakable', 'no drawing'],
+];
 const dpr = window.devicePixelRatio || 1;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const hw = +(new URLSearchParams(location.search).get('hw') || 50);
@@ -96,7 +104,7 @@ const cols = 10, cell = hw * 3, rowH = hw * 3.5;
 // each list starts on a new row
 const placed = [];
 let row = 0;
-for (const list of [entries, npcs]) {
+for (const list of [entries, npcs, breakables]) {
 	list.forEach((entry, i) => placed.push([entry, i % cols, row + ((i / cols) | 0)]));
 	row += Math.ceil(list.length / cols);
 }

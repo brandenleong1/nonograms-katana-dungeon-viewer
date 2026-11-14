@@ -7,6 +7,7 @@
 //
 //   hasCreature(species)                        -> true when there is a drawing
 //   paintCreature(g, env, species, scale = 1)   -> draw it (env as in sprites.js: { u, lw })
+//   pen(g, u, lw), shade(color, t)              -> the drawing primitives, shared with js/view/objects.js
 
 /** species drawn the same as another (one picture in the game) */
 const SAME_AS = { 276: 210, 277: 212, 278: 234, 279: 236, 285: 224, 267: 268, 280: 265, 281: 266, 282: 244, 283: 246, 270: 255, 271: 255, 272: 256, 385: 351, 386: 352, 382: 354, 383: 354, 392: 359, 395: 359, 391: 370, 372: 371, 384: 375, 388: 378, 389: 394, 390: 394, 397: 258, 349: 293, 338: 337, 339: 337, 347: 348, 343: 258, 344: 260, 345: 243, 350: 319, 387: 314, 627: 609, 628: 609, 649: 622, 643: 624, 648: 625, /* same pictures as drawn ones: quest copies, spawns, mimics */ 227: 226, 273: 222, 274: 222, 284: 262, 346: 258, 411: 255, 412: 258, 413: 268, 417: 328, 418: 329, 432: 268, 433: 255, 439: 255, 443: 223, 453: 224, 454: 215, 455: 258, 456: 262, 457: 239, 458: 222, 459: 255, 460: 255, 463: 243, 464: 243, 530: 201, 531: 201, 532: 201, 533: 201, 534: 201, 535: 201, 393: 214, 396: 214, /* NPCs: quest copies, shapeshifters and the unknown creatures with the same picture */ 406: 402, 410: 402, 415: 414, 416: 414, 421: 420, 423: 422, 424: 422, 427: 426, 430: 404, 434: 420, 435: 419, 436: 429, 437: 426, 438: 414, 440: 428, 441: 431, 442: 401, 447: 446, 448: 428, 449: 445, 450: 420, 451: 419, 452: 429, 461: 414, 462: 428, 536: 444, 537: 414, 644: 641, 645: 641, 646: 640, 647: 640, 650: 639 };
@@ -35,7 +36,7 @@ function hex2rgb(color) {
 	const n = parseInt(color.slice(1), 16);
 	return [n >> 16, (n >> 8) & 255, n & 255];
 }
-function shade(hex, t, a = 1) {
+export function shade(hex, t, a = 1) {
 	const to = t >= 0 ? 255 : 0;
 	const k = Math.abs(t);
 	const v = hex2rgb(hex).map((x) => Math.round(x + (to - x) * k));
@@ -44,7 +45,7 @@ function shade(hex, t, a = 1) {
 const rgba = (hex, a) => `rgba(${hex2rgb(hex)},${a})`;
 
 // ---- the pen: drawing primitives in u ---------------------------------------------------------------------------
-function pen(g, u, lw, flip = false) {
+export function pen(g, u, lw, flip = false) {
 	const X = (v) => v * u;
 	/** a horizontal position: mirrored when the creature is drawn facing the other way */
 	const H = (v) => (flip ? -v : v) * u;
