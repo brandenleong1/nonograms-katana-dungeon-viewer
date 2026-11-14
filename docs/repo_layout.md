@@ -41,10 +41,10 @@ player progress (what changes the map):
 
 | Path | What |
 |---|---|
-| `app.js` | UI glue: label → level → map, layers, selection, objectives, route panel. Exposes `window.nkd` for debugging. |
+| `app.js` | UI glue: label → level → map, layers, selection, objectives, route panel; the "No Dungeon Loaded" view; what an import wipes and shows. Exposes `window.nkd` for debugging. |
 | `labels.js` | Dungeon labels (`3C-172582050`) ↔ dungeon type and seed. |
 | `game-version.js` | The game version line in the Help popup. |
-| `hero.js` | The "Your hero" panel: imports a save, shows heroes, gear, pack and progress. `effectiveProfile()` is what maps and the solver use. |
+| `hero.js` | The "Your hero" panel: imports a save (after the page's confirmation when a dungeon or plan is on screen), shows heroes, gear, pack and progress. `effectiveProfile()` is what maps and the solver use. |
 
 ### `js/gen/`: dungeon generator (bit-exact port)
 
@@ -91,7 +91,7 @@ Rules and file ownership are in [js/combat/PORTING.md](../js/combat/PORTING.md);
 | `js/plan/planner.js` | Route planner: weighted shortest paths over the game's movement rules, gates, levers and keys, teleports, then the visiting order (exact up to 16 stops). |
 | `js/solve/` | Solver ([README](../js/solve/README.md)): `robust.js` (Monte Carlo over unknown dice), `exact.js` (search with known dice), `sim.js` (dungeon walk on the engine), `policies.js` and `kite.js` (tactics), `cost.js` (objective), `plan.js` (output for the UI), `worker.js` / `pool.js` (workers). |
 | `js/view/` | Map: `iso.js` (renderer, palettes, solver overlay), `walls.js` (the shape of each wall cell: a centre bar with arms to the walls it joins, the game's rule), `sprites.js` (procedural sprites), `catalog.js` (what each id is: kinds and names, read from `data/catalog.json`), `links.js` (ladder ↔ hatch and similar pairs). |
-| `js/ui/` | Solver column and progress editor: `solve-panel.js`, `solve-client.js` → `solve-host.js` (worker) → `solve-host-main.js`, pool worker adapters, `budgets.js` (presets), `words.js` (plain-language text), `occupant.js` (what the Selected panel and the map tooltip say about a creature or object), `progress-panel.js` (the Your progress editor) and `questlines.js` (its questline sliders: quests grouped by name, and what each part changes). |
+| `js/ui/` | Solver column and progress editor: `solve-panel.js`, `solve-client.js` → `solve-host.js` (worker) → `solve-host-main.js`, pool worker adapters, `budgets.js` (presets), `confirm-popup.js` (the yes/no popup an import asks first), `words.js` (plain-language text), `occupant.js` (what the Selected panel and the map tooltip say about a creature or object), `progress-panel.js` (the Your progress editor) and `questlines.js` (its questline sliders: quests grouped by name, and what each part changes). |
 
 ## `test/` and `tools/`
 
