@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<!-- Dev tool: every creature with a drawing (js/view/creatures.js) on a floor tile, at map size and small, by role.
+     http://127.0.0.1:8765/tools/creature-gallery.html?theme=dark -->
+<html><head><meta charset="utf-8"><title>Creature gallery</title>
+<style>body{margin:0;background:#16161a;color:#ddd;font:12px system-ui}body.light{background:#ece9e2;color:#222}canvas{display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+import { drawSprite } from '../js/view/sprites.js';
+const theme = new URLSearchParams(location.search).get('theme') || 'dark';
+if (theme === 'light') document.body.classList.add('light');
+// species, the role it is drawn in, and a label (names: the Nonograms Katana wiki's)
+const entries = [
+	[200, 'monster', 'Giant spider'], [201, 'monster', 'Scorpion'], [202, 'monster', 'Cobra'], [203, 'monster', 'Mantis'],
+	[204, 'monster', 'Centipede'], [205, 'monster', 'Skeleton pikeman'], [206, 'monster', 'Ronin'], [207, 'monster', 'Blue monk'],
+	[208, 'monster', 'Ghoul ninja'], [209, 'monster', 'Banshee'], [210, 'monster', 'Cult priestess'], [211, 'monster', 'Samurai beast'],
+	[212, 'monster', 'Troll'], [215, 'monster', 'Snotling warlord'], [216, 'monster', 'Green slime'], [217, 'monster', 'Nosferatu'],
+	[218, 'monster', 'Hooded cultist'], [219, 'monster', 'Butcher'], [220, 'monster', 'Winged imp'], [221, 'monster', 'Treenemy'],
+	[222, 'monster', 'Gnoll shaman'], [223, 'monster', 'Skeleton pirate'], [224, 'monster', 'Mushroomonster'], [268, 'monster', 'Bone Dragon'],
+	[228, 'monster', 'Goblin'], [229, 'monster', 'Harpy'], [230, 'monster', 'Kobold'], [231, 'monster', 'Croc zealot'],
+	[232, 'monster', 'Boar shieldman'], [233, 'monster', 'Gnoll axeman'], [234, 'monster', 'Minotaur'], [235, 'monster', 'Centauride'],
+	[236, 'monster', 'Fanged beast'], [285, 'monster', 'Mushroomonster'],
+	[225, 'monster', 'Spikeworm'], [226, 'monster', 'Knight of doom'], [258, 'monster', 'Skeleton shieldman'], [259, 'monster', 'Orc shieldman'],
+	[260, 'monster', 'Orc footman'], [261, 'monster', 'Orc shaman'], [262, 'monster', 'Succubus'], [263, 'monster', 'Incubus'],
+	[264, 'monster', 'Orc champion'], [266, 'monster', 'Orc warlord'], [280, 'monster', 'Orc chieftain'],
+	[238, 'monster', 'Skelebot'], [239, 'monster', 'Undead pharaoh'], [240, 'monster', 'Ballbot'], [241, 'monster', 'Chigger'],
+	[242, 'monster', 'Shaman bot'], [243, 'monster', 'Octo-mouth'], [244, 'monster', 'Leviathan'], [245, 'monster', "The eye's mind"],
+	[246, 'monster', 'Mynd Flyer'],
+	[248, 'monster', 'Imp warrior'], [249, 'monster', 'Green flying demon'], [250, 'monster', 'Beholder'], [251, 'monster', 'Demoness'],
+	[252, 'monster', 'Dethclow'], [253, 'monster', 'Demon shieldman'], [254, 'monster', 'Lava golem'], [255, 'monster', 'Demon kingpin'],
+	[271, 'monster', 'Demon mobster'], [256, 'monster', 'Demon lord'],
+	// the forest, the caves and the tombs
+	[287, 'monster', 'Giantoad'], [288, 'monster', 'Flowerbeast'], [289, 'monster', 'Funguy'], [290, 'monster', 'Mauve widow'],
+	[291, 'monster', 'Treenekid'], [292, 'monster', 'Armogreeno'], [293, 'monster', 'Garganbee'], [294, 'monster', 'Serpent'],
+	[295, 'monster', 'Wildboar'], [296, 'monster', 'Grandwolf'], [297, 'monster', 'Grizzly'], [299, 'monster', 'Toademon'],
+	[336, 'monster', 'Zomphibian'], [337, 'monster', 'Feral gnoll'], [340, 'monster', 'Cyclops'], [342, 'monster', 'Furballmeanie'],
+	[348, 'monster', 'Gnollferatu'], [300, 'monster', 'Snakeman'], [301, 'monster', 'Lizard shieldman'],
+	[302, 'monster', 'Crow shieldman'], [303, 'monster', 'Kobold assassin'], [304, 'monster', 'Kobold ranger'],
+	[305, 'monster', 'Boar axeman'], [306, 'monster', 'Minitaur'], [307, 'monster', 'Dusk gnoll'], [308, 'monster', 'Centaurelk'],
+	[309, 'monster', 'Gnoll zealot'], [312, 'monster', 'Snotling footman'], [313, 'monster', 'Cerberus'],
+	[314, 'monster', 'Salamander'], [315, 'monster', 'Stone troll'], [316, 'monster', 'Snotling ranger'],
+	[317, 'monster', 'Orc swordsman'], [318, 'monster', 'Orc ranger'], [319, 'monster', 'Snotling shaman'],
+	[321, 'monster', 'Skeleton ranger'], [322, 'monster', 'Skeletal grandwolf'], [324, 'monster', 'Plaguebeak'],
+	[325, 'monster', 'Vampiress'], [326, 'monster', 'Efreet reaper'], [327, 'monster', 'Emerelf assassin'],
+	[328, 'monster', 'Emerelf guard'], [329, 'monster', 'Emerelf ranger'], [330, 'monster', 'Emerelf sorcerer'],
+	[331, 'monster', 'Emerelf nymph'], [332, 'monster', 'Wood golem'], [333, 'monster', 'Lychen golem'],
+	[351, 'monster', 'Giant fly'], [352, 'monster', 'Shark attack'], [353, 'monster', 'Demogorgon'], [354, 'monster', 'Death crow'],
+	[355, 'monster', 'Brown bomber'], [356, 'monster', 'Armored beetle'], [357, 'monster', 'Purple eye spider'],
+	[358, 'monster', 'Desert spider'], [359, 'monster', 'Green squid'], [360, 'monster', 'Faceless assassin'],
+	[361, 'monster', 'Capricorn archer'], [362, 'monster', 'Rail troll'], [363, 'monster', 'Zombie pharaoh'],
+	[364, 'monster', 'Fallen angel'], [365, 'monster', 'Lava golem'], [366, 'monster', 'Wild shaman'],
+	[367, 'monster', 'Purple round mage'], [368, 'monster', 'Pot of greed'], [369, 'monster', 'Walking pot of greed'],
+	[370, 'monster', 'Koh'], [372, 'monster', 'Hooded occultist'], [373, 'monster', 'Purple masked executioner'],
+	[374, 'monster', 'Alien tentacle'], [375, 'monster', 'Formless deamon'], [376, 'monster', 'Owl-lion'],
+	[377, 'monster', 'Hungry ginny'], [379, 'monster', 'Anchor golem'], [380, 'monster', 'Diamond golem'],
+	[388, 'monster', 'Cannon squid'], [398, 'monster', 'Scrap shaman'],
+	[600, 'monster', 'Golden beetle'], [601, 'monster', 'Egypt spider'], [602, 'monster', 'Vase spider'],
+	[603, 'monster', 'Desert scorpion'], [604, 'monster', 'Green cobra'], [605, 'monster', 'Pharaoh mummy'],
+	[606, 'monster', 'Cat assassin'], [607, 'monster', 'Blinding archer'], [608, 'monster', 'Hippopotamus warrior'],
+	[609, 'monster', 'Winged sphinx'], [610, 'monster', 'Crocodile priest'], [611, 'monster', 'Lioness warrior'],
+	[612, 'monster', 'Beetle guardian'], [613, 'monster', 'Pharaoh scorpion'], [614, 'monster', 'Ammit'],
+	[615, 'monster', 'Burning obelisk'], [616, 'monster', 'Dancing skeleton'], [617, 'monster', 'Skeletal pharaoh'],
+	[618, 'monster', 'Flying mummy'], [619, 'monster', 'Anubite'], [622, 'monster', 'Demoralization snake'],
+	[623, 'monster', 'Serpent sorceress'],
+	// spawned during play: the barrel, vase and chest mimics, and the Minidimmon
+	[275, 'monster', 'Kraken'], [214, 'monster', 'Fire beetle'], [286, 'monster', 'Mimikchest'], [341, 'monster', 'Minidimmon'],
+	[276, 'boss', '1A boss'], [277, 'boss', '1B boss'], [213, 'boss', '1C boss'], [278, 'boss', '2A boss'], [279, 'boss', '2B boss'],
+	[237, 'boss', '2C boss'],
+	[265, 'boss', '3A boss'], [281, 'boss', '3B boss'], [267, 'boss', '3C boss'], [282, 'boss', '4A boss'], [283, 'boss', '4B boss'],
+	[247, 'boss', '4C boss'], [270, 'boss', '5A boss'], [272, 'boss', '5B boss'], [257, 'boss', '5C boss'],
+	[298, 'boss', 'F1 boss'], [311, 'boss', 'F2 boss'], [323, 'boss', 'F3 boss'], [335, 'boss', 'F4 boss'],
+	[310, 'miniboss', 'F2 mini-boss'], [320, 'miniboss', 'F3 mini-boss'], [334, 'miniboss', 'F4 mini-boss'],
+	[378, 'boss', '6A boss'], [371, 'boss', '6B boss'], [381, 'boss', '6C boss'], [394, 'boss', '6D boss'],
+	[620, 'boss', 'EA boss'], [624, 'boss', 'EB boss'], [625, 'boss', 'EC boss'], [626, 'boss', 'ED boss'],
+	[642, 'unique', 'Merytsah'], [621, 'unique', 'Thoth'],
+	[207, 'goldmonster', 'gold (key)'],
+	[211, 'unique', 'unique'], [999, 'monster', 'no drawing'],
+];
+const dpr = window.devicePixelRatio || 1;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const hw = +(new URLSearchParams(location.search).get('hw') || 50);
+const cols = 10, cell = hw * 3, rowH = hw * 3.5, rows = Math.ceil(entries.length / cols);
+const W = cols * cell, H = rows * rowH + 10;
+cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+const floor = theme === 'light' ? '#e2dbcf' : '#7a7166';
+const tile = (cx, cy, hw) => { ctx.fillStyle = floor; ctx.beginPath(); ctx.moveTo(cx, cy - hw / 2); ctx.lineTo(cx + hw, cy); ctx.lineTo(cx, cy + hw / 2); ctx.lineTo(cx - hw, cy); ctx.closePath(); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.stroke(); };
+entries.forEach(([id, kind, label], i) => {
+	const col = i % cols, row = (i / cols) | 0;
+	const cx = col * cell + cell / 2 - hw * 0.24, cy = row * rowH + hw * 2.4;
+	tile(cx, cy, hw); drawSprite(ctx, kind, cx, cy, hw, { theme, dpr, variant: String(id) });
+	tile(cx + hw, cy + hw * 0.56, 18); drawSprite(ctx, kind, cx + hw, cy + hw * 0.56, 18, { theme, dpr, variant: String(id) });
+	ctx.fillStyle = theme === 'light' ? '#222' : '#ccc'; ctx.fillText(`${id} ${label}`, col * cell + 8, row * rowH + rowH - 7);
+});
+document.title = 'ready';
+</script></body></html>
