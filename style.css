@@ -273,11 +273,19 @@ body::after {
 #effort-select {
 	flex: 1 1 auto;
 	min-width: 0;
+}
+
+#effort-select, #loot-sort {
 	padding: 4px 6px;
 	background-color: rgba(0, 0, 0, 0);
 	border: none;
 	font-family: inherit;
 	font-size: 100%;
+}
+
+#loot-sort {
+	min-width: 250px;
+	padding: 6px 10px;
 }
 
 .view-row {
@@ -312,8 +320,65 @@ body::after {
 }
 
 .profile-row {
-	column-gap: 12px;
+	column-gap: 8px;
 	align-items: center;
+}
+
+#loot-open-btn, #loot-clear {
+	font: inherit;
+	border: 0;
+	background-color: transparent;
+}
+
+#loot-open-btn:focus-visible, #loot-clear:focus-visible, #loot-sort:focus-visible {
+	outline: 2px solid var(--color_link);
+	outline-offset: 3px;
+}
+
+#popup-loot {
+	width: min(620px, calc(100vw - 64px));
+	align-items: stretch;
+	row-gap: 14px;
+}
+
+.loot-toolbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	align-items: center;
+	justify-content: space-between;
+}
+
+#loot-list {
+	display: flex;
+	flex-direction: column;
+	max-height: 55vh;
+	overflow-y: auto;
+	gap: 4px;
+}
+
+.loot-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 4px;
+	cursor: pointer;
+}
+
+.layer-row input, .loot-row input {
+	flex: 0 0 auto;
+	width: 18px;
+	height: 18px;
+	accent-color: var(--color_link);
+}
+
+.loot-row small {
+	display: block;
+	margin-top: 4px;
+}
+
+#loot-summary, .loot-row, #popup-loot .privacy-note {
+	white-space: normal;
 }
 
 .profile-row .button-positive-2 {

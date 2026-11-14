@@ -42,6 +42,22 @@ export function occupantName(cell, level) {
 	return objectName(cell.object, family(level.type)) ?? KINDS[objectKindOf(cell.object)].label;
 }
 
+/** Obtainable item ids at a placed occupant, using the same rules as its details. Never rolls dice. */
+export function occupantLoot(rec, creature, ctx) {
+	if (rec.e) return [];
+	const def = (creature ? zw.R : zw.Q)?.get(rec.id);
+	if (!creature) return [carried(rec, def)].filter((id) => id > 0);
+	if (def?.M0) return [];
+	const kind = critterKindOf(rec);
+	if (rec.h === 1000) {
+		const monster = zw.R?.get(DISGUISED[family(ctx.level.type)] ?? DISGUISED_ELSEWHERE);
+		return monster ? dropsOf({ g: carried(rec, def) || -1 }, monster, ctx) : [];
+	}
+	if (FIGHTERS.has(kind) && kind !== 'familiar' && def) return dropsOf(rec, def, ctx);
+	if ([1001, 1003, 1004, 1007, 1008].includes(rec.h)) return [carried(rec, def)].filter((id) => id > 0);
+	return [];
+}
+
 // ---- creatures ---------------------------------------------------------------------------------------------------
 
 function critterHtml(cr, ctx) {
