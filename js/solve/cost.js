@@ -1,8 +1,11 @@
-// The objective: fewest items used, then least MP, the hero alive. Lexicographic.
+// The objective, lexicographic: the hero alive, then no objective left behind, then fewest items used, then least MP.
 //
 // Model (see README.md, "Cost model"):
 //  - Death is infinitely bad: a policy must keep P(death) <= maxDeath (1%) on its samples; among the ones that do not,
 //    the lowest P(death) wins.
+//  - Objectives left behind: the ones the route walker gives up during a play-out (sim.js Walker.abandoned: stops it
+//    can no longer reach, e.g. past foes a tactic ran away from). They rank before items, so no tactic can look cheap
+//    by skipping an objective and the fights it would take.
 //  - Items: consumables used (sim.js Ledger: per-step pack decreases; the Mechanical spider only when it was lost,
 //    ambrosia when it revived us). MP: net mental power spent (fountains count back).
 //  - Within one encounter the immediate (items, MP) do not see what the fight leaves behind, so a greedy per-encounter
@@ -18,11 +21,11 @@
 //    A deficit is only priced up to what the rest of the dungeon needs ("need" levels): HP the next fights are expected
 //    to cost (scouted: the largest expected HP loss of a later encounter, x1.25), the EP and MP still to be spent on the
 //    route. At the last encounter every need is 0: leftovers are worth nothing, as in the game.
-//  - Ties after (items, MP) are broken by the shadow-priced score, then HP left, then fewer inputs.
+//  - Ties after (objectives, items, MP) are broken by the shadow-priced score, then HP left, then fewer inputs.
 import { learned, SKILL, AMBROSIA } from './sim.js';
 
-/** tolerance in mean items / MP under which two policies count as tied on that criterion */
-export const TOL = { items: 0.02, mp: 0.1 };
+/** tolerance in mean objectives abandoned / items / MP under which two policies count as tied on that criterion */
+export const TOL = { abandoned: 0.02, items: 0.02, mp: 0.1 };
 
 /**
  * shadow prices for a hero: per point of HP below half, HP above half, EP, MP below reserve, each as [items, mp].
@@ -73,32 +76,37 @@ export function shadow(pools, need, prices) {
 }
 
 /**
- * Score of one outcome { dead, end, items, mpSpent, hp, hpM, ep, mpLeft, inputs, looked } (robust.js outcomeOf):
- * immediate (items, MP) + the shadow of the end pools. Returns { dead, late, items, mp, s: [items + shadow, mp +
- * shadow], hp, inputs }. A stuck encounter (input cap, no progress) counts as a death. `late` is the number of
+ * Score of one outcome { dead, end, abandoned, items, mpSpent, hp, hpM, ep, mpLeft, inputs, looked } (robust.js outcomeOf):
+ * the objectives it gave up, immediate (items, MP) + the shadow of the end pools. Returns { dead, late, abandoned,
+ * items, mp, s: [items + shadow, mp + shadow], hp, inputs }. A stuck encounter (input cap, no progress) counts as a
+ * death. `late` is the number of
  * look-ahead fights the hero got through before dying (0: it died in the fight itself); compareExact orders deaths by it.
  */
 export function scoreOutcome(o, need, prices) {
-	if (o.dead || o.end === 'stuck' || o.end === 'error') return { dead: true, late: o.looked || 0, items: o.items, mp: o.mpSpent, s: [Infinity, Infinity], hp: o.hp, inputs: o.inputs };
+	const abandoned = o.abandoned || 0;
+	if (o.dead || o.end === 'stuck' || o.end === 'error') return { dead: true, abandoned, late: o.looked || 0, items: o.items, mp: o.mpSpent, s: [Infinity, Infinity], hp: o.hp, inputs: o.inputs };
 	const sh = shadow({ hp: o.hp, hpM: o.hpM, ep: o.ep, mp: o.mpLeft }, need, prices);
-	return { dead: false, items: o.items, mp: o.mpSpent, s: [o.items + sh.items, o.mpSpent + sh.mp], hp: o.hp, inputs: o.inputs };
+	return { dead: false, abandoned, items: o.items, mp: o.mpSpent, s: [o.items + sh.items, o.mpSpent + sh.mp], hp: o.hp, inputs: o.inputs };
 }
 
 /** aggregate outcome scores of one policy over samples */
 export function aggregate(scores) {
 	const n = scores.length;
-	let dead = 0, alive = 0, items = 0, mp = 0, hp = 0, inputs = 0;
+	let dead = 0, alive = 0, items = 0, mp = 0, hp = 0, inputs = 0, abandoned = 0, abandonedSq = 0;
 	let score0 = 0, score1 = 0, score0Sq = 0, score1Sq = 0;   // sums of the shadow-priced scores and of their squares
 	for (const s of scores) {
 		if (s.dead) { dead++; continue; }
 		alive++;
 		items += s.items; mp += s.mp; score0 += s.s[0]; score1 += s.s[1]; hp += s.hp || 0; inputs += s.inputs || 0;
 		score0Sq += s.s[0] * s.s[0]; score1Sq += s.s[1] * s.s[1];
+		abandoned += s.abandoned || 0; abandonedSq += (s.abandoned || 0) ** 2;
 	}
 	const a = Math.max(alive, 1);
-	const mean0 = score0 / a, mean1 = score1 / a;
+	const mean0 = score0 / a, mean1 = score1 / a, meanAbandoned = abandoned / a;
 	return {
 		n, dead, pDeath: n ? dead / n : 0,
+		abandoned: meanAbandoned,            // objectives given up per play-out (alive samples)
+		abandonedSe: Math.sqrt(Math.max(0, abandonedSq / a - meanAbandoned * meanAbandoned) / a),
 		items: items / a, mp: mp / a,        // immediate means (alive samples)
 		score: [mean0, mean1],               // shadow-priced means
 		se: [Math.sqrt(Math.max(0, score0Sq / a - mean0 * mean0) / a), Math.sqrt(Math.max(0, score1Sq / a - mean1 * mean1) / a)],
@@ -108,12 +116,15 @@ export function aggregate(scores) {
 
 /**
  * Lexicographic comparison of two aggregates: feasibility (pDeath <= maxDeath), then lower pDeath if both infeasible,
- * then score items, then score MP (each with tolerance), then HP left, then inputs. < 0: a is better.
+ * then objectives abandoned, then score items, then score MP (each with tolerance), then HP left, then inputs. < 0: a
+ * is better.
  */
 export function compareAgg(a, b, maxDeath = 0.01) {
 	const fa = a.pDeath <= maxDeath, fb = b.pDeath <= maxDeath;
 	if (fa !== fb) return fa ? -1 : 1;
 	if (!fa && a.pDeath !== b.pDeath) return a.pDeath - b.pDeath;
+	const dA = (a.abandoned || 0) - (b.abandoned || 0);
+	if (Math.abs(dA) > TOL.abandoned) return dA;
 	const d0 = a.score[0] - b.score[0];
 	if (Math.abs(d0) > TOL.items) return d0;
 	const d1 = a.score[1] - b.score[1];
@@ -125,7 +136,7 @@ export function compareAgg(a, b, maxDeath = 0.01) {
 
 /**
  * Clearly worse than the best so far (for adaptive pruning): infeasible with confidence (deaths beyond what maxDeath
- * allows at this n even by luck), or its score items above the best's by 3 SE + margin.
+ * allows at this n even by luck), or more objectives abandoned, or its score items above the best's, by 3 SE + margin.
  */
 export function dominated(a, best, maxDeath = 0.01) {
 	if (a === best) return false;
@@ -133,6 +144,7 @@ export function dominated(a, best, maxDeath = 0.01) {
 	const lim = a.n * maxDeath + 2 * Math.sqrt(a.n * maxDeath) + 1;
 	if (a.dead > lim && best.pDeath <= maxDeath) return true;
 	if (best.pDeath > maxDeath) return false;
+	if ((a.abandoned || 0) - (best.abandoned || 0) > 3 * Math.hypot(a.abandonedSe || 0, best.abandonedSe || 0) + 0.05) return true;
 	const se = Math.hypot(a.se[0], best.se[0]);
 	if (a.score[0] - best.score[0] > 3 * se + 0.05) return true;
 	if (Math.abs(a.score[0] - best.score[0]) <= TOL.items && a.score[1] - best.score[1] > 3 * Math.hypot(a.se[1], best.se[1]) + 0.5) return true;
@@ -140,13 +152,15 @@ export function dominated(a, best, maxDeath = 0.01) {
 }
 
 /**
- * compare two (dead, items, mp) totals lexicographically: < 0 when a is better (exact mode). Alive beats any death. Of
- * two deaths the later one is better (more look-ahead fights survived, then more HP at death): a line that dies in the
+ * compare two (dead, abandoned, items, mp) totals lexicographically: < 0 when a is better (exact mode). Alive beats
+ * any death. Of two deaths the later one is better (more look-ahead fights survived, then more HP at death): a line that dies in the
  * look-ahead still got through the fight being decided, which one that dies in it did not.
  */
 export function compareExact(a, b) {
 	if (!!a.dead !== !!b.dead) return a.dead ? 1 : -1;
 	if (a.dead) return ((b.late || 0) - (a.late || 0)) || ((b.hp || 0) - (a.hp || 0));
+	const dA = (a.abandoned || 0) - (b.abandoned || 0);
+	if (dA !== 0) return dA;
 	const d0 = a.s[0] - b.s[0];
 	if (Math.abs(d0) > 1e-9) return d0;
 	const d1 = a.s[1] - b.s[1];

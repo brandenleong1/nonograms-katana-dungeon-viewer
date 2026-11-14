@@ -1,4 +1,4 @@
-// Solve a whole dungeon for the fewest items, then the least MP (js/solve), and print a report.
+// Solve a whole dungeon (js/solve): survive, leave no objective behind, then the fewest items, then the least MP. Prints a report.
 //
 //   node tools/solve.mjs 3C-172582050 [--mode=robust|exact] [--hero=SPEC] [--budget=S] [--N=64] [--workers=N]
 //                        [--xseed=X] [--out=plan.json] [--oracle] [--quick] [--maxDecisions=N] [--strict] [--escalate] [-v]

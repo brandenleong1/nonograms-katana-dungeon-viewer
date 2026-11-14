@@ -26,9 +26,10 @@ You get:
   map at once (status badge: new game / your progress / custom progress) and the solver plans with the same progress.
   They are kept in this browser (localStorage); "Clear changes" drops them (the "Using" choice stays).
 - **Solver** (the fourth column; the last View button hides it): plays the dungeon in the ported combat engine and
-  picks a tactic per fight for the fewest items, then the least mental power, without dying. **Robust** mode works
-  from the label (Monte Carlo over the unknown dice); **Exact** mode needs the dice, from a save exported inside the
-  dungeon (or a made-up `xseed` to experiment), and gives a step-by-step script: ← / → step through it on the map,
+  picks a tactic per fight that, without dying, leaves no objective behind, then uses the fewest items, then the
+  least mental power. **Robust** mode works from the label (Monte Carlo over the unknown dice); **Exact** mode needs
+  the dice, from a save exported inside the dungeon (or a made-up `xseed` to experiment), and gives a step-by-step
+  script: ← / → step through it on the map,
   Page Up / Page Down jump between fights. Use your imported hero or a what-if hero (level, gear, kit, skills). The plan
   shows expected items (and p95), mental power needed against what the hero brings, death risk, the pack, and per
   fight the foes, the tactic in plain words, and every tactic it compared. Solves run in Web Workers.

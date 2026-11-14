@@ -54,7 +54,7 @@ function searchHelp(mode, depth) {
 }
 import { instruction, effects, tacticWords, topUpText, pct, num } from './words.js';
 
-const SOLVER_INTRO = 'The solver plays this dungeon in the game\'s own combat engine and picks, fight by fight, the tactic that uses the fewest items, then the least mental power, without dying.';
+const SOLVER_INTRO = 'The solver plays this dungeon in the game\'s own combat engine and picks, fight by fight, the tactic that, without dying, leaves no objective undone, then uses the fewest items, then the least mental power.';
 const NO_DUNGEON_INTRO = 'No dungeon is shown. Type a label, or import a save made inside a dungeon, and the solver can plan it.';
 const KEY = 'nkd-solve';
 const $ = (s, root = document) => root.querySelector(s);

@@ -65,7 +65,7 @@ export function buildPlan(res, opts = {}) {
 		dungeon: { type: res.problem.type, seed: res.problem.seed, label: opts.label || null, xseed: res.problem.xseed ?? null, at: res.problem.at ?? 'start' },
 		heroSpec: opts.heroSpec || res.problem.hero || null,
 		hero: res.hero,
-		objective: { order: ['survive', 'items', 'mp'], maxDeath: tot.maxDeath ?? 0.01, prices: res.prices },
+		objective: { order: ['survive', 'objectives', 'items', 'mp'], maxDeath: tot.maxDeath ?? 0.01, prices: res.prices },
 		stops, encounters, totals,
 		pack: packOut(res, opts.names || {}).filter((p) => p.bring > 0 || p.mean > 0),
 		perf: { ms: Math.round(res.ms || 0), workers: res.workers || 1, samples: res.N ?? null, search: res.search || null },
@@ -108,11 +108,11 @@ function robustEncounterOut(d, i, si) {
 		hero: heroOut(d.hero),
 		enemies: (d.enemies || []).map(enemyOut), enemySets: d.enemySets,
 		tactic: { name: d.tactic.name, params: d.tactic.params, label: d.tactic.label, description: describeTactic(d.tactic) },
-		expected: { pDeath: r2(st.pDeath), items: r2(st.items), mp: r2(st.mp), score: st.score ? st.score.map(r2) : null, hpLost: st.dist ? r2(st.dist.hpLost.mean) : null, p95: st.dist ? { items: st.dist.items.p95, mp: st.dist.mp.p95, hpLost: st.dist.hpLost.p95 } : null },
+		expected: { pDeath: r2(st.pDeath), abandoned: r2(st.abandoned), items: r2(st.items), mp: r2(st.mp), score: st.score ? st.score.map(r2) : null, hpLost: st.dist ? r2(st.dist.hpLost.mean) : null, p95: st.dist ? { items: st.dist.items.p95, mp: st.dist.mp.p95, hpLost: st.dist.hpLost.p95 } : null },
 		samples: d.samples, evaluations: d.evals, need: d.need, quick: !!d.quick,
 		mpBefore: d.mpBefore ? { mean: r2(d.mpBefore.mean), p05: d.mpBefore.p05, min: d.mpBefore.min } : null,
 		escalated: !!d.escalated, lookahead: lookaheadOut(d.lookahead),
-		candidates: (d.candidates || []).map((c) => ({ label: c.label, n: c.n ?? 0, pDeath: r2(c.pDeath), items: r2(c.items), mp: r2(c.mp), score: c.score ? c.score.map(r2) : null, pruned: !!c.pruned, same: c.same })),
+		candidates: (d.candidates || []).map((c) => ({ label: c.label, n: c.n ?? 0, pDeath: r2(c.pDeath), abandoned: r2(c.abandoned), items: r2(c.items), mp: r2(c.mp), score: c.score ? c.score.map(r2) : null, pruned: !!c.pruned, same: c.same })),
 	};
 }
 
@@ -131,7 +131,7 @@ function exactEncounterOut(e, i, si) {
 		expected: e.cost ? { pDeath: e.cost.dead ? 1 : 0, items: e.cost.items, mp: e.cost.mp, hpLost: e.cost.hpLost } : null,
 		after: e.after ? { hp: e.after.hp, ep: e.after.ep, mp: e.after.mp } : null,
 		searched: e.searched, improved: e.improved,
-		candidates: (e.tactics || []).map((t) => ({ label: t.label, pDeath: t.dead ? 1 : 0, items: t.items, mp: t.mp, hpLeft: t.hp, score: t.score ? t.score.map(r2) : null })),
+		candidates: (e.tactics || []).map((t) => ({ label: t.label, pDeath: t.dead ? 1 : 0, abandoned: t.abandoned ?? 0, items: t.items, mp: t.mp, hpLeft: t.hp, score: t.score ? t.score.map(r2) : null })),
 		script: { from: e.from, to: e.to, inputs: e.inputs },
 	};
 }

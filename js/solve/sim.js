@@ -744,6 +744,30 @@ export class Walker {
 	/** the waypoint being walked to (the last one once the route is done; undefined with no route) */
 	currentWaypoint() { return this.route[Math.min(this.cur, this.route.length - 1)]; }
 
+	/**
+	 * Objectives the walk has given up: stops of legs it failed (failLeg) that are still undone and not on its route
+	 * again (a failed foe stays a stop: planningLevel). A play-out that raises it left an objective behind (cost.js ranks
+	 * that right after survival). Objectives a re-plan leaves out for now (behind a gate not yet open) do not count.
+	 */
+	objectivesGivenUp() {
+		const ahead = this.stopsAhead();
+		let n = 0;
+		for (const o of new Set(this.failed.map((ri) => this.refs[ri]))) if (!ahead.has(o) && isOpenObjective(this.h, o)) n++;
+		return n;
+	}
+
+	/** the objects and critters the rest of the route stops at (none once the walk is over) */
+	stopsAhead() {
+		const ahead = new Set();
+		const w = this.currentWaypoint();
+		if (this.finished || !w) return ahead;
+		for (let li = w.leg; li < this.legs.length; li++) {
+			const rec = this.legs[li].rec;
+			if (rec && rec.ri >= 0) ahead.add(this.refs[rec.ri]);
+		}
+		return ahead;
+	}
+
 	/** give up the current leg and re-plan from here; its stop is not retried unless keepStop */
 	failLeg({ keepStop = false } = {}) {
 		this.stats.skips++;
@@ -1091,6 +1115,13 @@ export class Walker {
 
 /** a waypoint that is an action (jump, bump, exit, nonogram end, barrels), not a plain cell to walk */
 function isActionWaypoint(q) { return q.jump || q.bump || q.exit || q.walkDone || q.barrels; }
+
+/** an object or critter that still counts toward the level's objectives, as hw.i counts them (objects qw.f, critters bw.t) */
+function isOpenObjective(h, o) {
+	if (o == null) return false;
+	if (o.e_()) return h.o.includes(o) && !!o.a.t;
+	return h.n.includes(o) && o.f_(h);
+}
 
 /** the waypoint that does a leg's stop (L: its leg record, li: its index), or null when walking there is all */
 function stopWaypointOf(s, L, li) {

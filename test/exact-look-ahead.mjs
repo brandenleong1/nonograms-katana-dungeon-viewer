@@ -40,6 +40,9 @@ const t0 = performance.now();
 	check('compareExact: alive, then dies later (deeper first, then HP at death), then dies now', order.every((x, i) => x === want[i]), order.map((x) => want.indexOf(x)).join());
 	check('compareExact: an alive line with a high cost still beats any death', compareExact({ dead: false, s: [9, 99], hp: 1, inputs: 1 }, dies2) < 0);
 	check('compareExact: two lines that die the same way tie on the order', compareExact(dies1, { ...dies1 }) === 0);
+	check('compareExact: surviving beats completing objectives in a line that dies', compareExact({ ...alive, abandoned: 2 }, { ...dies2, abandoned: 0 }) < 0);
+	check('compareExact: a later death beats an earlier one even with more objectives abandoned', compareExact({ ...dies2, abandoned: 2 }, { ...diesNow, abandoned: 0 }) < 0);
+	check('compareExact: among survivors completing objectives beats saving items', compareExact({ ...alive, abandoned: 0 }, { ...alive, abandoned: 1, s: [0, 0] }) < 0);
 }
 
 // ---- one fight: every tactic dies in the look-ahead, some survive the fight; the ranking must pick one of those ----
@@ -59,6 +62,7 @@ const WHERE = { ...parseLabel('2A-200300400'), xseed: 12345 };
 	const none = { hp: 0, ep: 0, mp: 0 };
 	const dead = { dead: true, end: 'dead', items: 1, mpSpent: 2, hp: 0, hpM, ep: 5, mpLeft: 9, inputs: 7 };
 	const dies0 = scoreOutcome({ ...dead, looked: 0 }, none, prices), dies2 = scoreOutcome({ ...dead, looked: 2 }, none, prices);
+	check('scoreOutcome: deaths retain abandoned objectives', scoreOutcome({ ...dead, looked: 2, abandoned: 3 }, none, prices).abandoned === 3);
 	check('scoreOutcome: dies in the fight -> late 0, dies in the 2nd look-ahead fight -> late 2', dies0.dead && dies2.dead && dies0.late === 0 && dies2.late === 2, JSON.stringify([dies0.late, dies2.late]));
 	const ag = aggregate([dies2, { dead: false, items: 0, mp: 0, s: [0, 0], hp: 5, inputs: 3 }]);
 	check('robust: a death in the look-ahead is still one death of two in P(death)', ag.dead === 1 && ag.pDeath === 0.5);
