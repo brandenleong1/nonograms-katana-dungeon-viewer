@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. Bug reports, dungeons that don't match your game, UI polish, solver tactics and docs are all
+Thanks for helping. Bug reports, dungeons that don't match your game, UI polish, solver tactics, and docs are all
 welcome.
 
 ## Getting started
@@ -14,11 +14,11 @@ git switch -c <your-username>/<short-name>   # e.g. alice/kite-tactic: other bra
 ```
 
 Where things are: [docs/repo_layout.md](docs/repo_layout.md). Tests: [docs/testing.md](docs/testing.md). Hosting,
-CI and data files: [docs/infra.md](docs/infra.md).
+CI, and data files: [docs/infra.md](docs/infra.md).
 
 ## Ground rules
 
-1. **No game material.** Don't add the game's art, sounds, app files or decompiled code. All graphics are drawn in
+1. **No game material.** Don't add the game's art, sounds, app files, or decompiled code. All graphics are drawn in
    code (`js/view/sprites.js`). See [NOTICE.md](NOTICE.md).
 2. **No save files, ever.** A `guild.dat` or `NonogramsKatana.zip` export is your whole game profile. Don't commit
    one, and don't attach one to a public issue. If a bug needs your save, say so in the issue and we'll arrange a
@@ -27,9 +27,9 @@ CI and data files: [docs/infra.md](docs/infra.md).
    random-number draws and rules one for one ([js/gen/PORTING.md](js/gen/PORTING.md)).
    - Changes there should only make them match the game more closely.
    - Keep the Java names and the `_` method suffix.
-   - New behaviour belongs in the planner, the solver or the UI.
+   - New behaviour belongs in the planner, the solver, or the UI.
    - The full parity suites need the maintainer's data, so a maintainer runs them before merging such changes.
-4. **The shared UI library is upstream.** `lib/utils` is a submodule. Changes to layout, themes or popups that every
+4. **The shared UI library is upstream.** `lib/utils` is a submodule. Changes to layout, themes, or popups that every
    site shares go to [brandenleong1/utils](https://github.com/brandenleong1/utils).
 5. **Nothing leaves the browser.** No analytics, no uploads, no remote logging.
 
@@ -63,11 +63,11 @@ The bot merges a PR as soon as all of this is true:
 1. **Checks pass:**
    - `precommit`: syntax, the standalone test suites on Node 18 and 22, and a browser smoke test (see
      [docs/testing.md](docs/testing.md#integration));
-   - `pr-policy`: title, description and branch name.
+   - `pr-policy`: title, description, and branch name.
 2. **It's up to date with `main`.** If GitHub says the branch is out of date, press "Update branch", or merge or
    rebase `main` yourself.
 3. **A person with write access approved the latest commit**: two people if the PR changes CI or the PR tools
-   (`.github/`, the PR tools in `tools/` such as `pr-bot.mjs`, `check-pr.mjs` and `run-tests.mjs`, and the setup and
+   (`.github/`, the PR tools in `tools/` such as `pr-bot.mjs`, `check-pr.mjs`, and `run-tests.mjs`, and the setup and
    merge scripts). A push that
    changes the PR's diff (new code, or a rebase or update that resolves a conflict) dismisses every approval, and the
    reviewers have to look again. Bringing the branch up to date ("Update branch", or a clean rebase onto `main`) keeps
@@ -77,7 +77,7 @@ The bot merges a PR as soon as all of this is true:
 5. **Nobody requests changes**, there are no merge conflicts, and the PR isn't a draft.
 
 The **`pr-bot`** check on your PR says what it's waiting for, e.g. "Needs a review of the latest commit" or
-"2 commit(s) behind main: update the branch". It runs after every push, edit, review or label change, and hourly. It
+"2 commit(s) behind main: update the branch". It runs after every push, edit, review, or label change, and hourly. It
 never stays green: it only turns green at the moment the bot merges, so there's no window to merge by hand.
 
 **To stop a ready PR from merging:**

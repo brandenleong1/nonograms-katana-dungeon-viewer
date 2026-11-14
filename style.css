@@ -135,7 +135,13 @@ body::after {
 	row-gap: 6px;
 }
 
+.map-frame {
+	position: relative;
+	width: 100%;
+}
+
 #map {
+	display: block;
 	width: 100%;
 	height: calc(100vh - 100px);
 	border-radius: 10px;
@@ -151,6 +157,51 @@ body::after {
 
 #map:active {
 	cursor: grabbing;
+}
+
+/* an empty label box must not look like a label that is shown */
+#label-input::placeholder {
+	opacity: 0.5;
+}
+
+/* No dungeon: the map is a little darker than usual (--map_bg_empty, --map_fg_empty: js/app.js MAP_EMPTY) with its
+   words over it. The overlay lets every pointer event through to the canvas. */
+.map-empty {
+	display: none;
+	position: absolute;
+	inset: 0;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	row-gap: 8px;
+	padding: 20px;
+	box-sizing: border-box;
+	text-align: center;
+	pointer-events: none;
+	color: var(--map_fg_empty, var(--color_txt));
+}
+
+.map-empty-title {
+	font-size: 28px;
+	letter-spacing: 0.04em;
+}
+
+.map-empty-hint {
+	font-size: 90%;
+	opacity: 0.85;
+}
+
+#map-section.no-dungeon .map-empty {
+	display: flex;
+}
+
+#map-section.no-dungeon #map {
+	background-color: var(--map_bg_empty, #050506);
+	cursor: default;
+}
+
+#map-section.no-dungeon #map-caption {
+	visibility: hidden;
 }
 
 #info-section {
@@ -275,6 +326,7 @@ body::after {
 
 .view-btn svg {
 	display: block;
+	pointer-events: none;   /* a press always lands on the button, even while the icon is swapped */
 }
 
 /* ---- Your hero ---------------------------------------------------------------------------- */
@@ -1058,8 +1110,28 @@ table.cmp tr.muted td {
 }
 
 .pg-toolbar .seg-btn,
-.pg-toolbar .pg-reset {
+.pg-toolbar .pg-reset,
+.pg-mark-btn {
 	padding: 5px 9px;
+}
+
+/* "Mark all ... done": the buttons, what the last one did, and what they leave alone */
+.pg-mark {
+	display: flex;
+	flex-direction: column;
+	row-gap: 6px;
+}
+
+.pg-mark-buttons {
+	display: flex;
+	flex-wrap: wrap;
+	column-gap: 12px;
+	row-gap: 8px;
+}
+
+.pg-mark-result {
+	white-space: normal;
+	line-height: 1.35em;
 }
 
 .pg-count {
@@ -1152,6 +1224,7 @@ table.cmp tr.muted td {
 
 .pg-line-name {
 	flex: 1 1 auto;
+	font-weight: bold;
 	font-size: 110%;
 	line-height: 1.25em;
 }
@@ -1357,22 +1430,57 @@ table.cmp tr.muted td {
 }
 
 .pg-picks {
-	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-	gap: 3px 10px;
+	container-type: inline-size;
 	font-size: 88%;
 	line-height: 1.3em;
 	white-space: normal;
 }
 
+/* Quest NPCs by dungeon: one row per family or floor, in the game's order; four columns so the rows line up */
+.pg-pick-row {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 4px 6px;
+	padding: 5px 0;
+}
+
+.pg-pick-row + .pg-pick-row {
+	border-top: 1px dotted var(--color_txt2);
+}
+
+/* phones: three columns, so the floors keep one line each and the four-dungeon rows wrap their last one */
+@container (max-width: 340px) {
+	.pg-pick-row {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+
 .pg-pick {
-	padding: 1px 4px;
+	padding: 2px 4px;
 	border-radius: 4px;
+	overflow-wrap: break-word;
 }
 
 .pg-pick.pg-cur {
 	outline: 2px solid var(--color_btn);
 	outline-offset: -2px;
+}
+
+.pg-pick-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	column-gap: 5px;
+}
+
+/* the dungeon on the map: a tag in the box's own colour, the selected-button colours of every theme */
+.pg-here {
+	padding: 0 5px;
+	border-radius: 8px;
+	font-size: 85%;
+	white-space: nowrap;
+	color: var(--color_bg);
+	background-color: var(--color_btn);
 }
 
 .pg-changed {
@@ -1388,6 +1496,51 @@ table.cmp tr.muted td {
 	.pg-col {
 		align-self: stretch;
 	}
+}
+
+/* the confirm popup (js/ui/confirm-popup.js) */
+#popup-confirm {
+	width: min(460px, calc(100vw - 80px));
+	align-items: stretch;
+	row-gap: 14px;
+}
+
+#popup-confirm .content-header {
+	align-self: center;
+}
+
+#popup-confirm .content-text {
+	padding: 0;
+	line-height: 1.5em;
+	text-align: left;
+	white-space: normal;
+}
+
+.confirm-buttons {
+	justify-content: flex-end;
+	column-gap: 14px;
+}
+
+.button-positive-2.primary,
+.button-positive-2.primary:hover {
+	color: var(--color_bg);
+}
+
+.button-positive-2.primary {
+	background-color: var(--color_btn);
+}
+
+.button-positive-2.primary:hover {
+	background-color: var(--color_btn_hover);
+}
+
+/* toasts (lib/utils Popup): wide enough for a sentence on one or two lines, text centred */
+#toast-popup {
+	width: max-content;
+	max-width: min(520px, calc(100vw - 40px));
+	box-sizing: border-box;
+	text-align: center;
+	text-wrap: balance;
 }
 
 /* ---- Phones and tablets: the map, with a tabbed sheet under it (beside it in landscape) ------------------------- */
@@ -1495,6 +1648,12 @@ table.cmp tr.muted td {
 		min-width: 0;
 		height: auto;
 		margin: 6px 0 2px;
+	}
+
+	.map-frame {
+		display: flex;
+		flex: 1 1 0;
+		min-height: 0;
 	}
 
 	#map {

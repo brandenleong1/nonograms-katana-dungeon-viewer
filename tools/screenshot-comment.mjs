@@ -23,7 +23,9 @@ const BRANCH = 'bot/screenshots';
 const MARKER = '<!-- nkd-screenshots -->';
 const BOT = 'github-actions[bot]';
 const PRUNE_DAYS = 30;
-const LIMITS = { manifestBytes: 64 * 1024, views: 60, pngBytes: 3 * 1024 * 1024, totalBytes: 40 * 1024 * 1024 };
+// bounds on the untrusted artifact (keep in step with tools/screenshots.mjs LIMITS): room for a PR that adds views to
+// main's ~60, every one of them changed
+const LIMITS = { manifestBytes: 64 * 1024, views: 100, pngBytes: 3 * 1024 * 1024, totalBytes: 80 * 1024 * 1024 };
 const NAME = /^[a-z0-9][a-z0-9-]{0,47}$/;
 const STATUSES = new Set(['changed', 'added', 'same']);
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -88,7 +90,7 @@ function readViews(dir) {
 	} catch (e) {
 		fail(`manifest.json: ${e.message}`);
 	}
-	if (!manifest || !Array.isArray(manifest.views) || manifest.views.length > LIMITS.views) fail('manifest.json: expected { views: [...] } with at most 60 views');
+	if (!manifest || !Array.isArray(manifest.views) || manifest.views.length > LIMITS.views) fail(`manifest.json: expected { views: [...] } with at most ${LIMITS.views} views`);
 	let total = 0;
 	return manifest.views.map((v) => {
 		if (!v || typeof v.name !== 'string' || !NAME.test(v.name) || !STATUSES.has(v.status)) fail(`manifest.json: bad view ${JSON.stringify(v).slice(0, 80)}`);
@@ -97,7 +99,7 @@ function readViews(dir) {
 			const name = `${v.name}.${side}.png`;
 			const file = regularFile(path.join(dir, name), LIMITS.pngBytes);
 			total += fs.statSync(file).size;
-			if (total > LIMITS.totalBytes) fail('images: more than 40 MB in total');
+			if (total > LIMITS.totalBytes) fail(`images: more than ${LIMITS.totalBytes / 1024 / 1024} MB in total`);
 			if (!fs.readFileSync(file).subarray(0, 8).equals(PNG_SIGNATURE)) fail(`${name}: not a PNG`);
 			return { name, file };
 		});

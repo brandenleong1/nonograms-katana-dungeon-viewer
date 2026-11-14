@@ -1,5 +1,5 @@
 // Questlines for the "Your progress" editor (js/ui/progress-panel.js). The game lists its quests by name, and many
-// quests share one ("Once Upon a Forest" is quests 28 to 41), so the editor shows one questline per name with a
+// quests share one ("Once Upon a Forest" is quests 27 to 41), so the editor shows one questline per name with a
 // slider over its parts. Only questlines with a part that dungeon generation reads are kept (js/gen/progress-reads.js).
 //
 // A questline of n parts has positions 0..2n: 0 is "not started", 2k - 1 is "part k in progress" (the parts before it
@@ -7,56 +7,66 @@
 // (an imported save can have them) have no position; the editor then shows each part on its own.
 //
 //   buildQuestlines(v, names)     -> [{ key, name, parts: [{ id, number, effects }], types: { map, loot } }]
+//                                    effect: { when, text, pieces, types, kind }; pieces: strings and { quest: title }
 //   partStates(v, line)           -> ['done' | 'active' | 'none', ...], one per part
 //   positionOf(states)            -> the position of these states, or -1
 //   reachedPosition(states)       -> the furthest position a part has reached
 //   statesAt(line, position)      -> the part states at a position
 //   positionName(line, position)  -> "Part 3 in progress"
-//   summarize(states)             -> "Parts 1–2 done · part 3 in progress · parts 4–14 not started"
+//   summarize(states)             -> "Parts 1–2 done · part 3 in progress · parts 4–15 not started"
 //   describeTypes(types)          -> "2C, 3C, F1–F4"
-//   partTitle(id, names)          -> "Once Upon a Forest, part 3"
+//   partTitle(id, names)          -> "Once Upon a Forest, part 4"
 import { npcQuests } from '../gen/progress-reads.js';
 import { stateName } from '../gen/progress-spec.js';
-import { typeLabel } from '../labels.js';
+import { typeLabel, titleCase } from '../labels.js';
 
 /**
  * What a quest changes besides where its person stands, from the reads in js/gen/progress-reads.js. `when` is the
- * quest state the change needs; `{item:N}` in a text is the item's name.
+ * quest state the change needs; in a text, `{item:N}` is the item's name and `{quest:N}` the quest's title (shown in
+ * bold). Each text starts with a capital, as it follows its "when" label ("Done: Changes some drops ...").
  */
 const EFFECTS = {
-	23: [{ when: 'Started', text: 'beaten bosses of 3C, 5C, F4 and 6C drop dragon teeth', types: [8, 14, 18, 21], kind: 'loot' }],
-	25: [{ when: 'In progress', text: 'a second boss waits in 5C', types: [14], kind: 'map' }],
-	27: [{ when: 'In progress', text: 'a mini-boss guards 2C until you beat it', types: [5], kind: 'map' }],
-	30: [{ when: 'In progress', text: 'mini-bosses guard 3C, 4C and 5C, each once the one before it is beaten', types: [8, 11, 14], kind: 'map' }],
-	36: [{ when: 'Done', text: 'some drops in F3, 6C and 6D change', types: [17, 21, 22], kind: 'loot' }],
-	41: [{ when: 'Done', text: 'one {item:115} no longer counts: with none (and 20 F4 dungeons cleared) a special NPC is likelier in F3 and F4', types: [17, 18], kind: 'map' }],
-	45: [{ when: 'In progress', text: 'one forest merchant is a different person', types: [17, 18, 20], kind: 'map' }],
+	23: [{ when: 'Started', text: 'Beaten bosses of 3C, 5C, F4, and 6C drop dragon teeth', types: [8, 14, 18, 21], kind: 'loot' }],
+	25: [{ when: 'In progress', text: 'Adds a second boss to 5C', types: [14], kind: 'map' }],
+	27: [{ when: 'In progress', text: 'Adds a mini-boss to 2C until you beat it', types: [5], kind: 'map' }],
+	30: [{ when: 'In progress', text: 'Adds mini-bosses to 3C, 4C, and 5C, each once the one before it is beaten', types: [8, 11, 14], kind: 'map' }],
+	36: [{ when: 'Done', text: 'Changes some drops in F3, 6C, and 6D', types: [17, 21, 22], kind: 'loot' }],
+	41: [{ when: 'Done', text: 'Takes one {item:115} off the count: with none looted (and 20 F4 dungeons cleared), a special NPC is likelier in F3 and F4', types: [17, 18], kind: 'map' }],
+	45: [{ when: 'In progress', text: 'Makes one forest merchant a different person', types: [17, 18, 20], kind: 'map' }],
 	46: [
-		{ when: 'Started', text: 'more finds in F2, F3 and F4', types: [16, 17, 18], kind: 'map' },
-		{ when: 'Done', text: 'cave bosses you haven’t beaten carry a {item:256}, and the 6C boss brings a companion', types: [19, 20, 21], kind: 'map' },
+		{ when: 'Started', text: 'Adds more finds to F2, F3, and F4', types: [16, 17, 18], kind: 'map' },
+		{ when: 'Done', text: 'Cave bosses you haven’t beaten carry a {item:256}, and the 6C boss brings a companion', types: [19, 20, 21], kind: 'map' },
 	],
-	48: [{ when: 'Started', text: 'merchants appear in caves', types: [19, 20, 22], kind: 'map' }],
-	50: [{ when: 'Done', text: 'chests in EC and ED hold something else', types: [25, 26], kind: 'loot' }],
-	51: [{ when: 'In progress', text: 'an extra boss waits in 6C', types: [21], kind: 'map' }],
-	53: [{ when: 'Done', text: 'some F2–F4 monsters drop soybeans', types: [16, 17, 18], kind: 'loot' }],
-	62: [{ when: 'Step 3 done', text: 'the EA boss comes without its companion', types: [23], kind: 'map' }],
-	63: [{ when: 'Started', text: 'the EA boss comes without its companion', types: [23], kind: 'map' }],
-	66: [{ when: 'Done', text: 'a tomb merchant who sells Ambrosia is a different person', types: [23, 24, 25, 26], kind: 'map' }],
-	70: [{ when: 'Done', text: 'sarcophagi in EC and ED hold something else', types: [25, 26], kind: 'loot' }],
-	71: [{ when: 'Started', text: 'the EC boss drops something else', types: [25], kind: 'loot' }],
+	48: [{ when: 'Started', text: 'Brings merchants to the caves', types: [19, 20, 22], kind: 'map' }],
+	50: [{ when: 'Done', text: 'Changes what chests in EC and ED hold', types: [25, 26], kind: 'loot' }],
+	51: [{ when: 'In progress', text: 'Adds an extra boss to 6C', types: [21], kind: 'map' }],
+	53: [{ when: 'Done', text: 'Some F2–F4 monsters drop soybeans', types: [16, 17, 18], kind: 'loot' }],
+	62: [{ when: 'Step 3 done', text: 'The EA boss comes without its companion', types: [23], kind: 'map' }],
+	63: [{ when: 'Started', text: 'The EA boss comes without its companion', types: [23], kind: 'map' }],
+	66: [{ when: 'Done', text: 'Makes the tomb merchant who sells Ambrosia a different person', types: [23, 24, 25, 26], kind: 'map' }],
+	70: [{ when: 'Done', text: 'Changes what sarcophagi in EC and ED hold', types: [25, 26], kind: 'loot' }],
+	71: [{ when: 'Started', text: 'Changes what the EC boss drops', types: [25], kind: 'loot' }],
 	73: [
-		{ when: 'Started', text: 'the tomb guardian appears in EA, EB and EC', types: [23, 24, 25], kind: 'map' },
-		{ when: 'Done', text: 'the tomb guardian in EA drops something else', types: [23], kind: 'loot' },
+		{ when: 'Started', text: 'Brings the tomb guardian to EA, EB, and EC', types: [23, 24, 25], kind: 'map' },
+		{ when: 'Done', text: 'Changes what the tomb guardian drops in EA', types: [23], kind: 'loot' },
 	],
-	74: [{ when: 'Done', text: 'the tomb guardian in EB drops something else', types: [24], kind: 'loot' }],
-	75: [{ when: 'Done, or step 1 done', text: 'the tomb guardian in EC drops something else', types: [25], kind: 'loot' }],
+	74: [{ when: 'Done', text: 'Changes what the tomb guardian drops in EB', types: [24], kind: 'loot' }],
+	75: [{ when: 'Done, or step 1 done', text: 'Changes what the tomb guardian drops in EC', types: [25], kind: 'loot' }],
 };
+
+/**
+ * Quests the game lists under another quest's name: id -> the quest whose name it goes under. Quest 27's own title is
+ * a teaser, "Once Upon a ...", but it is chapter 1 of Once Upon a Forest: its kj0.n is 1, its kj0.q is that
+ * questline's title (the game's quest journal files a quest under q when it has one), quest 28 (chapter 2) can only
+ * start once it is done, and the wiki calls it Chapter I. test/questlines.mjs checks this against the game's data.
+ */
+export const LISTED_UNDER = { 27: 28 };
 
 const STATE_TEXT = { none: 'not started', active: 'in progress', done: 'done' };
 const WHEN_ORDER = ['Not started', 'Started', 'In progress', 'Step', 'Done'];
 
 export function buildQuestlines(v, names) {
-	const groups = groupByName(v, names.quests || {});
+	const groups = groupByName(v, names);
 	const context = { v, names, people: new Map(npcQuests(v).map((q) => [q.id, q])), titles: partTitles(groups) };
 	context.unlocks = unlocksByQuest(context);
 	const lines = [];
@@ -68,11 +78,10 @@ export function buildQuestlines(v, names) {
 	return lines;
 }
 
-/** "Once Upon a Forest, part 3" for quest 30; just the name for a questline of one quest. */
+/** "Once Upon a Forest, part 4" for quest 30; just the name for a questline of one quest. */
 export function partTitle(id, names) {
-	const quests = names.quests || {};
 	const name = questName(id, names);
-	const ids = Object.keys(quests).map(Number).filter((q) => quests[q] === name).sort((a, b) => a - b);
+	const ids = Object.keys(names.quests || {}).map(Number).filter((q) => questName(q, names) === name).sort((a, b) => a - b);
 	return ids.length > 1 ? `${name}, part ${ids.indexOf(id) + 1}` : name;
 }
 
@@ -128,11 +137,11 @@ export function describeTypes(types) {
 // ---- building the questlines -----------------------------------------------------------------------------------
 
 /** Quest ids by name, in the game's id order (the order of the parts). */
-function groupByName(v, questNames) {
+function groupByName(v, names) {
 	const byName = new Map();
 	for (const q of v.s) {
 		if (q == null) continue;
-		const name = questNames[q.a] || `Quest ${q.a}`;
+		const name = questName(q.a, names);
 		if (!byName.has(name)) byName.set(name, []);
 		byName.get(name).push(q.a);
 	}
@@ -173,16 +182,16 @@ function unlocksByQuest({ v, people }) {
 function partEffects(id, { v, names, people, unlocks, titles }) {
 	const effects = [];
 	const person = people.get(id);
-	if (person && person.offered >= 0) effects.push({ when: 'Not started', text: `its NPC offers it in ${typeLabel(person.offered)}, once it can start`, types: [person.offered], kind: 'map' });
+	if (person && person.offered >= 0) effects.push({ when: 'Not started', text: `Its NPC offers it in ${typeLabel(person.offered)}, once it can start`, types: [person.offered], kind: 'map' });
 	const at = person ? activeTypes(v.Y0_(id)) : [];
-	if (at.length) effects.push({ when: 'In progress', text: `its NPC is in ${describeTypes(at)}${at.length > 1 ? ' (one at a time)' : ''}`, types: at, kind: 'map' });
+	if (at.length) effects.push({ when: 'In progress', text: `Its NPC is in ${describeTypes(at)}${at.length > 1 ? ' (one at a time)' : ''}`, types: at, kind: 'map' });
 	// the next parts of the same questline starting is what the slider's order already says
 	const otherLines = (unlocks.get(id) || []).filter((u) => lineName(titles.get(u.quest)) !== lineName(titles.get(id)));
 	for (const u of otherLines) {
-		effects.push({ when: u.requirement, text: `lets ${titles.get(u.quest)} start in ${typeLabel(u.type)}`, types: [u.type], kind: 'map' });
+		effects.push({ when: u.requirement, text: `Unlocks {quest:${u.quest}} (${describeTypes([u.type])})`, types: [u.type], kind: 'map' });
 	}
-	for (const e of EFFECTS[id] || []) effects.push({ ...e, text: withItemNames(e.text, names) });
-	return effects.sort((a, b) => whenRank(a.when) - whenRank(b.when));
+	effects.push(...(EFFECTS[id] || []));
+	return effects.sort((a, b) => whenRank(a.when) - whenRank(b.when)).map((e) => withNames(e, { names, titles }));
 }
 
 function whenRank(when) {
@@ -210,12 +219,36 @@ function lineTypes(parts) {
 	return { map: [...map].sort((a, b) => a - b), loot: [...loot].filter((t) => !map.has(t)).sort((a, b) => a - b) };
 }
 
+/** The name a quest is listed under (LISTED_UNDER), from data/names.json, in title case. */
 function questName(id, names) {
-	return (names.quests && names.quests[id]) || `Quest ${id}`;
+	const listed = LISTED_UNDER[id] ?? id;
+	return titleCase((names.quests && names.quests[listed]) || `Quest ${listed}`);
 }
 
-function withItemNames(text, names) {
-	return text.replace(/\{item:(\d+)\}/g, (_, id) => (names.items && names.items[id]) || `item ${id}`);
+/** An effect with its {item:N} and {quest:N} filled in: as plain text, and as pieces (strings and { quest: title }). */
+function withNames(effect, { names, titles }) {
+	const pieces = [];
+	let from = 0;
+	for (const m of effect.text.matchAll(/\{(item|quest):(\d+)\}/g)) {
+		pieces.push(effect.text.slice(from, m.index));
+		const id = Number(m[2]);
+		pieces.push(m[1] === 'quest' ? { quest: titles.get(id) || partTitle(id, names) } : (names.items && names.items[id]) || `item ${id}`);
+		from = m.index + m[0].length;
+	}
+	pieces.push(effect.text.slice(from));
+	const words = joinWords(pieces);
+	return { ...effect, text: words.map((p) => (typeof p === 'string' ? p : p.quest)).join(''), pieces: words };
+}
+
+/** Neighbouring strings joined and empty ones dropped, so pieces alternate between words and quest titles. */
+function joinWords(pieces) {
+	const out = [];
+	for (const p of pieces) {
+		if (p === '') continue;
+		if (typeof p === 'string' && typeof out[out.length - 1] === 'string') out[out.length - 1] += p;
+		else out.push(p);
+	}
+	return out;
 }
 
 function sameFamily(a, b) {

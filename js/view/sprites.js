@@ -8,6 +8,8 @@
 // Sprites are rendered once per (kind, variant, size bucket, theme) at device-pixel resolution and blitted.
 
 import { RANK_COLORS } from './catalog.js';
+import { hasCreature, paintCreature } from './creatures.js';
+import { hasObject, paintObject } from './objects.js';
 
 const cache = new Map();
 const CACHE_MAX = 600;
@@ -281,7 +283,10 @@ function bookLines(g, e, { left, right }) {
 
 // ---- painters ---------------------------------------------------------------------------------------
 const PAINTERS = {
+	// treasure chests with a drawing (js/view/objects.js, variant = object id) are drawn as themselves, the rest as a
+	// gold-banded chest
 	chest(g, e) {
+		if (hasObject(e.variant)) return paintObject(g, e, e.variant);
 		const { u, lw } = e;
 		shadow(g, e, 17, 8.5);
 		box(g, e, { ex: 0.3, ey: 0.2, height: 10, color: WOOD });
@@ -319,7 +324,9 @@ const PAINTERS = {
 		// faint golden aura (an objective)
 		glowDisc(g, { x: top[0], y: top[1], r: 16 * u, inner: 'rgba(255,220,120,0.35)', outer: 'rgba(255,220,120,0)' });
 	},
+	// containers with a drawing (js/view/objects.js, variant = object id) show what is in them, the rest are a crate
 	container(g, e) {
+		if (hasObject(e.variant)) return paintObject(g, e, e.variant);
 		const { u, lw } = e;
 		shadow(g, e, 13, 6.5);
 		const c = '#a57a48';
@@ -331,7 +338,9 @@ const PAINTERS = {
 			g.beginPath(); g.moveTo(...f(-0.2, 1)); g.lineTo(...f(0.2, 12)); g.moveTo(...f(0.2, 1)); g.lineTo(...f(-0.2, 12)); g.stroke();
 		}
 	},
+	// breakables with a drawing (js/view/objects.js, variant = object id) are drawn as themselves, the rest as a pot
 	breakable(g, e) {
+		if (hasObject(e.variant)) return paintObject(g, e, e.variant);
 		const { u, lw } = e;
 		shadow(g, e, 9, 4.5);
 		const c = '#b8754a';
@@ -571,7 +580,9 @@ const PAINTERS = {
 		g.fillStyle = 'rgba(255,250,220,0.9)'; g.beginPath(); g.ellipse(fx, fy + 0.5 * u, 1.2 * u, 2 * u, 0, 0, Math.PI * 2); g.fill();
 		gloss(g, -2.5 * u, -20 * u, 1 * u, 3.5 * u, 0.3);
 	},
+	// the power cauldrons (js/view/objects.js, variant = object id) are drawn as themselves, anything else as a pedestal
 	special(g, e) {
+		if (hasObject(e.variant)) return paintObject(g, e, e.variant);
 		const { u, lw } = e;
 		shadow(g, e, 14, 7);
 		box(g, e, { ex: 0.24, ey: 0.24, height: 4, color: '#7d7888' });
@@ -648,15 +659,43 @@ const PAINTERS = {
 		g.strokeStyle = '#eef2f8'; g.lineWidth = lw * 1.3; g.beginPath(); g.moveTo(7.5 * u, -10 * u); g.lineTo(12.5 * u, -27 * u); g.stroke();
 		g.strokeStyle = '#8a6a2a'; g.lineWidth = lw * 1.8; g.beginPath(); g.moveTo(5 * u, -11.5 * u); g.lineTo(10 * u, -10 * u); g.stroke();
 	},
-	npc(g, e) { robedFigure(g, e, { robe: '#5f8a3e', hood: '#4a6d2f', gem: staffOrb }); },
-	// looks like a person until you talk to it: red, with a red diamond on its staff
-	shapeshifter(g, e) { robedFigure(g, e, { robe: '#b23a3a', hood: '#7e2424', gem: staffDiamond }); },
-	monster(g, e) { creature(g, e, { color: speciesColor(e.variant), r: 10 }); },
+	// people with a drawing (js/view/creatures.js) are drawn as themselves, the rest as a green robed figure
+	npc(g, e) {
+		if (hasCreature(e.variant)) paintCreature(g, e, e.variant);
+		else robedFigure(g, e, { robe: '#5f8a3e', hood: '#4a6d2f', gem: staffOrb });
+	},
+	// looks like a person until you talk to it: drawn as whoever it pretends to be, with a red diamond floating at its
+	// shoulder (the robed figure: in red, the diamond on its staff)
+	shapeshifter(g, e) {
+		if (!hasCreature(e.variant)) return robedFigure(g, e, { robe: '#b23a3a', hood: '#7e2424', gem: staffDiamond });
+		paintCreature(g, e, e.variant);
+		fakeTell(g, e);
+	},
+	// creatures with a drawing (js/view/creatures.js) are drawn as themselves, with their role's glow and badge;
+	// the rest as a blob
+	monster(g, e) {
+		if (hasCreature(e.variant)) paintCreature(g, e, e.variant);
+		else creature(g, e, { color: speciesColor(e.variant), r: 10 });
+	},
 	familiar(g, e) { creature(g, e, familiarLook(e.variant)); },
-	goldmonster(g, e) { creature(g, e, { color: '#e6b422', r: 10.5, key: true, aura: 'rgba(255,215,90,0.28)' }); },
-	miniboss(g, e) { creature(g, e, { color: '#e07a2c', r: 12.5, horns: true, teeth: true }); },
-	boss(g, e) { creature(g, e, { color: '#9e2430', r: 15, horns: true, teeth: true, aura: 'rgba(255,60,40,0.35)', eyes: '#ffd23f' }); },
-	unique(g, e) { creature(g, e, { color: '#d4a21c', r: 12.5, crown: true, aura: 'rgba(255,220,80,0.3)' }); },
+	goldmonster(g, e) {
+		if (!hasCreature(e.variant)) return creature(g, e, { color: '#e6b422', r: 10.5, key: true, aura: 'rgba(255,215,90,0.28)' });
+		drawnCreature(g, e, { scale: 1, aura: 'rgba(255,215,90,0.32)' });
+		aboveHead(g, e, () => carriedKey(g, e, { R: 10.5 * e.u }), 26);
+	},
+	miniboss(g, e) {
+		if (!hasCreature(e.variant)) return creature(g, e, { color: '#e07a2c', r: 12.5, horns: true, teeth: true });
+		drawnCreature(g, e, { scale: 1.1, aura: 'rgba(255,140,40,0.28)' });
+	},
+	boss(g, e) {
+		if (!hasCreature(e.variant)) return creature(g, e, { color: '#9e2430', r: 15, horns: true, teeth: true, aura: 'rgba(255,60,40,0.35)', eyes: '#ffd23f' });
+		drawnCreature(g, e, { scale: 1.2, aura: 'rgba(255,60,40,0.35)' });
+	},
+	unique(g, e) {
+		if (!hasCreature(e.variant)) return creature(g, e, { color: '#d4a21c', r: 12.5, crown: true, aura: 'rgba(255,220,80,0.3)' });
+		drawnCreature(g, e, { scale: 1.1, aura: 'rgba(255,220,80,0.32)' });
+		aboveHead(g, e, () => creatureCrown(g, e, { R: 12.5 * e.u }), 28);
+	},
 	spider(g, e) {
 		const { u, lw } = e;
 		shadow(g, e, 12, 6);
@@ -706,6 +745,28 @@ function staffDiamond(g, { u, lw }) {
 	g.fillStyle = hgrad(g, x - 3 * u, x + 3 * u, [[0, '#ff9a9a'], [0.5, '#e02a2a'], [1, '#8a1010']]); g.fill();
 	g.strokeStyle = '#5a0a0a'; g.lineWidth = lw * 0.8; g.stroke();
 	gloss(g, x - 0.9 * u, y - 1.6 * u, 0.6 * u, 1 * u, 0.85);
+}
+
+/** a shapeshifter's tell: a small glowing red diamond beside a drawn person's head */
+function fakeTell(g, e) {
+	g.save();
+	g.translate(4 * e.u, -9 * e.u);
+	staffDiamond(g, e);
+	g.restore();
+}
+
+/** a species drawing with its role's glow behind it */
+function drawnCreature(g, e, { scale, aura }) {
+	glowDisc(g, { x: 0, y: -20 * e.u * scale, r: 24 * e.u * scale, inner: aura, outer: 'rgba(0,0,0,0)' });
+	paintCreature(g, e, e.variant, scale);
+}
+
+/** draw a blob's badge (key, crown) lifted by `lift` u, so it floats above a drawn creature's head */
+function aboveHead(g, e, badge, lift) {
+	g.save();
+	g.translate(0, -lift * e.u);
+	badge();
+	g.restore();
 }
 
 /** a glow over the middle of door face f */

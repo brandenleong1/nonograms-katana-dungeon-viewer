@@ -60,7 +60,7 @@ const EXACT = '#solve-controls .seg-btn[data-k="mode"][data-v="exact"]';
 const HARDWARE_THREADS = 4;
 
 /** the trusted half's limits (tools/screenshot-comment.mjs) */
-const LIMITS = { views: 60, pngBytes: 3 * 1024 * 1024, totalBytes: 40 * 1024 * 1024, name: /^[a-z0-9][a-z0-9-]{0,47}$/ };
+const LIMITS = { views: 100, pngBytes: 3 * 1024 * 1024, totalBytes: 80 * 1024 * 1024, name: /^[a-z0-9][a-z0-9-]{0,47}$/ };
 
 /** A pixel counts as changed when a channel moves by more than this; a view when more than MIN_PIXELS do. */
 const CHANNEL_TOLERANCE = 24;
@@ -132,9 +132,14 @@ const VIEWS = [
 	view('popup-progress-dark-high-contrast', { theme: 'dark-high-contrast', size: SIZES.tall, steps: openPopup('progress') }),
 	view('popup-progress-narrow', { size: SIZES.narrow, steps: openPopup('progress') }),
 	view('popup-progress-phone', { size: SIZES.phone, steps: openPopup('progress') }),
-	// part 3 of Once Upon a Forest in progress brings 3C's mini-boss (test/questlines.mjs); the map then says so
-	view('popup-progress-edited', { size: SIZES.tall, steps: [...openPopup('progress'), chooseQuestPosition('Once Upon a Forest', 5)] }),
-	view('popup-progress-edited-map', { steps: [...openPopup('progress'), chooseQuestPosition('Once Upon a Forest', 5), closePopup('progress')] }),
+	// part 4 of Once Upon a Forest in progress (position 7), with 2C's mini-boss beaten, brings 3C's mini-boss, the
+	// Emerelf guardian and two rangers (test/questlines.mjs); the map then shows them
+	view('popup-progress-edited', { size: SIZES.tall, steps: [...openPopup('progress'), ...miniBoss3c()] }),
+	view('popup-progress-edited-map', { steps: [...openPopup('progress'), ...miniBoss3c(), closePopup('progress')] }),
+
+	// empty: the page with no label and no save, "No Dungeon Loaded" (an empty label opens it with no hash)
+	view('empty-light', { label: '' }),
+	view('empty-dark', { label: '', theme: 'dark' }),
 ];
 
 function view(name, { label = LABELS['3c'], theme = 'light', size = SIZES.wide, steps = [] } = {}) {
@@ -250,6 +255,21 @@ function closePopup(which) {
 }
 
 /** Your progress: set how far you are in a questline with its "Where are you?" list (position: 2 per part). */
+/** Progress for 3C's mini-boss: Once Upon a Forest at position 7 (part 4 in progress), and 2C's mini-boss beaten. */
+function miniBoss3c() {
+	return [chooseQuestPosition('Once Upon a Forest', 7), tickProgress('I0:28')];
+}
+
+/** Tick a box in the Progress popup by its key (`data-c`, e.g. `I0:28` for 2C's mini-boss) and wait for the change. */
+function tickProgress(key) {
+	return async (page) => {
+		const box = page.locator(`#progress-body .pg-check[data-c="${key}"]`);
+		if ((await box.getAttribute('aria-checked')) === 'true') return;
+		await box.click();
+		await page.waitForFunction((k) => document.querySelector(`#progress-body .pg-check[data-c="${k}"]`)?.getAttribute('aria-checked') === 'true', key);
+	};
+}
+
 function chooseQuestPosition(questline, position) {
 	return async (page) => {
 		const card = page.locator('#progress-body .pg-line', { has: page.locator('.pg-line-name', { hasText: questline }) });
@@ -343,7 +363,7 @@ async function shoot(browser, base, v) {
 	await context.addInitScript((threads) => Object.defineProperty(Navigator.prototype, 'hardwareConcurrency', { get: () => threads }), HARDWARE_THREADS);
 	const page = await context.newPage();
 	try {
-		await openDungeon(page, `${base}/index.html#${v.label}`);
+		await openDungeon(page, v.label ? `${base}/index.html#${v.label}` : `${base}/index.html`, { empty: !v.label });
 		for (const step of v.steps) {
 			await step(page);
 			await settle(page);
@@ -357,9 +377,10 @@ async function shoot(browser, base, v) {
 }
 
 /** Load the page and wait until the dungeon is drawn with the site's font, with every fade turned off. */
-async function openDungeon(page, url) {
+async function openDungeon(page, url, { empty = false } = {}) {
 	await page.goto(url, { waitUntil: 'networkidle' });
-	await page.waitForFunction(() => window.nkd && window.nkd.state.level && [...document.fonts].some((f) => f.family.includes('Proxima Nova') && f.status === 'loaded'), null, { timeout: 60000 });
+	// a page with no label and no save opens on "No Dungeon Loaded": there is no level to wait for
+	await page.waitForFunction((noDungeon) => window.nkd && (noDungeon ? document.querySelector('#map-section.no-dungeon') : window.nkd.state.level) && [...document.fonts].some((f) => f.family.includes('Proxima Nova') && f.status === 'loaded'), empty, { timeout: 60000 });
 	// the themes fade colours over 0.5 s (lib/utils transition.css), and popups fade in over 1 s (lib/utils Animate):
 	// a shot mid-fade differs from run to run
 	await page.addStyleTag({ content: '*, *::before, *::after { transition: none !important; caret-color: transparent !important; }' });

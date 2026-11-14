@@ -1,8 +1,15 @@
 // Browser smoke test: serve the site on loopback, load a dungeon of every family in every theme in headless
 // Chromium, check the Help popup shows the game version and credits the wiki for the names, the Selected panel names a
 // monster, a boss, a chest with its contents and a stuck door (with its energy cost), plus detailed tooltips; open the Your hero
-// and Your progress popups, and fail on any page error or console error. Then, on a phone: the tabs, a tap on the
-// map, Help's close button, a pan and a pinch by touch, and the tooltip a finger or pen shows where it touches.
+// and Your progress popups, and fail on any page error or console error. On 3C-172582050 the Progress popup's mark
+// buttons are used too: they move every slider to its end, the map says "Custom progress", and Reset undoes them.
+//
+// Also: a bare page load shows "No Dungeon Loaded" (a darker map, the panels saying there is nothing) in every theme;
+// the confirm popup an import asks first (Cancel, Escape and focus); and, when the maintainer's synthetic saves are
+// there (~/.cache/nk-oracle/save, or NK_SAVE_DIR), importing them: no question on an empty page, the save's dungeon
+// shown, a question over a dungeon, Cancel keeping everything, Import clearing it and a reload keeping the save.
+// On a phone: the tabs, a tap on the map, Help's close button, a pan and a pinch by touch,
+// and the tooltip a finger or pen shows where it touches.
 //
 //   node test/smoke.mjs [-v]
 //
@@ -10,6 +17,7 @@
 // Elsewhere, point NK_PLAYWRIGHT at a playwright(-core) module and NK_CHROMIUM at a Chromium binary.
 // Needs the lib/utils submodule (`git submodule update --init`).
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serveStatic } from '../tools/static-server.mjs';
@@ -33,6 +41,12 @@ const PANELS = { dungeon: '#panel-dungeon', info: '#panel-info', route: '#panel-
 const HERO_ID = 180;
 const GAME = JSON.parse(fs.readFileSync(path.join(ROOT, 'data/game-version.json'), 'utf8'));
 const verbose = process.argv.includes('-v');
+// the maintainer's synthetic saves (docs/testing.md): 3C-172582050 in progress, and a hero in town
+const SAVE_DIR = path.join(process.env.NK_SAVE_DIR || path.join(os.homedir(), '.cache/nk-oracle/save'), 'synth');
+const SAVED_DUNGEON = { file: path.join(SAVE_DIR, 'hw-8-172582050.dat'), label: '3C-172582050' };
+const TOWN_SAVE = path.join(SAVE_DIR, 'town-0-1.dat');
+const OTHER_LABEL = 'F1-1026320547';
+const NO_FADES = '*, *::before, *::after { transition: none !important; }';   // lib/utils fades colours over 0.5 s
 
 if (!fs.existsSync(path.join(ROOT, 'lib/utils/themes'))) fail('lib/utils is empty: run `git submodule update --init`.');
 
@@ -40,24 +54,49 @@ const browser = await launchChromium();
 const server = await serveStatic(ROOT);
 const base = `http://127.0.0.1:${server.address().port}`;
 let failures = 0;
+let checked = 0;
 try {
 	for (const [themeId, theme] of THEMES.entries()) {
-		for (const label of LABELS) failures += await checkPage(browser, base, label, themeId, theme);
+		for (const label of LABELS) {
+			failures += await checkPage(browser, base, label, themeId, theme);
+			checked++;
+		}
+	}
+	for (const [themeId, theme] of THEMES.entries()) {
+		failures += await checkNoDungeonView(browser, base, themeId, theme);
+		checked++;
+	}
+	failures += await checkConfirmPopup(browser, base);
+	checked++;
+	failures += await checkScriptPlayer(browser, base);
+	checked++;
+	if (haveSavedDungeonFiles()) {
+		failures += await checkImportingSaves(browser, base);
+		checked++;
+	} else {
+		console.log(`skipped the save import checks: ${SAVED_DUNGEON.file} or ${TOWN_SAVE} not found (maintainer-only oracle data)`);
 	}
 	failures += await checkPhone(browser, base);
+	checked++;
 } finally {
 	await browser.close();
 	server.close();
 }
-console.log(failures ? `${failures} failed` : `${LABELS.length * THEMES.length + 1} passed, 0 failed`);
+console.log(failures ? `${failures} failed` : `${checked} passed, 0 failed`);
 process.exit(failures ? 1 : 0);
 
-/** One page load: the map renders, both popups open, and nothing logs an error. Returns 1 on failure. */
-async function checkPage(browser, base, label, themeId, theme) {
+/** A new browser context (cookie: the theme) and page that collects page errors and console errors. */
+async function openPage(browser, base, themeId) {
 	const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
 	await context.addCookies([{ name: 'themeID', value: String(themeId), url: base }]);
 	const page = await context.newPage();
 	const errors = collectErrors(page);
+	return { context, page, errors };
+}
+
+/** One page load: the map renders, both popups open, and nothing logs an error. Returns 1 on failure. */
+async function checkPage(browser, base, label, themeId, theme) {
+	const { context, page, errors } = await openPage(browser, base, themeId);
 	try {
 		await page.goto(`${base}/index.html#${label}`);
 		await page.waitForFunction(() => window.nkd && window.nkd.state.level && window.nkd.solve, null, { timeout: 60000 });
@@ -71,6 +110,7 @@ async function checkPage(browser, base, label, themeId, theme) {
 		if (!shown.version.includes(GAME.versionName)) errors.push(`Help popup doesn't show game version ${GAME.versionName}: "${shown.version}"`);
 		if (!shown.credit) errors.push('Help popup doesn\'t credit the Nonograms Katana Wiki for the names');
 		if (label === NAMED.label) errors.push(...await namedCellErrors(page));
+		if (label === NAMED.label) errors.push(...await markAllErrors(page));
 		await page.evaluate(() => window.nkd.state.hero.open());
 		await page.waitForTimeout(400);
 		await page.evaluate(() => window.nkd.state.hero.openProgress());
@@ -101,10 +141,10 @@ async function checkPhone(browser, base) {
 		const tabErrors = await tabProblems(page);
 		errors.push(...tabErrors);
 		if (!tabErrors.length) errors.push(...await tapProblems(page));
+		if (!tabErrors.length) errors.push(...await popupProblems(page));
 		const touched = await touchTooltipProblems(page, input);   // with the Solver tab the tap checks leave open
 		errors.push(...touched.problems);
 		errors.push(...await gestureProblems(page, input));
-		if (!tabErrors.length) errors.push(...await popupProblems(page));
 		if (verbose) console.log(`  phone              ${LABELS[0].padEnd(14)} tabs, tap, touch tooltip (up ${touched.shownAfterMs} ms after the finger, ${touched.dragErrorPx} px from its cell in a drag), pan, pinch, popup`);
 	} catch (e) {
 		errors.push(e.message.split('\n')[0]);
@@ -596,6 +636,8 @@ function tooltipDelay(log) {
 
 /** real touch events (CDP): a pan moves the map with the finger, a pinch to twice the spread zooms ×2, and the finger left down after it pans on */
 async function gestureProblems(page, { touch }) {
+	// Earlier tooltip checks zoom in; leave room for this test to double the zoom without hitting the limit.
+	await page.evaluate(() => { window.nkd.view.scale = 1; window.nkd.view.redraw(); });
 	const { x, y } = await page.evaluate(() => { const r = window.nkd.view.canvas.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
 	const problems = [];
 
@@ -610,6 +652,7 @@ async function gestureProblems(page, { touch }) {
 	await touch('touchStart', { x: x - 40, y, id: 0 });
 	await touch('touchStart', { x: x - 40, y, id: 0 }, { x: x + 40, y, id: 1 });
 	for (let k = 1; k <= 8; k++) await touch('touchMove', { x: x - 40 - 5 * k, y, id: 0 }, { x: x + 40 + 5 * k, y, id: 1 });
+	await nextFrames(page);   // Chromium may deliver the last pointer move on the next frame
 	moved = movement(start, await mapPlacement(page));
 	if (Math.abs(moved.zoom - 2) > 0.01) problems.push(`pinching to twice the spread zoomed ×${moved.zoom.toFixed(2)}`);
 
@@ -638,13 +681,6 @@ function collectErrors(page) {
 	return errors;
 }
 
-/** 0 when nothing went wrong, else prints the problems and returns 1 */
-function report(name, errors) {
-	if (!errors.length) return 0;
-	console.log(`FAIL ${name}:\n  ${[...new Set(errors)].join('\n  ')}`);
-	return 1;
-}
-
 /** Select and hover each NAMED cell: the Selected panel must say all of its `says`, the tooltip its name and requested details. */
 async function namedCellErrors(page) {
 	const errors = [];
@@ -658,6 +694,413 @@ async function namedCellErrors(page) {
 		if (!says.every((re) => re.test(shown.selected))) errors.push(`Selected panel at ${x},${y}: "${shown.selected.slice(0, 120)}"`);
 		if (!tooltipSays.every((re) => re.test(shown.tooltip))) errors.push(`tooltip at ${x},${y}: "${shown.tooltip}"`);
 	}
+	return errors;
+}
+
+// ---- no dungeon, and importing a save ----------------------------------------------------------------------
+
+/** A bare page load: "No Dungeon Loaded" on a darker map, panels that say so, controls that do nothing, no errors. */
+async function checkNoDungeonView(browser, base, themeId, theme) {
+	const { context, page, errors } = await openPage(browser, base, themeId);
+	try {
+		await page.goto(`${base}/index.html`);
+		await waitForPage(page);
+		await page.addStyleTag({ content: NO_FADES });
+		const empty = await page.evaluate(noDungeonFacts);
+		errors.push(...noDungeonProblems(empty));
+		await pokeEmptyPage(page);
+		await page.fill('#label-input', LABELS[0]);   // typing a label still works from here
+		await page.click('#show-btn');
+		await page.waitForFunction(() => window.nkd.state.level, null, { timeout: 30000 });
+		const shown = await page.evaluate(noDungeonFacts);
+		if (shown.overlayShown) errors.push('"No Dungeon Loaded" stays over a dungeon');
+		if (!(luminance(empty.mapColor) < luminance(shown.mapColor) || (themeId === 2 && luminance(empty.mapColor) === 0))) errors.push(`the empty map (${empty.mapColor}) is not darker than the map with a dungeon (${shown.mapColor})`);
+		if (verbose) console.log(`  ${theme.padEnd(18)} no dungeon: map ${empty.mapColor} (with a dungeon ${shown.mapColor})`);
+	} catch (e) {
+		errors.push(e.message.split('\n')[0]);
+	} finally {
+		await context.close();
+	}
+	return report(`${theme} no dungeon`, errors);
+}
+
+/**
+ * The page is wired up and its theme applied. init.js adds the theme stylesheet (#theme-css) on its own schedule, and
+ * the map follows it (js/app.js followPageTheme): on a slow machine a check that reads colours before it would see the
+ * fallback theme.
+ */
+async function waitForPage(page) {
+	await page.waitForFunction(() => window.nkd && window.nkd.solve && window.nkd.state.hero && document.querySelector('#theme-css'), null, { timeout: 60000 });
+	await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+}
+
+/** What the page shows about having no dungeon: the state, the overlay, the panels and the View buttons. */
+function noDungeonFacts() {
+	const text = (selector) => document.querySelector(selector).innerText.replace(/\s+/g, ' ').trim();
+	const overlay = document.querySelector('#map-empty');
+	return {
+		level: window.nkd.state.level,
+		overlayShown: getComputedStyle(overlay).display !== 'none',
+		overlayText: overlay.innerText.replace(/\s+/g, ' ').trim(),
+		mapColor: getComputedStyle(document.querySelector('#map')).backgroundColor,
+		selected: text('#selected-info'),
+		objectives: text('#objective-list'),
+		route: text('#route-info'),
+		status: text('#label-status'),
+		solver: text('#solve-result'),
+		viewButtons: ['#zoom-in-btn', '#zoom-out-btn', '#fit-btn', '#hero-btn'].map((id) => document.querySelector(id).getAttribute('aria-disabled')),
+		hash: location.hash,
+		input: document.querySelector('#label-input').value,
+	};
+}
+
+function noDungeonProblems(facts) {
+	const problems = [];
+	if (facts.level !== null) problems.push('state.level is not null on a bare page load');
+	if (!facts.overlayShown || !/No Dungeon Loaded/.test(facts.overlayText)) problems.push(`no "No Dungeon Loaded" overlay: "${facts.overlayText}"`);
+	for (const [panel, text] of [['Selected', facts.selected], ['Objectives', facts.objectives], ['Route', facts.route], ['status line', facts.status], ['solver', facts.solver]]) {
+		if (!/no dungeon/i.test(text)) problems.push(`${panel} does not say there is no dungeon: "${text}"`);
+	}
+	if (facts.viewButtons.some((disabled) => disabled !== 'true')) problems.push('a View button that needs a dungeon is not disabled');
+	if (facts.hash || facts.input) problems.push(`the label box or the URL still names a dungeon: "${facts.input}" "${facts.hash}"`);
+	return problems;
+}
+
+/** Everything a visitor can do on the empty page: hover and drag the map, press keys, click the buttons and layers. */
+async function pokeEmptyPage(page) {
+	const box = await page.locator('#map').boundingBox();
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2 + 20);
+	await page.mouse.up();
+	await page.mouse.wheel(0, -200);
+	for (const key of ['ArrowRight', 'ArrowLeft', 'PageDown', 'Home', 'End', ' ']) await page.keyboard.press(key);
+	// force: Playwright would otherwise wait for the aria-disabled buttons to be enabled
+	for (const id of ['#zoom-in-btn', '#zoom-out-btn', '#fit-btn', '#hero-btn', '#walls-btn']) await page.click(id, { force: true });
+	await page.click('#layer-list .layer-row >> nth=0');   // Show on map still toggles
+	await page.click('#layer-list .layer-row >> nth=0');
+	await page.click('#solve-run', { force: true });
+	await page.evaluate(() => window.nkd.state.hero.open());
+	await page.waitForTimeout(600);
+	await page.evaluate(() => window.nkd.state.hero.openProgress());
+	await page.waitForTimeout(900);
+}
+
+/** [r, g, b] brightness of a CSS "rgb(r, g, b)" colour */
+function luminance(color) {
+	const [r, g, b] = color.match(/\d+/g).map(Number);
+	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** The popup an import asks first: what it says, where the focus is, Tab, Escape and the buttons. */
+async function checkConfirmPopup(browser, base) {
+	const { context, page, errors } = await openPage(browser, base, 0);
+	try {
+		await page.goto(`${base}/index.html#${LABELS[0]}`);
+		await waitForPage(page);
+		await page.waitForFunction(() => window.nkd.state.level, null, { timeout: 60000 });
+		const ask = () => page.evaluate(() => {
+			window.__done = undefined;
+			window.nkd.state.hero.opts.confirmImport({ replacesSave: true }).then((yes) => { window.__done = yes; });
+		});
+		const answer = async () => {
+			await page.waitForFunction(() => window.__done !== undefined, null, { timeout: 15000 });
+			return page.evaluate(() => window.__done);
+		};
+		await ask();
+		await waitPopupShown(page);
+		const dialog = await page.evaluate(() => ({
+			role: document.querySelector('#popup-confirm').getAttribute('role'),
+			title: document.querySelector('#confirm-title').textContent,
+			text: document.querySelector('#confirm-text').textContent,
+			focus: document.activeElement && document.activeElement.id,
+			buttons: [...document.querySelectorAll('#confirm-cancel, #confirm-ok')].map((b) => b.textContent),
+		}));
+		if (dialog.role !== 'alertdialog') errors.push(`the confirm popup is not an alert dialog: ${dialog.role}`);
+		if (dialog.text !== 'Importing a save clears the existing dungeon and save. Import and continue?') errors.push(`confirm text: "${dialog.text}"`);
+		if (dialog.focus !== 'confirm-cancel') errors.push(`the focus starts on "${dialog.focus}", not Cancel`);
+		if (dialog.buttons.join('|') !== 'Cancel|Import') errors.push(`buttons: ${dialog.buttons}`);
+		for (let i = 0; i < 5; i++) await page.keyboard.press(i % 2 ? 'Shift+Tab' : 'Tab');
+		if (!await page.evaluate(() => document.querySelector('#popup-confirm').contains(document.activeElement))) errors.push('Tab left the confirm popup');
+		await page.keyboard.press('Escape');
+		await waitPopupGone(page);
+		if (await answer() !== false) errors.push('Escape did not answer no');
+		await ask();
+		await waitPopupShown(page);
+		await page.click('#confirm-ok');
+		await waitPopupGone(page);
+		if (await answer() !== true) errors.push('Import did not answer yes');
+		await ask();
+		await waitPopupShown(page);
+		await page.click('#confirm-cancel');
+		await waitPopupGone(page);
+		if (await answer() !== false) errors.push('Cancel did not answer no');
+		await ask();
+		await waitPopupShown(page);
+		await page.waitForFunction(() => document.querySelector('#popup-confirm').parentNode.onclick, null, { timeout: 15000 });   // Popup listens once it has faded in
+		await page.mouse.click(4, 4);   // outside the box, on the dimmed page
+		await waitPopupGone(page);
+		if (await answer() !== false) errors.push('a click outside the box did not answer no');
+		if (!await page.evaluate(() => document.querySelector('#popup-confirm').inert)) errors.push('the closed confirm popup can still take the focus');
+		if (!await page.evaluate(() => window.nkd.state.level)) errors.push('the dungeon went away');
+	} catch (e) {
+		errors.push(e.message.split('\n')[0]);
+	} finally {
+		await context.close();
+	}
+	return report('confirm popup', errors);
+}
+
+function waitPopupShown(page) {
+	return page.waitForFunction(() => Number(document.querySelector('#popup-confirm').parentNode.style.opacity) > 0.99, null, { timeout: 15000 });
+}
+
+/** faded out and closed (a question can be asked again) */
+function waitPopupGone(page) {
+	return page.waitForFunction(() => Number(document.querySelector('#popup-confirm').parentNode.style.opacity) === 0 && document.querySelector('#popup-confirm').inert, null, { timeout: 15000 });
+}
+
+function haveSavedDungeonFiles() {
+	return fs.existsSync(SAVED_DUNGEON.file) && fs.existsSync(TOWN_SAVE);
+}
+
+/**
+ * Importing the synthetic saves, as a player does: onto an empty page (no question, the save's dungeon appears), over
+ * a dungeon (a question; Cancel changes nothing; Import clears to "No Dungeon Loaded" for a save made in town) and
+ * with a reload in between.
+ */
+async function checkImportingSaves(browser, base) {
+	const { context, page, errors } = await openPage(browser, base, 0);
+	const inDungeon = path.basename(SAVED_DUNGEON.file);
+	try {
+		await page.goto(`${base}/index.html`);
+		await waitForPage(page);
+		await page.waitForFunction(() => document.querySelector('#map-section.no-dungeon'), null, { timeout: 30000 });
+		await importFile(page, SAVED_DUNGEON.file);
+		await page.waitForFunction(() => window.nkd.state.level, null, { timeout: 30000 });
+		let now = await importedFacts(page);
+		if (await popupSeen(page)) errors.push('an import onto an empty page asked a question');
+		if (now.shown !== SAVED_DUNGEON.label || now.hash !== `#${SAVED_DUNGEON.label}`) errors.push(`the save's dungeon is not shown: "${now.shown}" ${now.hash}`);
+		if (!/from your save/.test(now.status)) errors.push(`the status line does not say it is the save's dungeon: "${now.status}"`);
+		if (!now.targetsSave) errors.push(`the solver does not say it solves ${SAVED_DUNGEON.label} with the saved hero: "${now.target}"`);
+		errors.push(...await importOverADungeonErrors(page, inDungeon));
+	} catch (e) {
+		errors.push(e.message.split('\n')[0]);
+	} finally {
+		await context.close();
+	}
+	return report('importing saves', errors);
+}
+
+/** Another dungeon on screen with a plan: the town save asks first; Cancel changes nothing; Import clears everything. */
+async function importOverADungeonErrors(page, inDungeon) {
+	const errors = [];
+	await page.fill('#label-input', OTHER_LABEL);
+	await page.click('#show-btn');
+	await page.waitForFunction((label) => window.nkd.state.level && document.querySelector('#label-input').value === label, OTHER_LABEL, { timeout: 30000 });
+	await solveSmall(page);
+	await importFile(page, TOWN_SAVE);
+	await waitPopupShown(page);
+	if (!/^Importing a save clears the existing dungeon and save\. Import and continue\?$/.test(await page.textContent('#confirm-text'))) errors.push('the question does not say the dungeon and save are cleared');
+	if ((await importedFacts(page)).file !== inDungeon) errors.push('the save was replaced before the answer');
+	await page.click('#confirm-cancel');
+	await waitPopupGone(page);
+	let now = await importedFacts(page);
+	if (now.file !== inDungeon || now.shown !== OTHER_LABEL || !now.hasPlan || now.hash !== `#${OTHER_LABEL}`) errors.push(`Cancel changed something: ${JSON.stringify(now)}`);
+	await importFile(page, TOWN_SAVE);
+	await waitPopupShown(page);
+	await page.click('#confirm-ok');
+	await waitPopupGone(page);
+	await page.waitForFunction(() => !window.nkd.state.level, null, { timeout: 30000 });
+	now = await importedFacts(page);
+	if (now.file !== path.basename(TOWN_SAVE) || now.shown !== null || now.hasPlan || now.hash !== '') errors.push(`Import left something behind: ${JSON.stringify(now)}`);
+	if (!/not inside a dungeon/.test(now.status) || !now.overlay) errors.push(`the page does not say the save is in town: "${now.status}"`);
+	await page.reload();
+	await waitForPage(page);
+	await page.waitForTimeout(1500);
+	now = await importedFacts(page);
+	if (now.file !== path.basename(TOWN_SAVE) || now.shown !== null || !now.overlay) errors.push(`a reload brought something back: ${JSON.stringify(now)}`);
+	await importFile(page, SAVED_DUNGEON.file);   // an empty page again: no question
+	await page.waitForFunction(() => window.nkd.state.level, null, { timeout: 30000 });
+	await page.evaluate(() => history.replaceState(null, '', location.pathname));
+	await page.reload();   // a bare URL: the kept save's dungeon
+	await waitForPage(page);
+	await page.waitForFunction(() => window.nkd.state.level, null, { timeout: 30000 });
+	now = await importedFacts(page);
+	if (now.shown !== SAVED_DUNGEON.label) errors.push(`a reload does not show the kept save's dungeon: "${now.shown}"`);
+	return errors;
+}
+
+/** A small robust solve (a what-if hero, Normal search), so a plan is on screen. */
+async function solveSmall(page) {
+	await page.evaluate(() => {
+		const panel = window.nkd.solve;
+		Object.assign(panel.cfg, { mode: 'robust', heroSrc: 'manual', budget: 'normal' });
+		return panel.run();
+	});
+	if (!await page.evaluate(() => !!window.nkd.solve.result)) throw new Error('the small solve made no plan');
+}
+
+function importFile(page, file) {
+	return page.setInputFiles('#hero-file', file);
+}
+
+function popupSeen(page) {
+	return page.evaluate(() => Number(document.querySelector('#popup-confirm').parentNode.style.opacity) > 0);
+}
+
+async function importedFacts(page) {
+	return page.evaluate(async () => {
+		const { formatLabel } = await import('/js/labels.js');
+		const { state, solve } = window.nkd;
+		const target = (document.querySelector('#solve-target') || {}).innerText || '';
+		return {
+			shown: state.level ? formatLabel(state.type, state.seed) : null,
+			hash: location.hash,
+			file: state.hero.info && state.hero.info.file,
+			hasPlan: !!solve.result,
+			overlay: getComputedStyle(document.querySelector('#map-empty')).display !== 'none',
+			status: document.querySelector('#label-status').innerText.replace(/\s+/g, ' ').trim(),
+			target: target.replace(/\s+/g, ' ').trim(),
+			targetsSave: /from your save/.test(target),
+		};
+	});
+}
+
+/**
+ * The exact-mode script player's Play / Pause button takes a press that lasts across a step: the player redraws every
+ * 450 ms while playing, and a press must not be lost when that happens (it used to swap the button's icon each step).
+ */
+async function checkScriptPlayer(browser, base) {
+	const { context, page, errors } = await openPage(browser, base, 0);
+	const playing = () => page.evaluate(() => !!window.nkd.solve.playing);
+	try {
+		await page.goto(`${base}/index.html#1A-1429008869`);   // 12 fights: quick to solve
+		await waitForPage(page);
+		await page.waitForFunction(() => window.nkd.state.level, null, { timeout: 60000 });
+		await page.click('#solve-controls .seg-btn[data-k="mode"][data-v="exact"]');
+		await page.click('#solve-controls .seg-btn[data-k="heroSrc"][data-v="manual"]');
+		await page.click('#solve-run');
+		await page.waitForFunction(() => window.nkd.solve.result && !window.nkd.solve.running && document.querySelector('#pl-play'), null, { timeout: 300000 });
+		const button = await page.locator('#pl-play').boundingBox();
+		const press = async (ms) => {
+			await page.mouse.move(button.x + button.width / 2, button.y + button.height / 2);
+			await page.mouse.down();
+			await page.waitForTimeout(ms);
+			await page.mouse.up();
+			await page.waitForTimeout(100);
+		};
+		for (let round = 0; round < 3; round++) {
+			await press(60);
+			if (!await playing()) { errors.push(`round ${round + 1}: Play did not start the script`); break; }
+			await press(600);   // longer than a step
+			if (await playing()) { errors.push(`round ${round + 1}: a press held across a step did not pause`); break; }
+		}
+	} catch (e) {
+		errors.push(e.message.split('\n')[0]);
+	} finally {
+		await context.close();
+	}
+	return report('script player', errors);
+}
+
+/** Print a failure and return 1, or return 0. */
+function report(what, errors) {
+	if (!errors.length) return 0;
+	console.log(`FAIL ${what}:\n  ${[...new Set(errors)].join('\n  ')}`);
+	return 1;
+}
+
+/**
+ * The Your progress popup's "mark done" buttons, used the way a player does: open it with its button, click, close it by
+ * clicking beside it. Quests: every questline slider ends at its end, the map's badge changes to custom progress and the
+ * button keeps the keyboard focus. Bosses, by the keyboard: every box ticked. Reset puts the new game back.
+ */
+async function markAllErrors(page) {
+	const errors = [];
+	const state = () => page.evaluate(() => {
+		const lines = [...document.querySelectorAll('#progress-body .pg-line')];
+		const atEnd = (line) => {
+			const bar = line.querySelector('.pg-bar');
+			if (bar) return bar.getAttribute('aria-valuenow') === bar.getAttribute('aria-valuemax');
+			return !!line.querySelector('.pg-seg .seg-btn.selected[data-st="done"]');
+		};
+		const boxes = [...document.querySelectorAll('#progress-body .pg-grid .pg-check')];
+		return {
+			lines: lines.length,
+			atEnd: lines.filter(atEnd).length,
+			beaten: boxes.filter((b) => b.getAttribute('aria-checked') === 'true').length,
+			boxes: boxes.length,
+			badge: document.querySelector('.map-basis b')?.textContent,
+			changes: document.querySelector('#progress-body .pg-count')?.textContent.trim(),
+			result: document.querySelector('#progress-body .pg-mark-result')?.textContent,
+			focus: document.activeElement?.dataset?.mark,
+		};
+	});
+	const waitForBadge = (text) => page.waitForFunction((t) => document.querySelector('.map-basis b')?.textContent === t, text, { timeout: 15000 });
+	try {
+		await page.click('#progress-open-btn');
+		await page.waitForFunction(() => {
+			const popup = document.querySelector('#popup-progress');
+			return popup.style.opacity === '1' && popup.parentNode.style.opacity === '1' && popup.querySelector('.pg-mark-btn');
+		}, null, { timeout: 15000 });
+		errors.push(...await progressTextErrors(page));
+		const start = await state();
+		if (start.badge !== 'New game' || start.atEnd !== 0 || start.beaten !== 0) errors.push(`progress popup should start as a new game: ${JSON.stringify(start)}`);
+		await page.click('#progress-body .pg-mark-btn[data-mark="quests"]');
+		await waitForBadge('Custom progress');
+		const quests = await state();
+		if (quests.atEnd !== quests.lines || quests.lines < 10) errors.push(`mark all quests done: ${quests.atEnd} of ${quests.lines} sliders at their end`);
+		if (quests.beaten !== 0) errors.push('mark all quests done also marked bosses beaten');
+		if (!/questlines moved to done/.test(quests.result || '')) errors.push(`mark all quests done: no result line (${quests.result})`);
+		if (quests.focus !== 'quests') errors.push('the mark button lost the keyboard focus when the popup redrew');
+		await page.focus('#progress-body .pg-mark-btn[data-mark="bosses"]');
+		await page.keyboard.press('Enter');
+		await page.waitForFunction(() => document.querySelector('#progress-body .pg-grid .pg-check[aria-checked="true"]'));
+		const bosses = await state();
+		if (bosses.beaten !== bosses.boxes || bosses.boxes < 20) errors.push(`mark all bosses beaten, by keyboard: ${bosses.beaten} of ${bosses.boxes} boxes ticked`);
+		if (bosses.atEnd !== bosses.lines) errors.push('mark all bosses beaten moved a slider');
+		await page.click('#progress-body .pg-reset[data-clear]');
+		await waitForBadge('New game');
+		const reset = await state();
+		if (reset.atEnd !== 0 || reset.beaten !== 0 || /change/.test(reset.changes) && !/No changes/.test(reset.changes)) errors.push(`Clear changes did not undo the marks: ${JSON.stringify(reset)}`);
+		if (!(await page.$('#progress-body .pg-reset[data-clear].disabled'))) errors.push('Clear changes is not disabled with no changes');
+		await page.mouse.click(5, 5);
+		await page.waitForFunction(() => document.querySelector('#popup-progress').parentNode.style.opacity === '0', null, { timeout: 15000 });
+	} catch (e) {
+		errors.push(`mark buttons: ${e.message.split('\n')[0]}`);
+	}
+	return errors;
+}
+
+/**
+ * What the Your progress popup says, on 3C: no quest name with the game's teaser ellipsis ("Once Upon a ..." is part 1 of
+ * Once Upon a Forest), unlocks as "Unlocks <b>quest</b> (dungeon)", the NPC grid with every dungeon in the game's rows
+ * and "← here" on 3C, and where the game shows the items, buildings, and counts.
+ */
+async function progressTextErrors(page) {
+	const shown = await page.evaluate(() => {
+		const body = document.querySelector('#progress-body');
+		const unlock = [...body.querySelectorAll('.pg-effects li')].find((li) => li.textContent.includes('Unlocks Magic Beans (4A)'));
+		const rows = [...body.querySelectorAll('.pg-picks .pg-pick-row')];
+		const here = body.querySelectorAll('.pg-pick.pg-cur');
+		const marker = here[0]?.querySelector('.pg-here');
+		return {
+			ellipsis: (body.textContent.match(/[^.\s]*\s?(\.\.\.|…)/g) || []).slice(0, 3),
+			unlockBold: unlock ? [...unlock.querySelectorAll('b')].map((b) => b.textContent) : null,
+			rows: rows.map((r) => [...r.querySelectorAll('.pg-pick-head b')].map((b) => b.textContent).join(' ')),
+			here: [here.length, here[0]?.querySelector('.pg-pick-head b')?.textContent, marker?.textContent, marker?.getAttribute('aria-label'), here[0]?.getAttribute('aria-current')],
+			inGame: [...body.querySelectorAll('.pg-help')].filter((h) => h.textContent.startsWith('In the game:')).length,
+			heading: [...body.querySelectorAll('.content-header-2')].some((h) => h.textContent === 'Items, buildings, and counts'),
+		};
+	});
+	const errors = [];
+	const ROWS = ['EA EB EC ED', 'F1 F2 F3 F4', '1A 1B 1C', '2A 2B 2C', '3A 3B 3C', '4A 4B 4C', '5A 5B 5C', '6A 6B 6C 6D'];
+	if (shown.ellipsis.length) errors.push(`progress popup shows an ellipsis: ${shown.ellipsis.join(' | ')}`);
+	if (JSON.stringify(shown.unlockBold) !== '["Magic Beans"]') errors.push(`"Unlocks Magic Beans (4A)" without the name in bold: ${JSON.stringify(shown.unlockBold)}`);
+	if (shown.rows.join(' / ') !== ROWS.join(' / ')) errors.push(`quest NPC grid rows: ${shown.rows.join(' / ')}`);
+	if (shown.here.join() !== '1,3C,← here,this dungeon, the one on the map,location') errors.push(`quest NPC grid "here" mark: ${shown.here.join()}`);
+	if (shown.inGame !== 3 || !shown.heading) errors.push(`items, buildings, and counts: ${shown.inGame} "In the game:" notes, heading ${shown.heading}`);
 	return errors;
 }
 
