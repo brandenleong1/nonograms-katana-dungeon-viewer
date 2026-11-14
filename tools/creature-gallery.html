@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<!-- Dev tool: every creature with a drawing (js/view/creatures.js) on a floor tile, at map size and small, by role.
+<!-- Dev tool: every creature with a drawing (js/view/creatures.js) on a floor tile, at map size and small, by role;
+     the people (NPCs), the breakable objects, the containers, the treasure chests and the power cauldrons (js/view/objects.js) on their own rows.
      http://127.0.0.1:8765/tools/creature-gallery.html?theme=dark -->
 <html><head><meta charset="utf-8"><title>Creature gallery</title>
 <style>body{margin:0;background:#16161a;color:#ddd;font:12px system-ui}body.light{background:#ece9e2;color:#222}canvas{display:block}</style></head>
@@ -61,6 +62,8 @@ const entries = [
 	[615, 'monster', 'Burning obelisk'], [616, 'monster', 'Dancing skeleton'], [617, 'monster', 'Skeletal pharaoh'],
 	[618, 'monster', 'Flying mummy'], [619, 'monster', 'Anubite'], [622, 'monster', 'Demoralization snake'],
 	[623, 'monster', 'Serpent sorceress'],
+	// spawned during play: the barrel, vase and chest mimics, and the Minidimmon
+	[275, 'monster', 'Kraken'], [214, 'monster', 'Fire beetle'], [286, 'monster', 'Mimikchest'], [341, 'monster', 'Minidimmon'],
 	[276, 'boss', '1A boss'], [277, 'boss', '1B boss'], [213, 'boss', '1C boss'], [278, 'boss', '2A boss'], [279, 'boss', '2B boss'],
 	[237, 'boss', '2C boss'],
 	[265, 'boss', '3A boss'], [281, 'boss', '3B boss'], [267, 'boss', '3C boss'], [282, 'boss', '4A boss'], [283, 'boss', '4B boss'],
@@ -73,17 +76,63 @@ const entries = [
 	[207, 'goldmonster', 'gold (key)'],
 	[211, 'unique', 'unique'], [999, 'monster', 'no drawing'],
 ];
+// the people (NPCs), on their own rows: each look once, then a shapeshifter (drawn as whoever it pretends to be, with
+// a red diamond) and the robed figures for a species without a drawing
+const npcs = [
+	[400, 'npc', 'Lost adventurer'], [401, 'npc', 'Lost adventurer'], [402, 'npc', 'Methusalem'], [403, 'npc', 'Lost adventurer'],
+	[404, 'npc', 'Lost adventurer'], [405, 'npc', 'Lost adventurer'], [414, 'npc', 'Dark Lady'], [419, 'npc', 'Mechanical adventurer'],
+	[420, 'npc', 'Big wise raven'], [422, 'npc', 'Mr. Diligence'], [425, 'npc', 'Mrs. Diligence'], [426, 'npc', 'Forest Fairy'],
+	[428, 'npc', 'Inventor'], [429, 'npc', 'Hunter'], [431, 'npc', 'Leprechaun'], [444, 'npc', 'Goat'],
+	[445, 'npc', 'Samurai panda'], [446, 'npc', 'Royal rat'], [634, 'npc', 'Lost adventurer'], [635, 'npc', 'Lost adventurer'],
+	[636, 'npc', 'Lost adventurer'], [637, 'npc', 'Lost adventurer'], [638, 'npc', 'Lost adventurer'], [639, 'npc', 'Anuket'],
+	[640, 'npc', 'Jane'], [641, 'npc', 'Merytsah'],
+	[434, 'shapeshifter', 'Shapeshifter'], [401, 'shapeshifter', 'fake merchant'],
+	[999, 'npc', 'no drawing'], [999, 'shapeshifter', 'no drawing'],
+];
+// the breakable objects (by object id; names: data/catalog.json), then the pot for one without a drawing
+const breakables = [
+	[3, 'breakable', 'Big barrel'], [4, 'breakable', 'Big crate'], [12, 'breakable', 'Three barrels'],
+	[13, 'breakable', 'Stacked wooden crates'], [20, 'breakable', 'Pottery jars'], [26, 'breakable', 'Big vase'],
+	[104, 'breakable', 'Egyptian basket'], [105, 'breakable', 'Egyptian crate'], [106, 'breakable', 'Egyptian vase'],
+	[107, 'breakable', 'Woven baskets'], [108, 'breakable', 'Stacked crates'], [109, 'breakable', 'Pottery jars'],
+	[121, 'breakable', 'Canopic jars'], [999, 'breakable', 'no drawing'],
+];
+// the containers (by object id; names: data/catalog.json), then the crate for one without a drawing
+const containers = [
+	[2, 'container', 'Wooden chest'], [7, 'container', 'Drum'], [34, 'container', 'Soy sauce'], [41, 'container', 'Mushrooms'],
+	[42, 'container', 'Porcini mushroom'], [43, 'container', 'Woodland strawberry'], [44, 'container', 'Herbs'],
+	[61, 'container', 'Bamboo plant'], [62, 'container', 'Green empty bottle'], [66, 'container', 'Yellow crystal rock'],
+	[67, 'container', 'Red crystal rock'], [68, 'container', 'Green crystal rock'], [69, 'container', 'Blue crystal rock'],
+	[70, 'container', 'Violet crystal rock'], [102, 'container', 'Chariot'], [122, 'container', 'Mummy-honey'],
+	[999, 'container', 'no drawing'],
+];
+// the treasure chests (by object id), then the gold-banded chest for one without a drawing
+const chests = [
+	[21, 'chest', 'Purple chest'], [37, 'chest', 'Golden chest'], [94, 'chest', 'Black sarcophagus'], [999, 'chest', 'no drawing'],
+];
+// the power cauldrons (by object id), then the pedestal for a special object without a drawing
+const cauldrons = [
+	[85, 'special', 'Red power cauldron'], [86, 'special', 'Green power cauldron'], [87, 'special', 'Blue power cauldron'],
+	[999, 'special', 'no drawing'],
+];
 const dpr = window.devicePixelRatio || 1;
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const hw = +(new URLSearchParams(location.search).get('hw') || 50);
-const cols = 10, cell = hw * 3, rowH = hw * 3.5, rows = Math.ceil(entries.length / cols);
+const cols = 10, cell = hw * 3, rowH = hw * 3.5;
+// each list starts on a new row
+const placed = [];
+let row = 0;
+for (const list of [entries, npcs, breakables, containers, chests, cauldrons]) {
+	list.forEach((entry, i) => placed.push([entry, i % cols, row + ((i / cols) | 0)]));
+	row += Math.ceil(list.length / cols);
+}
+const rows = row;
 const W = cols * cell, H = rows * rowH + 10;
 cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + 'px'; cv.style.height = H + 'px';
 ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 const floor = theme === 'light' ? '#e2dbcf' : '#7a7166';
 const tile = (cx, cy, hw) => { ctx.fillStyle = floor; ctx.beginPath(); ctx.moveTo(cx, cy - hw / 2); ctx.lineTo(cx + hw, cy); ctx.lineTo(cx, cy + hw / 2); ctx.lineTo(cx - hw, cy); ctx.closePath(); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.stroke(); };
-entries.forEach(([id, kind, label], i) => {
-	const col = i % cols, row = (i / cols) | 0;
+placed.forEach(([[id, kind, label], col, row]) => {
 	const cx = col * cell + cell / 2 - hw * 0.24, cy = row * rowH + hw * 2.4;
 	tile(cx, cy, hw); drawSprite(ctx, kind, cx, cy, hw, { theme, dpr, variant: String(id) });
 	tile(cx + hw, cy + hw * 0.56, 18); drawSprite(ctx, kind, cx + hw, cy + hw * 0.56, 18, { theme, dpr, variant: String(id) });

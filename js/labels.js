@@ -38,3 +38,28 @@ export function parseLabel(text) {
 export function formatLabel(type, seed) {
 	return `${typeLabel(type)}-${seed}`;
 }
+
+// words a title keeps in lower case unless they start or end it (or follow a colon): articles, conjunctions and all
+// prepositions ("Journey through Japan by Train", "Book of the Dead", "Once upon a Forest")
+const SMALL_WORDS = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'nor', 'so', 'yet', 'as',
+	'about', 'above', 'across', 'after', 'against', 'along', 'among', 'around', 'at', 'before', 'behind', 'below', 'beneath',
+	'beside', 'between', 'beyond', 'by', 'down', 'during', 'except', 'for', 'from', 'in', 'inside', 'into', 'near', 'of',
+	'off', 'on', 'onto', 'out', 'outside', 'over', 'past', 'per', 'since', 'through', 'throughout', 'till', 'to', 'toward',
+	'towards', 'under', 'until', 'up', 'upon', 'via', 'with', 'within', 'without']);
+
+/**
+ * A quest's name in title case (data/names.json keeps the game's own, which is sometimes sentence case: "Dragon teeth",
+ * "Green potion"): other words get a capital; small words are left as the game writes them. Words in capitals (WANTED)
+ * and anything after an apostrophe (Shogun's) stay as they are.
+ */
+export function titleCase(name) {
+	const words = name.split(' ');
+	return words.map((w, i) => {
+		const bare = w.replace(/^[^A-Za-z]+/, '');
+		const afterColon = i > 0 && /:$/.test(words[i - 1]);
+		const edge = i === 0 || i === words.length - 1 || afterColon;
+		if (!edge && SMALL_WORDS.has(bare.toLowerCase())) return w;   // as the game writes it (its "Once Upon a Forest")
+		const k = w.length - bare.length;
+		return w.slice(0, k) + bare.charAt(0).toUpperCase() + bare.slice(1);
+	}).join(' ');
+}

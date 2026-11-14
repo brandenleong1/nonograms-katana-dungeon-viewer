@@ -19,10 +19,11 @@ npm test        # = node tools/run-tests.mjs: every standalone suite in test/
 | `test/version.mjs` | `data/game-version.json` and the README's Game version table agree. | instant |
 | `test/details.mjs` | Object contents, collected/unsealed states, hidden-creature warnings, distinct item labels and retained catalog behavior. | ~1 s |
 | `test/catalog.mjs` | `data/catalog.json`: every creature and object in about 770 generated dungeons (new game and progress states) has an entry with a name and a kind the map draws, and every id is drawn as before the table existed, except object 84 (the caves' mine cart, drawn as reeds before). Also the level's wild familiars and mine-cart riders. | ~9 s |
-| `test/questlines.mjs` | The Your progress questlines: every quest the generator reads is on a slider, every position round-trips through a profile, and part 3 of Once Upon a Forest brings 3C's mini-boss. | ~1 s |
+| `test/questlines.mjs` | The Your progress questlines: every quest the generator reads is on a slider, every position round-trips through a profile, and part 4 of Once Upon a Forest brings 3C's mini-boss. Quest 27 is part 1 of Once Upon a Forest, as the game files it, no shown text has the game's teaser ellipsis, and effects read "Unlocks <quest> (4A)". The mark-all buttons: every slider at its end and every boss beaten, the same on a save, nothing changed on a second press, the user's other edits kept, and dungeons of every family build with everything done. | ~4 s |
 | `test/astar.mjs` | `hw.t_` (A*) against a copy of the version before it stopped allocating, on about 10,000 calls over real mid-dungeon states (free, blocked, occupied, revealed or not, doors, teams, regions): same cost, same path (so the same tie-break among equal costs), same scratch point, open list emptied. It fails if the heap order changes. | ~10 s |
 | `test/exact-look-ahead.mjs` | Exact mode's look-ahead: the order of deaths (alive, then dying later, then dying in the fight), one fight of a generated dungeon where every tactic dies in the look-ahead, and an exact solve of it that must survive (`--quick` skips the solve). | ~25 s |
 | `test/solve.mjs` | Solver: resource ledger, route walker, the wiki's first-strike rule, robust and exact solves on small budgets, MP top-ups (including mid-fight), the plan schema, the worker pool. Use `--quick` to skip the slow cases and `--no-workers` to skip the pool. | ~1 min |
+| `test/pr-bot.mjs` | The PR bot against a fake GitHub (`test/fixtures/pr-bot-github.mjs`): a stacked PR (based on another PR's branch) waits with "Stacked on #N" however ready it looks, a PR based on another branch is told to change its base, and a ready PR based on `main` is merged. | ~1 s |
 | `test/exact-workers.mjs` | Exact mode gives the same plan with 2, 4 and 8 workers as with the inline pool, and the look-ahead cache changes nothing: a run that re-walks every cache hit finds no difference (`1A-1429008869`, small search). | ~20 s |
 
 `npm test` must pass before a pull request is merged.
@@ -54,6 +55,7 @@ tomb) in each of the four themes, in headless Chromium. On every page:
 - the purple chest at 33,35 shows its Meteoric Iron contents in the panel and tooltip;
 - the Help popup credits the Nonograms Katana Wiki for the names;
 - the Your hero and Your progress popups open;
+- on 3C-172582050, the Progress popup shows no quest name with an ellipsis, unlocks as "Unlocks **Magic Beans** (4A)", the quest NPC grid in the game's rows with "← here" on 3C, and where the game shows items, buildings, and counts; its mark buttons move every questline slider to its end, tick every boss (by keyboard), and turn the map's badge to Custom progress; Clear changes puts the new game back;
 - nothing raises a page error or logs a console error.
 
 It also checks the page with no dungeon and the importing of saves:
@@ -180,9 +182,10 @@ view('select-chest', { theme: 'dark', steps: [clickOnMap({ object: 21 })] }),
   element, a state in `window.nkd`), never for a fixed time. Anything else that depends on the clock must be masked:
   wrap it in an element with the class `nk-shot-mask`. Check with `--before .`, a few times and once with `--jobs 6`
   to load the machine: every view must come out `same`.
-- **Limits:** the comment workflow takes at most 60 views, 3 MB per image and 40 MB in all. When every view changed
-  it gets both sides of each, so one side must stay under 20 MB (now about 16 MB). The tool stops past the first two
-  and warns about the third.
+- **Limits:** the comment workflow takes at most 100 views, 3 MB per image and 80 MB in all. When every view changed
+  it gets both sides of each, so one side must stay under 40 MB (now about 16 MB). The tool stops past the first two
+  and warns about the third. The limits are read from `main` (the trusted half runs from there), so a PR can't raise
+  them for itself: raise them on `main` first, in both `tools/screenshot-comment.mjs` and `tools/screenshots.mjs`.
 - **Time:** the bot shoots every view twice on a 4-core runner. A quick view costs about 5 CPU-seconds, a solve about
   35. Keep solves to the small label (`LABELS.small`) and the Normal search.
 - **New controls:** a view of something `main` doesn't have yet can't be taken there; it is posted as a new view.

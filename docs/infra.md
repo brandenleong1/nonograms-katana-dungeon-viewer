@@ -103,6 +103,9 @@ submits GitHub reviews, which would count toward the human approval.
 
 Ready means the PR:
 - is not a draft, has no merge conflict, and isn't labelled `hold`;
+- is **based on `main`**. A stacked PR, one based on another PR's branch, waits with "Stacked on #N": merging it would
+  squash it into that branch, not into `main`. Once #N merges, the bot deletes #N's branch, GitHub retargets the
+  stacked PR to `main`, and it's treated like any other (it may need a rebase first);
 - is up to date with `main`;
 - has `precommit` and `pr-policy` green on its head commit;
 - has no reviewer requesting changes;
